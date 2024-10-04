@@ -1,4 +1,4 @@
-# Fault Slip Potential (FSP) 2.0
+# Fault Slip Potential (FSP)
 
 ### A Program for Probabilistic Estimation of Fault Slip Potential Resulting from Fluid Injection
 
@@ -6,7 +6,7 @@
 
 ### Overview
 
-FSP 2.0 is a tool developed to screen faults near injection wells and estimate the potential for fault slip induced by fluid injection. It uses probabilistic methods to estimate the cumulative probability of a fault slipping due to increased pore pressure.
+FSP is a tool developed to screen faults near injection wells and estimate the potential for fault slip induced by fluid injection. It uses probabilistic methods to estimate the cumulative probability of a fault slipping due to increased pore pressure.
 
 ### Features
 
@@ -50,7 +50,7 @@ A video on how to download, install, and use FSP can be found here: https://www.
 
 ### Licensing
 
-FSP 2.0 is licensed under the **Apache License Version 2.0**. Please refer to the `LICENSE` file for more details.
+FSP is licensed under the **Apache License Version 2.0**. Please refer to the `LICENSE` file for more details.
 
 ### Notes
 
