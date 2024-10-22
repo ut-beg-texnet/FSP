@@ -10,8 +10,8 @@ using .ModelInputsWellsInput
 using .ModelInputsWellsOutput
 
 # Driver logic for Step 1 line graphs
-# helper script #1 reads the CSV and converts to JSON
-# helper script #2 reformats the JSON for D3.js line graphs
+# helper script #1 (src/input/model_inputs_wells_input.jl) reads the CSV and converts to JSON
+# helper script #2 (src/output/model_inputs_wells_output.jl) reformats the JSON for D3.js line graphs
 
 # Step 1: Convert the CSV file to JSON using model_inputs_wells_input.jl
 csv_file_path = "src/output/mock_wells.csv"
