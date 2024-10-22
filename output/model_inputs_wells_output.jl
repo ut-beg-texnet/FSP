@@ -2,11 +2,10 @@ module ModelInputsWellsOutput
 
 using JSON
 
-# Reformats JSON data to a structure suitable for D3.js line graphs
+
 export reformat_json_data
 
 function reformat_json_data(json_file_path::String)
-    # Read and parse the JSON data
     file_data = open(json_file_path, "r") do file
         JSON.parse(file)
     end
@@ -15,7 +14,7 @@ function reformat_json_data(json_file_path::String)
     reformatted_data = Dict{String, Vector{Dict{Symbol, Real}}}()
 
     for well_data in file_data
-        # Well name or ID is used as the key
+        # Well name/ID is the key
         well_id = string(well_data["id"])
 
         if haskey(well_data, "start_year") && haskey(well_data, "end_year") && haskey(well_data, "injection_rate")
@@ -39,13 +38,12 @@ function reformat_json_data(json_file_path::String)
             year = well_data["year"]
             month = well_data["month"]
             volume = well_data["volume"]
-
-            # Initialize empty vector for this well if it doesn't exist
+            
             if !haskey(reformatted_data, well_id)
                 reformatted_data[well_id] = []
             end
 
-            # Instead of fractional year, we'll format the date as "Year-Month" for D3.js
+            # make sure 'year' is an int (no decimal places)
             push!(reformatted_data[well_id], Dict(:x => Int(year), :y => volume))
         else
             throw(ArgumentError("Unexpected well data format. Data must contain either (start_year, end_year, injection_rate) or (year, month, volume)."))
@@ -55,4 +53,4 @@ function reformat_json_data(json_file_path::String)
     return JSON.json(reformatted_data)
 end
 
-end  # End of module
+end  # End module
