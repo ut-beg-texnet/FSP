@@ -96,4 +96,4 @@ function convert_csv_to_json(csv_file_path::String, json_file_path::String)
     end
 end
 
-end  # End of module
+end  # module end
