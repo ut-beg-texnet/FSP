@@ -3,8 +3,8 @@ module DriverStep1
 using JSON
 using CSV
 
-include("input/model_inputs_wells_input.jl")
-include("output/model_inputs_wells_output.jl")
+include("../input/model_inputs_wells_input.jl")
+include("../output/model_inputs_wells_output.jl")
 
 using .ModelInputsWellsInput
 using .ModelInputsWellsOutput
@@ -14,8 +14,8 @@ using .ModelInputsWellsOutput
 # helper script #2 (src/output/model_inputs_wells_output.jl) reformats the JSON for D3.js line graphs
 
 # Step 1: Convert the CSV file to JSON using model_inputs_wells_input.jl
-csv_file_path = "output/mock_wells.csv"
-json_file_path = "output/well_data_line_graph.json"
+csv_file_path = "../input/mock_wells.csv"
+json_file_path = "../output/well_data_line_graph.json"
 
 # CSV --> JSON
 json_file = convert_csv_to_json(csv_file_path, json_file_path)
@@ -28,7 +28,7 @@ reformatted_data = reformat_json_data(json_file)
 println("Reformatted Data for D3.js: ", reformatted_data)
 
 # Step 4: Save the reformatted data to a new JSON file
-output_json_file_path = "output/reformatted_well_data.json"
+output_json_file_path = "../output/reformatted_well_data.json"
 open(output_json_file_path, "w") do file
     write(file, reformatted_data)
 end
