@@ -1,0 +1,7 @@
+name = "fsp_3"
+uuid = "65d0bbc5-ae23-4d4f-b5e0-c2863cfc181a"
+authors = ["seiscomp "]
+version = "0.1.0"
+
+[deps]
+JSON = "682c06a0-de6a-54ab-a142-c8b1cf79cde6"

@@ -1,4 +1,0 @@
-hDV.data.nwells_max=150; % 100 is default Max well capacity
-hDV.data.NFAULTSMAX=600; % 500 is default Max Fault Capacity
-hDV.colors.axsBgrnd=[.4,.4,.4]; % [.8,.8,.8] is the default RGB triplet for axis background
-hDV.plotdata.mohrCircleDotSize=4; % 10 is default dot size
