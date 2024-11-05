@@ -6,6 +6,7 @@ Copyright 2024 ExxonMobil Technology and Engineering Company
 
 module FSP3D
 
+
 using CSV
 using Mmap
 using Distributions
@@ -27,6 +28,14 @@ using Interpolations
 
 #import FSP3Dplots
 
+
+# Sv: vertical stress
+# SHmax: maximum horizontal stress
+# Shmin: minimum horizontal stress
+# Pp: pore pressure
+# μ: friction coefficient
+# SHmaxDir: direction of maximum horizontal stress
+# coord: coordinates of the fault
 struct TectonicStressStruct
     Sv::Union{Array{Float64}, Int64, Float64}
     SHmax::Union{Array{Float64}, Int64, Float64}
@@ -37,6 +46,17 @@ struct TectonicStressStruct
     coord::Array{Float64}
 end ##TectonicStressStruct
 
+
+# Structure that holds information about a surface with attributes
+# coord: coordinates of the surface
+# grid: grid information
+# attribute: attribute values
+# attributeName: name of the attribute
+# header: header information
+# depthUnitSystem: unit system for depth
+# faultDip: fault dip angles
+# faultDipAzimuth: fault dip azimuths 
+# faultStrike: fault strike angles
 struct SurfaceWithAttributesPetrel 
     coord::Array{Float64}
     grid::Array{Int64}
@@ -49,6 +69,15 @@ struct SurfaceWithAttributesPetrel
     faultStrike::Array{Float64}
 end
 
+
+# Holds information about a horizon surface from Petrel exported as EarthVision format
+# coord: coordinates of the horizon surface
+# grid: grid information
+# attribute: attribute values
+# attributeName: name of the attribute
+# header: header information
+# depthUnitSystem: unit system for depth
+# fileName: name of the file
 struct SurfaceFromPetrelEarthVisionFormat
     #=
       Holds horizons surface from Petrel exported as EarthVision format
@@ -69,14 +98,14 @@ function UnitTest()
       Unit testing the implementation
     =#
 
-    S = diagm([60, 45, 40])
-    S_G = Compute_Sg(S, [0,0,90]);
-    @test S_G ≈ [60.0 0 0; 0 40 0; 0 0 45]
+    S = diagm([60, 45, 40]) # diagonal stress matrix
+    S_G = Compute_Sg(S, [0,0,90]); # call compute_sg with the stress matrix and an orientation vector of [0,0,90]
+    @test S_G ≈ [60.0 0 0; 0 40 0; 0 0 45] # verify results
 
-    n, ns, nd = ComputeUnitVectors(0, 65);
-    @test n ≈ [-0.          0.90630779 -0.42261826]
-    @test ns ≈ [1. 0. 0.]
-    @test nd ≈ [-0.          0.42261826  0.90630779]
+    n, ns, nd = ComputeUnitVectors(0, 65); 
+    @test n ≈ [-0.          0.90630779 -0.42261826] # compute normal unit vector
+    @test ns ≈ [1. 0. 0.] # compute strike-slip unit vector
+    @test nd ≈ [-0.          0.42261826  0.90630779] # compute dip-slip unit vector
 
 
     S = diagm([80, 70, 65])
@@ -85,10 +114,11 @@ function UnitTest()
     angles=[-70,0,0]
     sigma_n, tau_s, tau_d, tau_mag = ComputeStressComponentsOnFault(S, strike, dip, angles)
 
-    @test sigma_n ≈ 68.67461577598239
-    @test tau_s ≈ -0.8550503583141679
-    @test tau_d ≈ -6.364621222295629
-    @test tau_mag ≈ 6.421799936042004
+    # verify results
+    @test sigma_n ≈ 68.67461577598239 # normal stress
+    @test tau_s ≈ -0.8550503583141679 # shear stress
+    @test tau_d ≈ -6.364621222295629 # dip shear stress
+    @test tau_mag ≈ 6.421799936042004 # shear stress magnitude
 
 
     ## Testing the principal stresses here
@@ -104,14 +134,17 @@ function UnitTest()
 end ## UnitTest()
 
 
+
 function Compute_Sg(S::Union{Array{Float64}, Array{Int64}}, angles::Union{Array{Float64}, Array{Int64}})
     #=
     Compute the stress tensor in geographic coordinates. The input are:
     S: Stress tensor in principal stress (S1, S2, S3)
     angles: angles that need to be set to rotate the principal stresses to the geographic coordinates
     =#
-    alpha, beta, gamma = deg2rad.(angles)
+    alpha, beta, gamma = deg2rad.(angles) # convert input angles from degrees to radians
     
+    # create a rotation matrix
+    # it's used to rotate the principal stress tensor to the geographic coordinate system
     Rg = [ cos(alpha) * cos(beta)  sin(alpha) * cos(beta)  -sin(beta);
            cos(alpha) * sin(beta) * sin(gamma) - sin(alpha) * cos(gamma) sin(alpha) * sin(beta) * sin(gamma) + cos(alpha) * cos(gamma)  cos(beta) * sin(gamma);
            cos(alpha) * sin(beta) * cos(gamma) + sin(alpha) * sin(gamma) sin(alpha) * sin(beta) * cos(gamma) - cos(alpha) * sin(gamma) cos(beta) * cos(gamma)]
@@ -252,6 +285,7 @@ function AssemblePrincipalStressesAndAngles(verticalStress::Union{Float64, Int64
 
 end #AssemblePrincipalStressesAndAngles
 
+# computes fault stress components 
 function AuxFunParallelFaultTractions(i::Union{Integer, Int64}, verticalStress::AbstractArray, maximumHorStress::AbstractArray, minimumHorStress::AbstractArray, maximumHorizontalStressDirection::Real, Pp::AbstractArray, sigmaN::AbstractArray, tauS::AbstractArray, tauD::AbstractArray, tauMag::AbstractArray, faultDip::AbstractArray, faultStrike::AbstractArray)
     
     stressParam = AssemblePrincipalStressesAndAngles(verticalStress[i], maximumHorStress[i], minimumHorStress[i], maximumHorizontalStressDirection, abs(Pp[i]))
@@ -259,11 +293,13 @@ function AuxFunParallelFaultTractions(i::Union{Integer, Int64}, verticalStress::
     S=diagm([stressParam[:S1], stressParam[:S2] , stressParam[:S3]])
     angles = [stressParam[:α], stressParam[:β], stressParam[:γ]]
         
+    # computes normal stress (sigmaN), shear stress (tauS), dip shear stress (tauD) and shear stress magnitude (tauMag)
     sigmaN[i], tauS[i], tauD[i], tauMag[i] = ComputeStressComponentsOnFault(S, faultStrike[i], faultDip[i], angles)
     
 end #AuxFunParallelFaultTractions
 
 
+# computes fault tractions based on stress parameters and fault orientations
 function ComputeFaultTractions(verticalStress::Array{Real}, maximumHorStress::Array{Real}, minimumHorStress::Array{Real}, Pp::Array{Real}, maximumHorizontalStressDirection::Real, faultDip::Array{Real}, faultStrike::Array{Real})
 
     if length(verticalStress) != length(faultDip)

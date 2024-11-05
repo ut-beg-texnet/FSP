@@ -5,6 +5,10 @@ Copyright 2024 ExxonMobil Technology and Engineering Company
 """
 module FSP3Dplots
 
+include("FSP3D.jl")
+
+end # module FSP3Dplots
+
 using StatsBase
 using KernelDensity
 using UncertaintyQuantification
@@ -122,6 +126,10 @@ function PlotMultipleColoredLinesWithColorBar(x::Array{Float64},y::Array{Float64
 
 end #PlotMultipleColoredLinesWithColorBar
 
+
+# Inputs: dispModel (displacement model), xGrid (x coordinates), yGrid (y coordinates)
+# Optional Inputs: vMin (min value for color scale), vMax (max value for color scale), cmapJS (colormap)
+# Output: ax (axis object)
 function PlotSurfaceOnGrid(dispModel::Matrix{Float64}, xGrid::Vector{Float64}, yGrid::Vector{Float64}; vMin=[], vMax=[], cmapJS=[], kwargs=Dict([]))
     #=
        Plot InSAR and model surface displacement
