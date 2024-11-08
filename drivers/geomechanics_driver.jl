@@ -1,41 +1,49 @@
 module GeomechanicsDriver
 
 using JSON
-using ArgParse
-
 
 include("src/core/DeterministicGeomechanicsCalculations.jl") 
 using .DeterministicGeomechanicsCalculations
 
 
 function parse_cli_args()
-    s = ArgParseSettings()
+    # Initialize default values
+    aphi_value = nothing
+    min_hor_stress = nothing
 
-    # A-Phi optional argument
-    @add_arg_table s begin
-        "--aphi"
-        help = "(Optional) A-Phi stress model calculates horizontal stresses based on stress criticality assumption."
-        arg_type = Float64
-        required = false 
-    end
-
-    # parse the arguments
-    args = parse_args(s)
-
-
-    # If the user provides --aphi, make sure it's a Float64
-    if haskey(args, :aphi)
-        try
-            aphi_value = convert(Float64, args["aphi"]) # Ensures the input is Float64
-            println("A-Phi value provided: ", aphi_value)
-        catch e
-            error("Error: A-Phi value must be a valid Float64")
+    # Iterate over ARGS to parse command-line arguments
+    i = 1
+    while i <= length(ARGS)
+        arg = ARGS[i]
+        if arg == "--aphi"
+            if i + 1 <= length(ARGS)
+                i += 1
+                aphi_value = try
+                    parse(Float64, ARGS[i])
+                catch e
+                    error("Error: A-Phi value must be a valid Float64")
+                end
+            else
+                error("Error: --aphi option requires a value")
+            end
+        elseif arg == "--min_hor_stress"
+            if i + 1 <= length(ARGS)
+                i += 1
+                min_hor_stress = try
+                    parse(Float64, ARGS[i])
+                catch e
+                    error("Error: min_hor_stress value must be a valid Float64")
+                end
+            else
+                error("Error: --min_hor_stress option requires a value")
+            end
+        else
+            error("Unknown argument: $arg")
         end
-    else
-        println("Skipping A-Phi value calculation...")
+        i += 1
     end
-    
-    return args
+
+    return (aphi_value, min_hor_stress)
 end
 
 
@@ -75,7 +83,6 @@ function geomechanics_driver()
     #println("Fault dips: ", dips)
     #println("Fault friction coefficients (muf): ", muf)
 
-    # similarly, load stress data 
     stress_data = load_json_data("step1_stress_data_output.json")
     if stress_data === nothing
         println("Failed to load stress data. Exiting.")
@@ -84,6 +91,13 @@ function geomechanics_driver()
 
     #println("Stress data structure: ", typeof(stress_data))
     #println("Stress data content: ", stress_data)
+    println("stress data inputs:")
+    println("Vertical stress gradient: ", stress_data["vertical_stress_gradient_psi_ft"])
+    println("Minimum horizontal stress gradient: ", stress_data["min_horizontal_stress_gradient_psi_ft"])
+    println("Maximum horizontal stress gradient: ", stress_data["max_horizontal_stress_gradient_psi_ft"])
+    println("Maximum horizontal stress direction: ", stress_data["max_horizontal_stress_direction"])
+    println("Reference depth: ", stress_data["reference_depth_ft"])
+    println("Initial reservoir pressure gradient: ", stress_data["initial_reservoir_pressure_gradient_psi_ft"])
 
     
     # extract parameters from stress data
@@ -98,8 +112,13 @@ function geomechanics_driver()
         stress_data["min_horizontal_stress_gradient_psi_ft"],
         stress_data["max_horizontal_stress_gradient_psi_ft"]
     ] .* dpth
-    #println("Maximum horizontal stress direction (SHdir): ", SHdir)
-    #println("Calculation depth (dpth): ", dpth)
+    println("stress data after multiplying by depth:")
+    println("Maximum horizontal stress direction (SHdir): ", SHdir)
+    println("Reference depth (dpth): ", dpth)
+    println("Vertical stress gradient (sig[1]): ", sig[1])
+    println("Minimum horizontal stress gradient (sig[2]): ", sig[2])
+    println("Maximum horizontal stress gradient (sig[3]): ", sig[3])
+    
 
     #println("Scaled stress values (sig): ", sig)
 
@@ -112,34 +131,30 @@ function geomechanics_driver()
     biot = 1.0 # Biot coefficient (hardcoded for testing and will be parsed through the web portal)
 
 
-    # flag to check if user provided A-Phi value
-    # hardcoded for now
-    aphi_check = false
-    #aphi_value = 2.0 # for when we test it for true
-    aphi_value = nothing
-    
-    # check for --aphi cli argument
-    aphi = parse_cli_args()
-    if haskey(aphi, :aphi)
-        aphi_value = aphi[:aphi]
-        aphi_check = true
-    end
+    # Parse CLI arguments
+    aphi_value, min_hor_stress = parse_cli_args()
 
-
-    if aphi_check == false
-        println("No A-Phi value provided. Calculating SH and Sh from mu...")
-        # (reminder) thf = fault strikes
-        geomechanics_calculations_inputs = (sig, 0.00, pp0, thf, dips, SHdir, zeros(length(thf)), muf, biot, nu)
-    else
-        # in this case, the horizontal stress components in sig are being ignored
-        # since we will recalculate them using the A-Phi model
+    if aphi_value !== nothing
         println("A-Phi value provided. Calculating SH and Sh from A-Phi...")
-        geomechanics_calculations_inputs = (sig, 0.00, pp0, thf, dips, SHdir, zeros(length(thf)), muf, biot, nu, aphi_value)
+        if min_hor_stress !== nothing
+            println("Minimum horizontal stress provided: $min_hor_stress")
+            geomechanics_calculations_inputs = (
+                sig, 0.00, pp0, thf, dips, SHdir, zeros(length(thf)), muf, biot, nu, aphi_value, min_hor_stress
+            )
+        else
+            geomechanics_calculations_inputs = (
+                sig, 0.00, pp0, thf, dips, SHdir, zeros(length(thf)), muf, biot, nu, aphi_value
+            )
+        end
+    else
+        println("No A-Phi value provided. Calculating SH and Sh from mu...")
+        geomechanics_calculations_inputs = (
+            sig, 0.00, pp0, thf, dips, SHdir, zeros(length(thf)), muf, biot, nu
+        )
     end
 
-    # create grid for plotting
 
-    println("Calling mohrs_3D function with input tuple ...")
+    #println("running  mohrs_3D function...")
     det_geomechanic_results = mohrs_3D(geomechanics_calculations_inputs)
 
 
@@ -148,8 +163,8 @@ function geomechanics_driver()
     println("ppfail results: ", ppfail)
 
 
-    println("Storing results...")
-    det_geomech_results_to_json(det_geomechanic_results, "deterministic_geomechanics_results.json")
+    #println("Storing results...")
+    det_geomech_results_to_json(det_geomechanic_results, "src/output/deterministic_geomechanics_results.json")
     println("Geomechanics driver's results stored successfully!")
 end
 
