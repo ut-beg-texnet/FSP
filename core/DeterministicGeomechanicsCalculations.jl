@@ -15,7 +15,7 @@ export DeterministicGeomechanicsResults, mohrs_3D, det_geomech_results_to_json
 
 struct DeterministicGeomechanicsResults
     failout::Vector{Float64} # deterministic pore pressure to failure (only output used in monte carlo)
-    outs::Dict # Results of Mohr Circle calulations (includes the ppfail)
+    outs::Dict 
     C1::Tuple{Float64, Float64}  
     C2::Tuple{Float64, Float64}  
     C3::Tuple{Float64, Float64}  
@@ -27,10 +27,10 @@ struct DeterministicGeomechanicsResults
     center_C3::Float64
     sig_fault::Vector{Float64}
     tau_fault::Vector{Float64}
-    frictional_slip_line::Tuple{Tuple{Float64, Float64}, Tuple{Float64, Float64}} # contains start and end points of the frictional slip line
+    frictional_slip_line::Tuple{Tuple{Float64, Float64}, Tuple{Float64, Float64}} # start and end points of the frictional slip line
 end
 
-# Det Geomechanics main calculation function
+# main calculation function
 function mohrs_3D(geomechanics_inputs::Tuple)
     (Sig0, _, pp0, strikes, dips, SHdir, dp, mu, biot, nu, rest...) = geomechanics_inputs
     # Sig0: Initial stress state (vertical, min horizontal, max horizontal)
@@ -43,6 +43,7 @@ function mohrs_3D(geomechanics_inputs::Tuple)
     # biot: Biot coefficient
     # nu: Poisson's ratio
     # aphi_value: A-Phi value (optional for APhi model use)
+    
 
     aphi_value = nothing
     min_hor_stress = nothing
@@ -54,13 +55,22 @@ function mohrs_3D(geomechanics_inputs::Tuple)
             min_hor_stress = rest[2]
         end
     end
+
+    # check that aphi_value and min_hor_stress are Float64, not tuples
+    if aphi_value !== nothing && isa(aphi_value, Tuple)
+        aphi_value = aphi_value[1]
+    end
+
+    if min_hor_stress !== nothing && isa(min_hor_stress, Tuple)
+        min_hor_stress = min_hor_stress[1]
+    end
     
     # keep for debuggin: Print initial inputs
-    println("Initial inputs - Sig0: ", Sig0, ", pp0: ", pp0, ", strikes: ", strikes, ", dips: ", dips)
+    println("Initial inputs: Sig0: ", Sig0, ", pp0: ", pp0, ", strikes: ", strikes, ", dips: ", dips, ", aphi_value: ", aphi_value, ", min_hor_stress: ", min_hor_stress)
     
     # If user enters A-Phi value, calculate SH and Sh from A-Phi
     # this is an optional cli argument (--aphi) that expects a Float64
-    # in this case, run getHorFromAPhi function to get SH and Sh
+    # In this case, run getHorFromAPhi function to get SH and Sh
     if aphi_value !== nothing
         aphi_use = true
     else
@@ -70,14 +80,15 @@ function mohrs_3D(geomechanics_inputs::Tuple)
     if aphi_value !== nothing
         println("Using A-Phi value: $aphi_value")
         if min_hor_stress !== nothing
-            println("Using provided minimum horizontal stress: $min_hor_stress")
+            println("Using provided --min_hor_stress: $min_hor_stress")
             # Use min_hor_stress in calculations
-            SH, Sh = getHorFromAPhi(aphi_value, mu[1], min_hor_stress, Sig0[1], pp0, true, min_hor_stress)
+            SH, Sh = getHorFromAPhi(aphi_value, mu[1], Sig0[1], pp0, min_hor_stress)
+            Sig0[2], Sig0[3] = Sh, SH
         else
-            # Calculate SH and Sh without min_hor_stress
-            SH, Sh = getHorFromAPhi(aphi_value, mu[1], Sig0[2], Sig0[1], pp0, true)
+            println("no --min_hor_stress provided. Using only A-Phi value for calculations.")
+            SH, Sh = getHorFromAPhi(aphi_value, mu[1], Sig0[1], pp0, min_hor_stress)
+            Sig0[2], Sig0[3] = Sh, SH
         end
-        Sig0[2], Sig0[3] = Sh, SH
     end
 
     # Handle NaNs in dp by setting them to zero
@@ -88,23 +99,34 @@ function mohrs_3D(geomechanics_inputs::Tuple)
     # Debug print
     println("Failure Output - failout: ", failout, ", tau_fault: ", tau_fault, ", sig_fault: ", sig_fault)
 
-    # If no A-Phi is provided, compute additional outputs
-    
+
+    outs = Dict(
+        "ppfail" => failout,
+        "cff" => tau_fault .- mu .* sig_fault,
+        "scu" => tau_fault ./ (mu .* sig_fault),
+        "aphi_use" => aphi_use
+    )
+
+
+
+    # If no A-Phi is provided --> compute additional outputs
+    #=
     if !aphi_use
         outs = Dict("ppfail" => failout, "cff" => tau_fault .- mu .* sig_fault, "scu" => tau_fault ./ (mu .* sig_fault))
     else
         outs = Dict("ppfail" => failout, "cff" => [], "scu" => [])
     end
+    =#
 
     # Calculate Mohr Circle parameters for plotting
     N = length(strikes)
     Sig0sorted = sort(Sig0, rev=true)
     ixSv = findfirst(x -> x == Sig0[1], Sig0sorted) # index of vertical stress, use only one index if there's multiple
     
-    # Pass all necessary parameters, including biot and nu
+    
     sig_fault_matrices, C1, C2, C3 , R1, R2, R3 , center_C1, center_C2, center_C3, frictional_slip_line = calculate_mohr_circle_parameters(Sig0sorted, pp0, dp, ixSv, N, biot, nu, mu[1])
 
-    # Return structured results
+    
     return DeterministicGeomechanicsResults(failout, outs, C1, C2, C3, R1, R2, R3, center_C1, center_C2, center_C3, sig_fault, tau_fault, frictional_slip_line)
 end
 
@@ -190,7 +212,7 @@ function calculate_mohr_circle_parameters(Sig0sorted, p0, dp, ixSv, N, biot, nu,
     center_C3 = (Sig0sorted[1] + Sig0sorted[2]) / 2  # small
     
     #= ORIGINAL CODE-------------------------------------------------------------------------
-    # calculate points on each Mohr circle (do we really need that?) --> play around with 'a' range (line 85)
+    # calculate points on each Mohr circle (do we really need that?) --> play around with the range we set from 0 to pi (line 146)
     #(replaced loop with broadcasting)
     C1 = R1 .* c' .+ (Sig[:,1] .+ Sig[:,3]) / 2 .- (p0 .+ dp)
 
@@ -230,12 +252,23 @@ end
 function calc_ppfail(Sig0::Vector{Float64}, az::Float64, p0::Float64, biot::Float64, nu::Float64, mu::Float64, dp::Vector{Float64}, strikes::Vector{Float64}, dips::Vector{Float64})
     
     println("CALC_PPFAIL_INPUTS: Sig0: ", Sig0, ", az: ", az, ", p0: ", p0, ", biot: ", biot, ", nu: ", nu, ", mu: ", mu, ", dp: ", dp, ", strikes: ", strikes, ", dips: ", dips)
-    
+    #=
     # cos and sin of azimuth
     cos_az, sin_az = cosd(az), sind(az)
     # cos and sin of strike and dip angles 
     cs, ss, cd, sd = cosd.(strikes), sind.(strikes), cosd.(dips), sind.(dips)
+    =#
 
+    
+    # cos and sin of azimuth angle
+    cos_az = cos(az * π / 180)
+    sin_az = sin(az * π / 180)
+
+    cs = cos.(strikes .* π ./ 180)  # cosine of strike angles
+    ss = sin.(strikes .* π ./ 180)  # sine of strike angles
+    cd = cos.(dips .* π ./ 180)  # cosine of dip angles
+    sd = sin.(dips .* π ./ 180)  # sine of dip angles
+    
     # total stresses from input data
     Svert, shmin, sHmax = Sig0[1], Sig0[2], Sig0[3]
 
@@ -288,7 +321,7 @@ function calc_ppfail(Sig0::Vector{Float64}, az::Float64, p0::Float64, biot::Floa
     # Coefficients of quadratic equation A*dp^2 + B*dp + C = 0
     # such that the mobilized friction coefficient on fault = mu
     # here we find the dp that will bring the fault stresses to failure point
-    # PRE COMPUTE REPEATED TERMS (TO DO)
+    # PRE COMPUTE REPEATED TERMS (CAN TRY THIS TO IMPROVE PERFORMANCE)
     C = -4 .* (1 .+ mu^2) .* n1.^3 .* n2 .* s12 .* (s11 .- s33) .- 
         (1 .+ mu^2) .* n1.^4 .* (s11 .- s33).^2 .-
         (1 .+ mu^2) .* n2.^4 .* (s22 .- s33).^2 .-
@@ -381,36 +414,37 @@ function calc_ppfail(Sig0::Vector{Float64}, az::Float64, p0::Float64, biot::Floa
     return ppfail, tau_fault, sig_fault
 end
 
-# Function to export calculation results to JSON
+
 
 function det_geomech_results_to_json(results::DeterministicGeomechanicsResults, output_file::String)
-    # Combine all outputs into one structured dictionary
+    # Combine all outputs into one dictionary
     results_data = OrderedDict(
         "geomechanics_results" => OrderedDict(
-            "ppfail" => results.outs["ppfail"],
-            "cff" => results.outs["cff"],
-            "scu" => results.outs["scu"],
+            "aphi_use" => results.outs["aphi_use"],
+            "ppfail" => round.(results.outs["ppfail"], digits=2),
+            "cff" => round.(results.outs["cff"], digits=2),
+            "scu" => round.(results.outs["scu"], digits=2),
             "tau_fault" => results.tau_fault,
             "sig_fault" => results.sig_fault
         ),
         "mohr_circle_data" => OrderedDict(
             "frictional_slip_line" => Dict(
-                "start" => results.frictional_slip_line[1],
-                "end" => results.frictional_slip_line[2]
+                "start" => (round(results.frictional_slip_line[1][1]), round(results.frictional_slip_line[1][2])),
+                "end" => (round(results.frictional_slip_line[2][1]), round(results.frictional_slip_line[2][2]))
             ),
             "R1" => results.R1,
             "R2" => results.R2,
             "R3" => results.R3,
-            "center_C1" => results.center_C1,
-            "center_C2" => results.center_C2,
-            "center_C3" => results.center_C3,
+            "center_C1" => round(results.center_C1),
+            "center_C2" => round(results.center_C2),
+            "center_C3" => round(results.center_C3),
             "C1" => Dict("min" => results.C1[1], "max" => results.C1[2]),
             "C2" => Dict("min" => results.C2[1], "max" => results.C2[2]),
             "C3" => Dict("min" => results.C3[1], "max" => results.C3[2])
         )
     )
     
-    # Convert dictionary to JSON format and write to file
+    # Convert to JSON
     json_data = JSON.json(results_data)
     open(output_file, "w") do io
         write(io, json_data)
