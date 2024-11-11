@@ -7,11 +7,10 @@ using .DeterministicGeomechanicsCalculations
 
 
 function parse_cli_args()
-    # Initialize default values
+    
     aphi_value = nothing
     min_hor_stress = nothing
 
-    # Iterate over ARGS to parse command-line arguments
     i = 1
     while i <= length(ARGS)
         arg = ARGS[i]
@@ -107,11 +106,11 @@ function geomechanics_driver()
     dpth = stress_data["reference_depth_ft"]
 
     # calculate stress at reference depth
-    sig = [
+    sig = round.([
         stress_data["vertical_stress_gradient_psi_ft"],
         stress_data["min_horizontal_stress_gradient_psi_ft"],
         stress_data["max_horizontal_stress_gradient_psi_ft"]
-    ] .* dpth
+    ] .* dpth, digits=2)
     println("stress data after multiplying by depth:")
     println("Maximum horizontal stress direction (SHdir): ", SHdir)
     println("Reference depth (dpth): ", dpth)
