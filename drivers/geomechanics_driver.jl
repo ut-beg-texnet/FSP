@@ -58,114 +58,106 @@ function load_json_data(file_path::String)
 end
 
 
+# serialize user input data (to be used in next steps)
+function serialize_data(fault_data, stress_data, file_path::String)
+    user_data = Dict("fault_data" => fault_data, "stress_data" => stress_data)
+    open(file_path, "w") do io
+        JSON.print(io, user_data)
+    end
+    println("Step 2: User input data saved to ", file_path)
+end
+
+
+
+
 # main driver function
 function geomechanics_driver()
-    # load fault data from step 1 output CSV
+    # Load fault data from step 1 output CSV
     fault_data = load_json_data("step1_fault_data_output.json")
     if fault_data === nothing
         println("Failed to load fault data. Exiting.")
         return
     end
 
-    #println("Fault data structure: ", typeof(fault_data)) # for debugging
-    #println("Fault data content: ", fault_data)
-
-    #println("Extracting fault parameters...")
-
-    # get fault strikes 
+    # Extract fault parameters
     thf = [fault["strike"] for fault in fault_data]
-    # get fault dips
     dips = [fault["dip"] for fault in fault_data]
-    # get fault friction coefficients (the same one is used for all faults in the calculations)
     muf = [fault["friction"] for fault in fault_data]
-    #println("Fault strikes (thf): ", thf)
-    #println("Fault dips: ", dips)
-    #println("Fault friction coefficients (muf): ", muf)
 
+    # Load stress data from JSON file
     stress_data = load_json_data("step1_stress_data_output.json")
     if stress_data === nothing
         println("Failed to load stress data. Exiting.")
         return
     end
 
-    #println("Stress data structure: ", typeof(stress_data))
-    #println("Stress data content: ", stress_data)
-    println("stress data inputs:")
-    println("Vertical stress gradient: ", stress_data["vertical_stress_gradient_psi_ft"])
-    println("Minimum horizontal stress gradient: ", stress_data["min_horizontal_stress_gradient_psi_ft"])
-    println("Maximum horizontal stress gradient: ", stress_data["max_horizontal_stress_gradient_psi_ft"])
-    println("Maximum horizontal stress direction: ", stress_data["max_horizontal_stress_direction"])
-    println("Reference depth: ", stress_data["reference_depth_ft"])
-    println("Initial reservoir pressure gradient: ", stress_data["initial_reservoir_pressure_gradient_psi_ft"])
-
-    
-    # extract parameters from stress data
-    # get maximum horizontal stress direction
+    # Extract parameters from stress data
     SHdir = stress_data["max_horizontal_stress_direction"]
-    # get reference depth
     dpth = stress_data["reference_depth_ft"]
 
-    # calculate stress at reference depth
+    # Calculate stress at reference depth
     sig = round.([
         stress_data["vertical_stress_gradient_psi_ft"],
         stress_data["min_horizontal_stress_gradient_psi_ft"],
         stress_data["max_horizontal_stress_gradient_psi_ft"]
     ] .* dpth, digits=2)
-    println("stress data after multiplying by depth:")
-    println("Maximum horizontal stress direction (SHdir): ", SHdir)
-    println("Reference depth (dpth): ", dpth)
-    println("Vertical stress gradient (sig[1]): ", sig[1])
-    println("Minimum horizontal stress gradient (sig[2]): ", sig[2])
-    println("Maximum horizontal stress gradient (sig[3]): ", sig[3])
-    
 
-    #println("Scaled stress values (sig): ", sig)
+    # Calculate native pore pressure, ensuring it's wrapped as an array
+    pp0 = [stress_data["initial_reservoir_pressure_gradient_psi_ft"] * dpth]
 
-    # Native pore pressure --> we get it by scaling the pore pressure gradient by depth
-    pp0 = stress_data["initial_reservoir_pressure_gradient_psi_ft"] * dpth
-    #println("Native pore pressure (pp0): ", pp0)
+    # Hardcoded Poisson's ratio and Biot coefficient
+    nu = 0.5
+    biot = 1.0
 
-    
-    nu = 0.5  #Poisson's ratio (will stay hardcoded for now)
-    biot = 1.0 # Biot coefficient (hardcoded for testing and will be parsed through the web portal)
-
-
-    # Parse CLI arguments
+    # Parse CLI arguments for `aphi` and `min_hor_stress`
     aphi_value, min_hor_stress = parse_cli_args()
 
+    # Prepare dp as an array of zeros for fault count, required for calculations
+    dp = zeros(length(thf))
+
+    # Determine which inputs to use based on CLI arguments and stress data availability
     if aphi_value !== nothing
         println("A-Phi value provided. Calculating SH and Sh from A-Phi...")
+        
+        # Case 3: Both --aphi and --min_hor_stress are provided
         if min_hor_stress !== nothing
-            println("Minimum horizontal stress provided: $min_hor_stress")
+            println("Minimum horizontal stress provided via CLI: $min_hor_stress")
+            min_hor_stress = round(min_hor_stress * dpth, digits=2)
             geomechanics_calculations_inputs = (
-                sig, 0.00, pp0, thf, dips, SHdir, zeros(length(thf)), muf, biot, nu, aphi_value, min_hor_stress
+                sig, 0.00, pp0, thf, dips, SHdir, dp, muf, biot, nu, aphi_value, min_hor_stress
             )
+        
+        # Case 2: --aphi provided without --min_hor_stress (ignore min horizontal stress)
         else
+            println("No minimum horizontal stress provided with A-Phi; calculating SH and Sh without min horizontal stress.")
             geomechanics_calculations_inputs = (
-                sig, 0.00, pp0, thf, dips, SHdir, zeros(length(thf)), muf, biot, nu, aphi_value
+                sig, 0.00, pp0, thf, dips, SHdir, dp, muf, biot, nu, aphi_value
             )
         end
     else
-        println("No A-Phi value provided. Calculating SH and Sh from mu...")
+        # Case 1: No CLI arguments; use stress data's min horizontal stress
+        println("No A-Phi value provided. Calculating SH and Sh from stress data.")
         geomechanics_calculations_inputs = (
-            sig, 0.00, pp0, thf, dips, SHdir, zeros(length(thf)), muf, biot, nu
+            sig, 0.00, pp0, thf, dips, SHdir, dp, muf, biot, nu
         )
     end
 
-
-    #println("running  mohrs_3D function...")
+    # Run deterministic geomechanics calculations
     det_geomechanic_results = mohrs_3D(geomechanics_calculations_inputs)
 
-
+    # Process and store results
     ppfail = det_geomechanic_results.outs["ppfail"]
     ppfail[ppfail .< 0] .= 0.0
     println("ppfail results: ", ppfail)
 
-
-    #println("Storing results...")
+    # Save results to JSON
     det_geomech_results_to_json(det_geomechanic_results, "src/output/deterministic_geomechanics_results.json")
     println("Geomechanics driver's results stored successfully!")
+
+    # Serialize data for step 3
+    serialize_data(fault_data, stress_data, "src/output/step2_user_input_data.json")
 end
+
 
 geomechanics_driver()
 
