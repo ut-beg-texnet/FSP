@@ -324,7 +324,7 @@ function probabilistic_geomechanics_driver(step2_data_file::String, uncertaintie
         nu = 0.5    # Poisson's ratio (hardcoded)
         #mu = Float64()
         strikes = inputs[5]
-        #dp = zeros(length(strikes))  # Adjust as necessary
+        #dp = zeros(length(strikes))  
         
         dips = inputs[6]
         #SHdir = Float64()
@@ -390,7 +390,7 @@ function probabilistic_geomechanics_driver(step2_data_file::String, uncertaintie
             end
     
             mu = inputs[6]
-            dp = zeros(length(strikes))  # Adjust dp as needed
+            dp = zeros(length(strikes))  
     
             # aphi_param is present in inputs[7], but not used in calc_ppfail
             aphi_param = inputs[7]
