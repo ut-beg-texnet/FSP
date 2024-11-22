@@ -18,16 +18,14 @@ using .DeterministicGeomechanicsCalculations: mohrs_3D
 - inj: Vector of input variations used in each run.
 """
 function monte_carlo(f::Function, in0::Vector, inSig::Vector, nruns::Int)
-    mc_out = Vector{Any}(undef, nruns)  # Stores outputs for each run
-    # Stores the randomized inputs for each run
-    inputs = Vector{Vector}(undef, nruns)  
+    mc_out = Vector{Any}(undef, nruns)  # mc outputs for each run
+    inputs = Vector{Vector}(undef, nruns)  # the randomized inputs used for each run
 
     @threads for jj in 1:nruns
-        # Generate perturbed inputs for this run
+        # generate the randomiaze inputs for this run
+        # we multiply inSig[k] by a random number between -1 and 1 to get a random perturbation
         perturbed_inputs = [in0[k] .+ inSig[k] .* (2 * rand() - 1) for k in 1:length(in0)]
         inputs[jj] = perturbed_inputs
-
-        # Runs the function with those inputs
         mc_out[jj] = f(perturbed_inputs)
     end
 
