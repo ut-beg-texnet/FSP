@@ -96,7 +96,7 @@ function geomechanics_driver()
     min_hor_stress = get(stress_data, "min_horiz_gradient", nothing)
 
     # initialize empty stress vector with three elements
-    sig = [0.0, 0.0, 0.0]
+    sig = [get(stress_data, "vertical_gradient", 0.0), get(stress_data, "min_horiz_gradient", 0.0), get(stress_data, "max_horiz_gradient", 0.0)]
 
     # Determine which inputs to use based on CLI arguments and stress data availability
     if stress_model !== "complete"
@@ -106,13 +106,11 @@ function geomechanics_driver()
         
         # Case 3: Both --aphi and --min_hor_stress are provided
         if get(stress_data, "min_horiz_gradient", nothing) !== nothing
-            println("Minimum horizontal stress provided: $min_horiz_gradient")
+            #println("Minimum horizontal stress provided: $min_horiz_gradient")
             #min_hor_stress = round(min_hor_stress * dpth, digits=2)
             # Calculate stress at reference depth
-            sig = round.([
-                stress_data["vertical_gradient"],
-                stress_data["min_horiz_gradient"],
-            ] .* dpth, digits=2)
+            sig[1] = round(stress_data["vertical_gradient"] * dpth, digits=2)
+            sig[2] = round(stress_data["min_horiz_gradient"] * dpth, digits=2)
 
             geomechanics_calculations_inputs = (sig, pp0, strikes, dips, SHdir, dp, muf, biot, nu, aphi_value, min_hor_stress, stress_model)
         
@@ -123,6 +121,15 @@ function geomechanics_driver()
             geomechanics_calculations_inputs = (
                 sig, pp0, strikes, dips, SHdir, dp, muf, biot, nu, aphi_value, nothing, stress_model
             )
+        end
+    else
+        # calculate all three stresses by multyplying the gradients by the depth
+        sig[1] = round(stress_data["vertical_gradient"] * dpth, digits=2)
+        sig[2] = round(stress_data["min_horiz_gradient"] * dpth, digits=2)
+        sig[3] = round(stress_data["max_horiz_gradient"] * dpth, digits=2)
+        geomechanics_calculations_inputs = (
+            sig, pp0, strikes, dips, SHdir, dp, muf, biot, nu, nothing, min_hor_stress, stress_model
+        )
     end
 
     # Run deterministic geomechanics calculations
@@ -138,7 +145,7 @@ function geomechanics_driver()
     #save_json_data(args["output-json"], det_geomechanic_results.outs)
 
     # append the results to the JSON file from the previous step
-    append_to_json(args["input-json"],det_geomechanic_results, args["output-json"])
+    append_to_json(args["input-json"], det_geomechanic_results, args["output-json"])
 
     #=
     # Save results to JSON
@@ -149,7 +156,7 @@ function geomechanics_driver()
     serialize_data(fault_data, stress_data, "src/output/step2_user_input_data.json")
     =#
 end
-end
+
 
 geomechanics_driver()
 
