@@ -25,6 +25,7 @@ function getHorFromAPhi(APhi, mu, Sv, pp0, min_hor_stress=nothing)
         println("Calculating horizontal stresses using provided minimum horizontal stress.")
         # Use min_hor_stress in calculations
         Sh = min_hor_stress
+        println("Sh = $Sh")
         # Effective stresses
         Sh_eff = Sh - pp0
         Sv_eff = Sv - pp0
