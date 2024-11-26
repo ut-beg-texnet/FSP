@@ -3,7 +3,7 @@ module GetHorFromAPhi
 export getHorFromAPhi
 
 function getHorFromAPhi(APhi, mu, Sv, pp0, min_hor_stress=nothing)
-    println("Inside getHorFromAPhi function...")
+    println("getHorFromAPhi inputs: APhi=$APhi, mu=$mu, Sv=$Sv, pp0=$pp0, min_hor_stress=$min_hor_stress")
 
     # Determine stress state (n) based on APhi
     if 0 <= APhi && APhi < 1
@@ -29,7 +29,6 @@ function getHorFromAPhi(APhi, mu, Sv, pp0, min_hor_stress=nothing)
         Sh_eff = Sh - pp0
         Sv_eff = Sv - pp0
 
-        println("Sh being used: ", Sh)
 
         if n == 0
             # Normal faulting regime (Sv > SH > Sh)
@@ -67,8 +66,8 @@ function getHorFromAPhi(APhi, mu, Sv, pp0, min_hor_stress=nothing)
             elseif n == 1
                 # Strike-slip regime
                 # Solve the linear system A * x = b
-                A = [1.0 -k ; Phi (1 - Phi)]
-                b = [pp0 - k * pp0 ; Sv]
+                A = [1.0 -k; Phi (1 - Phi)]
+                b = [pp0 - k*pp0 ; Sv]
                 x = A \ b
                 SH = x[1]
                 Sh = x[2]
@@ -86,6 +85,7 @@ function getHorFromAPhi(APhi, mu, Sv, pp0, min_hor_stress=nothing)
             # In the case where mu <= 0, set SH and Sh equal to Sv
             SH = Sv
             Sh = Sv
+            
         end
     end
 
