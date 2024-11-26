@@ -46,6 +46,7 @@ function mohrs_3D(geomechanics_inputs::Tuple)
     # rest: additional inputs for optional A-Phi model parameters
     println("aphi value: ", aphi_value)
 
+
     # DEBUGGING FOR TYPE MISMATCH WHEN CALLED THROUGH PROB GEOMECHANICS STEP
     println("mohrs_3D inputs:")
     println("  Sig0 (Initial stress state): ", Sig0, " (Type: ", typeof(Sig0), ")")
@@ -106,16 +107,19 @@ function mohrs_3D(geomechanics_inputs::Tuple)
         stress_model = "gradient"
     end
     =#
+
+
     # If A-Phi model is used, compute `SH` and `Sh` based on `aphi_value` and optional `min_hor_stress`
     println("Determining get_hor_from_APhi case...")
     if aphi_value !== nothing
-        if min_hor_stress !== nothing
+        if Sig0[2] != 0.0
             # Use min_hor_stress in calculations
-            SH, Sh = getHorFromAPhi(aphi_value, mu[1], Sig0[1], pp0[1], min_hor_stress)
+            SH, Sh = getHorFromAPhi(aphi_value, mu[1], Sig0[1], pp0[1], Sig0[2])
             Sig0[2], Sig0[3] = Sh, SH
         else
             SH, Sh = getHorFromAPhi(aphi_value, mu[1], Sig0[1], pp0[1])
             Sig0[2], Sig0[3] = Sh, SH
+            Sig0[3] = round(Sig0[3], digits=1)
         end
     end
 
@@ -133,8 +137,8 @@ function mohrs_3D(geomechanics_inputs::Tuple)
     outs = Dict(
         "stress_model" => stress_model,
         "ppfail" => failout,
-        "cff" => tau_fault .- mu .* sig_fault,
-        "scu" => tau_fault ./ (mu .* sig_fault)
+        "cff" => round.(tau_fault .- mu .* sig_fault),
+        "scu" => round.(tau_fault ./ (mu .* sig_fault), digits=2),
     )
 
     # Calculate Mohr Circle parameters for plotting
@@ -284,8 +288,9 @@ function calc_ppfail(Sig0::Vector{Float64}, az::Float64, p0::Float64, biot::Floa
 
     
     # Cosine and sine of azimuth angle (az)
-    cos_az = cos(az * π / 180)
-    sin_az = sin(az * π / 180)
+    cos_az = round(cos(az * π / 180), digits=4)
+    sin_az = round(sin(az * π / 180), digits=4)
+
 
     cs = cos.(strikes .* π ./ 180)  # cosine of strike angles
     ss = sin.(strikes .* π ./ 180)  # sine of strike angles
@@ -300,16 +305,18 @@ function calc_ppfail(Sig0::Vector{Float64}, az::Float64, p0::Float64, biot::Floa
     f = biot * nu / (1 - nu)
 
 
+
     # effective stresses at current pressure, compresive positive notation
     # dp is also an array, which makes s11, s22, s33, s12 also arrays
     # Note that factor f is used for dp because dp is pressure change due to
     # injection upto present time - horizontal stresses will have Poisson's
     # ratio effect (and Biot coeff, if other than 1; but see comments above)
     # However, p0 is initial pressure before injection, so factor f is not needed
-    s11 = shmin * cos_az^2 .+ sHmax * sin_az^2 .- p0 .- f .* dp
-    s22 = shmin * sin_az^2 .+ sHmax * cos_az^2 .- p0 .- f .* dp
-    s33 = Svert .- p0 .- dp # this is σV in the Mohr 
-    s12 = (sHmax - shmin) .* cos_az .* sin_az  
+    s11 = round.(shmin * cos_az^2 .+ sHmax * sin_az^2 .- p0 .- f .* dp, digits=2)
+    s22 = round.(shmin * sin_az^2 .+ sHmax * cos_az^2 .- p0 .- f .* dp, digits=2)
+    s33 = round.(Svert .- p0 .- dp, digits=2) 
+    s12 = round.((sHmax - shmin) .* cos_az .* sin_az, digits=2)  
+
     
     #println("Effective stresses at current pressure: s11: ", s11, ", s22: ", s22, ", s33: ", s33, ", s12: ", s12)
     
@@ -318,6 +325,8 @@ function calc_ppfail(Sig0::Vector{Float64}, az::Float64, p0::Float64, biot::Floa
     n1 = sd .* cs
     n2 = -sd .* ss
     n3 = cd # n3 is not used below, since by def n3 = sqrt(1 - n1^2 - n2^2)
+
+    #println("Unit normal vector components: n1: ", n1, ", n2: ", n2, ", n3: ", n3)
 
     # Shear and normal stresses resolved on fault
     # Note that tau_fault is absolute magnitude, but sig_fault is signed
@@ -336,10 +345,11 @@ function calc_ppfail(Sig0::Vector{Float64}, az::Float64, p0::Float64, biot::Floa
 
     # mobilized friction coefficient with present stress and pressure used below
     # mob_mu determines if pressure to slip should be positive or negative
-    mob_mu = tau_fault ./ sig_fault
+    mob_mu = round.(tau_fault ./ sig_fault, digits=4)
     mob_mu[isnan.(mob_mu)] .= 99.99 # set a high number if sig_fault is zero and mob_mu is NaN
     mob_mu[mob_mu .< 0] .= 99.99 # set a high number if sig_fault is zero and mob_mu is negative
 
+    #println("Mobilized friction coefficient: ", mob_mu)
 
     # Coefficients of quadratic equation A*dp^2 + B*dp + C = 0
     # such that the mobilized friction coefficient on fault = mu
@@ -352,7 +362,8 @@ function calc_ppfail(Sig0::Vector{Float64}, az::Float64, p0::Float64, biot::Floa
         2 .* n1 .* n2 .* s12 .* (s11 .+ (1 .- 2 .* (1 .+ mu^2) .* n2.^2) .* s22 .+ 2 .* (1 .+ mu^2) .* (-1 .+ n2.^2) .* s33) .+
         n2.^2 .* (s12.^2 .+ s22.^2 .- 2 .* (1 .+ mu^2) .* s22 .* s33 .+ (1 .+ 2 .* mu^2) .* s33.^2) .+
         n1.^2 .* (s11.^2 .+ (1 .- 4 .* (1 .+ mu^2) .* n2.^2) .* s12.^2 .- 2 .* (1 .+ mu^2) .* s11 .* (n2.^2 .* (s22 .- s33) .+ s33) .+ s33 .* (2 .* (1 .+ mu^2) .* n2.^2 .* (s22 .- s33) .+ s33 .+ 2 .* mu^2 .* s33))
-
+    
+    #=
     B = 2 .* (2 .* (-1 .+ f) .* (1 .+ mu^2) .* n1.^3 .* n2 .* s12 .+
         2 .* n1 .* n2 .* (.-(1 .+ mu^2) .* (-1 .+ n2.^2) .+ f .* (-1 .+ (1 .+ mu^2) .* n2.^2)) .* s12 .+
         (-1 .+ f) .* (1 .+ mu^2) .* n1.^4 .* (s11 .- s33) .+
@@ -362,10 +373,26 @@ function calc_ppfail(Sig0::Vector{Float64}, az::Float64, p0::Float64, biot::Floa
         n1.^2 .* (.-(1 .+ mu^2) .* (-1 .+ n2.^2) .+ f .* (-1 .+ (1 .+ mu^2) .* n2.^2)) .* s11 .+
         (-1 .+ f) .* (1 .+ mu^2) .* n2.^2 .* (s22 .- 2 .* s33) .+
         (-1 .+ f .- 2 .* mu^2 .+ f .* mu^2) .* s33)
+    =#
+    B = 2 * (
+        2 * (-1 + f) * (1 + mu^2) .* n1.^3 .* n2 .* s12 .+
+        2 .* n1 .* n2 .* (-(1 + mu^2) .* (-1 .+ n2.^2) .+ f .* (-1 .+ (1 + mu^2) .* n2.^2)) .* s12 .+
+        (-1 + f) * (1 + mu^2) .* n1.^4 .* (s11 .- s33) .+
+        (-1 + f) * (1 + mu^2) .* n2.^4 .* (s22 .- s33) .+
+        mu^2 .* s33 .+
+        n2.^2 .* ((1 - f + mu^2) .* s22 .+ (-1 + f - 2 * mu^2 + f * mu^2) .* s33) .+
+        n1.^2 .* ((-(1 + mu^2) .* (-1 .+ n2.^2) .+ f .* (-1 .+ (1 + mu^2) .* n2.^2)) .* s11 .+
+                    (-1 + f) * (1 + mu^2) .* n2.^2 .* (s22 .- 2 .* s33) .+
+                    (-1 + f - 2 * mu^2 + f * mu^2) .* s33)
+    )
 
     A = -mu^2 .* (1 .+ (-1 .+ f) .* n1.^2 .+ (-1 .+ f) .* n2.^2).^2 .- (-1 .+ f).^2 .* (n1.^4 .+ n2.^2 .* (-1 .+ n2.^2) .+ n1.^2 .* (-1 .+ 2 .* n2.^2))
+
+    A = round.(A, digits=4)
+    B = round.(B, digits=4)
+    C = round.(C, digits=4)
     
-    
+    #println("Coefficients of quadratic equation: A: ", A, ", B: ", B, ", C: ", C)
 
     Bsq_minus_4AC = B .* B .- 4 .* A .* C
 
@@ -437,6 +464,12 @@ function calc_ppfail(Sig0::Vector{Float64}, az::Float64, p0::Float64, biot::Floa
         end
     end
     ppfail = abs.(ppfail)  # ensure ppfail is positive
+
+    # round the results to 2 decimal places to reduce storage and processing time
+    ppfail = round.(ppfail)
+    tau_fault = round.(tau_fault)
+    sig_fault = round.(sig_fault)
+
     return ppfail, tau_fault, sig_fault
 end
 
@@ -486,8 +519,8 @@ function det_geomech_results_to_json(results::DeterministicGeomechanicsResults, 
     results_data = OrderedDict(
         "geomechanics_results" => OrderedDict(
             "ppfail" => round.(results.outs["ppfail"], digits=2),
-            "cff" => round.(results.outs["cff"], digits=2),
-            "scu" => round.(results.outs["scu"], digits=2),
+            "cff" => results.outs["cff"],
+            "scu" => results.outs["scu"],
             "tau_fault" => results.tau_fault,
             "sig_fault" => results.sig_fault
         ),
