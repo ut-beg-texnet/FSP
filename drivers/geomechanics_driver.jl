@@ -1,164 +1,293 @@
-module GeomechanicsDriver
+"""
+Deterministic Geomechanics Analysis Driver Script
+
+This script performs deterministic geomechanical analysis for fault stability assessment.
+It takes stress state and fault data from step1 (Model Inputs) and calculates stability metrics
+for each fault.
+
+Workflow:
+1. Read input data from step1 JSON file containing:
+   - Stress state (vertical, min horizontal, max horizontal stresses)
+   - Fault data (strike, dip, friction coefficient)
+   - Reference depth and pore pressure
+
+2. Calculate absolute stresses at reference depth:
+   a. For gradient model: Use provided stress gradients directly
+   b. For A-phi with min horizontal stress: Calculate max horizontal using modified model
+   c. For A-phi without min horizontal: Calculate both horizontal stresses using standard model
+
+3. For each fault:
+   a. Transform principal stresses to fault coordinates
+   b. Calculate normal and shear stresses on fault plane
+   c. Calculate stability metrics:
+      - Slip pressure: Pore pressure required for fault slip
+      - Slip tendency: Ratio of shear to normal stress
+      - Coulomb Failure Function (CFF)
+      - Shear Capacity Utilization (SCU)
+
+4. Output results to JSON file containing:
+   - Fault stability metrics for each fault
+   - Metadata about the analysis
+
+Usage:
+    julia step2_deterministic_geomechanics.jl --input-json path/to/input.json --output-json path/to/output.json
+
+Dependencies:
+    - JSON: For reading/writing JSON files
+    - ArgParse: For command line argument parsing
+    - LinearAlgebra: For matrix operations
+    - GeomechanicsModel: Custom module for geomechanical calculations
+"""
 
 using JSON
 using ArgParse
-using DataFrames
+using LinearAlgebra
 
-include("src/core/DeterministicGeomechanicsCalculations.jl") 
-using .DeterministicGeomechanicsCalculations
+include("core/geomechanics_model.jl")
+using .GeomechanicsModel
 
-
-
-
+"""
+Parse command line arguments
+"""
 function parse_commandline()
     s = ArgParseSettings()
 
     @add_arg_table! s begin
         "--input-json"
             help = "Path to input JSON file from model_inputs step"
-            arg_type = String
             required = true
         "--output-json"
             help = "Path to output JSON file"
-            arg_type = String
             required = true
     end
 
     return parse_args(s)
 end
 
-# Function to load JSON data
-function load_json_data(filepath::String)
-    try
-        return JSON.parsefile(filepath)
-    catch e
-        println("Error loading JSON data from ", filepath, ": ", e)
-        return nothing
+"""
+Calculate n and Phi values from APhi
+Following MATLAB implementation in getHorFromAPhi.m
+"""
+function calculate_n_phi(aphi::Float64)
+    if aphi >= 0 && aphi < 1
+        n = 0
+    elseif aphi >= 1 && aphi < 2
+        n = 1
+    elseif aphi >= 2 && aphi <= 3
+        n = 2
+    else
+        error("APhi value must be in range [0,3]. Got: $aphi")
     end
+    
+    phi = (aphi - (n + 0.5))/(-1)^n + 0.5
+    return n, phi
 end
 
-# Function to save JSON data
-function save_json_data(filepath::String, data::Dict{String,Any})
-    open(filepath, "w") do f
-        JSON.print(f, data, 4)
+"""
+Calculate horizontal stresses using Modified A-Phi model (aphi_use == 12)
+Following MATLAB implementation in getHorFromAPhi.m
+"""
+function calculate_modified_aphi_stresses(n::Int, phi::Float64, sv::Float64, sh::Float64, p0::Float64)
+    # Calculate effective stresses
+    sv_eff = sv - p0
+    sh_eff = sh - p0
+    
+    # Calculate SH based on case
+    sH = if n == 0
+        # Case 0: Calculate SH directly
+        phi * (sv_eff - sh_eff) + sh_eff + p0
+    elseif n == 1
+        # Case 1: Use provided sh and solve for SH
+        (sv_eff - sh_eff + phi*sh_eff)/phi + p0
+    elseif n == 2
+        # Case 2: Use provided sh and solve for SH
+        (sh_eff - sv_eff + phi*sv_eff)/phi + p0
+    else
+        error("Invalid n value for Modified A-Phi model: $n")
     end
+    
+    return sH, sh
 end
 
-
-
-# main driver function
-function geomechanics_driver()
-
-
-    println("\n=== Starting Deterministic Geomechanics Analysis ===")
-    args = parse_commandline()
-
-    # Read input JSON
-    println("\nReading input data from: $(args["input-json"])")
-    input_data = load_json_data(args["input-json"])
-    if input_data === nothing
-        println("Failed to load input data. Exiting.")
-        return
+"""
+Calculate horizontal stresses using standard A-Phi model with friction
+Following MATLAB implementation in getHorFromAPhi.m
+"""
+function calculate_standard_aphi_stresses(n::Int, phi::Float64, sv::Float64, p0::Float64, mu::Float64)
+    if mu <= 0
+        return sv, sv  # Both horizontal stresses equal vertical
     end
     
-    println("Processing $(length(input_data["fault_data"])) faults")
+    k = (mu + sqrt(1 + mu^2))^2
     
-    # Extract fault parameters
-    fault_data = input_data["fault_data"]
-    strikes = [fault["strike"] for fault in fault_data]
-    dips = [fault["dip"] for fault in fault_data]
-    muf = [fault["friction_coefficient"] for fault in fault_data]
-
-    # extract stress data
-    stress_data = input_data["stress_data"]
-    SHdir = stress_data["max_horiz_direction"]
-    dpth = stress_data["reference_depth"]
-
-
-    # Calculate native pore pressure, ensuring it's wrapped as an array
-    pp0 = [stress_data["pore_pressure_gradient"] * dpth]
-
-    # Hardcoded Poisson's ratio and Biot coefficient
-    nu = 0.5
-    biot = 1.0
-
-    # Parse CLI arguments for `aphi` and `min_hor_stress`
-    #aphi_value, min_hor_stress = parse_commandline()
+    if n == 0
+        # Case 0: Calculate Sh first, then SH
+        sh = (sv - p0)/k + p0
+        sH = phi * (sv - sh) + sh
+    elseif n == 1
+        # Case 1: Solve system of equations
+        A = [1.0 -k; phi (1-phi)]
+        b = [p0 - k*p0; sv]
+        x = A \ b
+        sH, sh = x[1], x[2]
+    elseif n == 2
+        # Case 2: Calculate SH first, then Sh
+        sH = k * (sv - p0) + p0
+        sh = phi * (sH - sv) + sv
+    end
     
+    
+    return sH, sh
+end
 
-    # Prepare dp as an array of zeros for fault count, required for calculations
-    dp = zeros(length(strikes))
-
-    # get stress model
-    stress_model = get(stress_data, "stress_model", nothing)
-
-    # get min_hor_stress (if provided)
-    min_hor_stress = get(stress_data, "min_horiz_gradient", nothing)
-
-    # initialize empty stress vector with three elements
-    sig = [get(stress_data, "vertical_gradient", 0.0), get(stress_data, "min_horiz_gradient", 0.0), get(stress_data, "max_horiz_gradient", 0.0)]
-
-    # Determine which inputs to use based on CLI arguments and stress data availability
-    if stress_model !== "complete"
-        println("A-Phi value provided. Calculating SH and Sh from A-Phi...")
-        # get aphi value (if provided)
-        aphi_value = get(stress_data, "aphi_value", nothing)
+"""
+Calculate absolute stresses at reference depth
+Handles three stress models:
+1. Gradients: All stresses provided directly
+2. A-phi with min horizontal stress: Calculate max horizontal using modified model
+3. A-phi without min horizontal stress: Calculate both horizontal stresses using standard model
+"""
+function calculate_absolute_stresses(stress_data::Dict, fault_data::Vector)
+    # Extract common parameters
+    reference_depth = stress_data["reference_depth"]
+    vertical_gradient = stress_data["vertical_stress"]
+    model_type = stress_data["model_type"]
+    pore_pressure_gradient = stress_data["pore_pressure"]
+    max_stress_azimuth = stress_data["max_stress_azimuth"]
+    
+    
+    # Calculate absolute stresses at reference depth
+    sV = round(vertical_gradient * reference_depth, digits=1)
+    p0 = round(pore_pressure_gradient * reference_depth, digits=1)
+    
+    
+    # Get friction coefficient from first fault (assume all faults have same friction)
+    μ = fault_data[1]["friction_coefficient"]
+    println("\nFriction coefficient from first fault: $(μ)")
+    
+    # Calculate horizontal stresses based on model type
+    if model_type == "gradients"
+        println("\nUsing gradients model (all stresses provided)")
+        # Convert gradients to absolute stresses
+        max_horizontal_gradient = stress_data["max_horizontal_stress"]
+        min_horizontal_gradient = stress_data["min_horizontal_stress"]
         
-        # Case 3: Both --aphi and --min_hor_stress are provided
-        if get(stress_data, "min_horiz_gradient", nothing) !== nothing
-            #println("Minimum horizontal stress provided: $min_horiz_gradient")
-            #min_hor_stress = round(min_hor_stress * dpth, digits=2)
-            # Calculate stress at reference depth
-            sig[1] = round(stress_data["vertical_gradient"] * dpth, digits=2)
-            sig[2] = round(stress_data["min_horiz_gradient"] * dpth, digits=2)
-
-            geomechanics_calculations_inputs = (sig, pp0, strikes, dips, SHdir, dp, muf, biot, nu, aphi_value, min_hor_stress, stress_model)
+        sH = round(max_horizontal_gradient * reference_depth, digits=1)
+        sh = round(min_horizontal_gradient * reference_depth, digits=1)
         
-        # Case 2: --aphi provided without --min_hor_stress (ignore min horizontal stress)
+    elseif model_type == "aphi_min" || model_type == "aphi_no_min"
+        println("\nUsing A-phi model: $(model_type)")
+        # Get A-phi value and calculate n and phi
+        aphi = stress_data["aphi_value"]
+        n, phi = calculate_n_phi(aphi)
+        println("A-phi parameters:")
+        println("  A-phi value = $(aphi)")
+        println("  n = $(n)")
+        println("  φ = $(phi)")
+        
+        if model_type == "aphi_min" && haskey(stress_data, "min_horizontal_stress") && !isnothing(stress_data["min_horizontal_stress"])
+            
+            # Convert min horizontal gradient to absolute stress
+            sh = stress_data["min_horizontal_stress"] * reference_depth
+            sH, _ = calculate_modified_aphi_stresses(n, phi, sV, sh, p0)
         else
-            println("No minimum horizontal stress provided with A-Phi; calculating SH and Sh without min horizontal stress.")
-            sig[1] = round(stress_data["vertical_gradient"] * dpth, digits=2)
-            geomechanics_calculations_inputs = (
-                sig, pp0, strikes, dips, SHdir, dp, muf, biot, nu, aphi_value, nothing, stress_model
-            )
+            
+            # Calculate both horizontal stresses using A-phi model
+            sH, sh = calculate_standard_aphi_stresses(n, phi, sV, p0, μ)
         end
     else
-        # calculate all three stresses by multyplying the gradients by the depth
-        sig[1] = round(stress_data["vertical_gradient"] * dpth, digits=2)
-        sig[2] = round(stress_data["min_horiz_gradient"] * dpth, digits=2)
-        sig[3] = round(stress_data["max_horiz_gradient"] * dpth, digits=2)
-        geomechanics_calculations_inputs = (
-            sig, pp0, strikes, dips, SHdir, dp, muf, biot, nu, nothing, min_hor_stress, stress_model
-        )
+        error("Invalid stress model type: $model_type")
     end
-
-    # Run deterministic geomechanics calculations
-    det_geomechanic_results = mohrs_3D(geomechanics_calculations_inputs)
-
-    # Process and store results
-    ppfail = det_geomechanic_results.outs["ppfail"]
-    ppfail[ppfail .< 0] .= 0.0 # set negative values to zero
-    println("ppfail results: ", ppfail)
-
-
     
-    #save_json_data(args["output-json"], det_geomechanic_results.outs)
-
-    # append the results to the JSON file from the previous step
-    append_to_json(args["input-json"], det_geomechanic_results, args["output-json"])
-
-    #=
-    # Save results to JSON
-    det_geomech_results_to_json(det_geomechanic_results, "src/output/deterministic_geomechanics_results.json")
-    println("Geomechanics driver's results stored successfully!")
-
-    # Serialize data for step 3
-    serialize_data(fault_data, stress_data, "src/output/step2_user_input_data.json")
-    =#
+    
+    # Create stress state object with principal stresses vector [Svert, shmin, sHmax]
+    stress_state = StressState([sV, sh, sH], max_stress_azimuth)
+    
+    return stress_state, p0
 end
 
+"""
+Process each fault and calculate geomechanical parameters
+"""
+function process_faults(fault_data::Vector, stress_state::StressState, initial_pressure::Float64)
+    results = []
+    
+    for fault in fault_data
+        # Calculate geomechanical parameters for each fault
+        result = analyze_fault(
+            fault["strike"],
+            fault["dip"],
+            fault["friction_coefficient"],
+            stress_state,
+            initial_pressure,
+            0.0  # No pressure change for deterministic analysis
+        )
+        
+        # Add fault metadata to result
+        result["fault_id"] = fault["fault_id"]
+        result["easting"] = fault["easting"]
+        result["northing"] = fault["northing"]
+        result["strike"] = fault["strike"]
+        result["dip"] = fault["dip"]
+        
+        push!(results, result)
+    end
+    
+    return results
+end
 
-geomechanics_driver()
+function main()
+    println("\n=== Starting Deterministic Geomechanics Analysis ===")
+    
+    # Parse command line arguments
+    
+    args = parse_commandline()
+    
+    # Read input JSON
+    
+    input_data = JSON.parsefile(args["input-json"])
+    
+    # Extract data
+    
+    fault_data = input_data["faults"]
+    stress_data = input_data["stress_state"]
+    
+    # Calculate absolute stresses at reference depth
+    
+    stress_state, initial_pressure = calculate_absolute_stresses(stress_data, fault_data)
+    
+    # Process each fault
+    
+    results = process_faults(fault_data, stress_state, initial_pressure)
+    
+    # Prepare output by copying all data from step 1 and adding deterministic results
+    println("\nPreparing output...")
+    output = deepcopy(input_data)  # Deep copy to avoid modifying original
+    
+    # Add deterministic results
+    output["metadata"] = Dict(
+        "step" => "deterministic_geomechanics",
+        "input_file" => args["input-json"],
+        "description" => "Deterministic geomechanical analysis results"
+    )
+    output["det_geomechanics_results"] = results
+    
+    # Create output directory if it doesn't exist
+    
+    output_dir = dirname(args["output-json"])
+    if !isdir(output_dir)
+        mkpath(output_dir)
+    end
+    
+    # Write output JSON
+    println("\nSaving results to: $(args["output-json"])")
+    open(args["output-json"], "w") do f
+        JSON.print(f, output, 4)  # indent with 4 spaces
+    end
+    
+    println("\n=== Deterministic Geomechanics Analysis Complete ===\n")
+end
 
-end # End of mmodule
-
+if abspath(PROGRAM_FILE) == @__FILE__
+    main()
+end
