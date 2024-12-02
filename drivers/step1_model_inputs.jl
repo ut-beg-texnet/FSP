@@ -6,7 +6,8 @@ This script processes input data for the FSP analysis:
 2. Creates stress state from CLI arguments
 3. Creates hydrology parameters from CLI arguments
 4. Processes injection well data from CSV
-5. Outputs all data to JSON for subsequent steps
+5. Gets uncertainty values from CLI
+6. Outputs all data to JSON for subsequent steps
 """
 
 using ArgParse
@@ -108,6 +109,38 @@ function parse_commandline()
             arg_type = Float64
     end
 
+    # Uncertainty parameters
+    @add_arg_table! s begin
+        "--unc-vertical-stress"
+            help = "Uncertainty in vertical stress gradient [psi/ft]"
+            arg_type = Float64
+            required = false
+        "--unc-pore-pressure"
+            help = "Uncertainty in pore pressure gradient [psi/ft]"
+            arg_type = Float64
+            required = false
+        "--unc-strike"
+            help = "Uncertainty in strike angles [degrees]"
+            arg_type = Float64
+            required = false
+        "--unc-dip"
+            help = "Uncertainty in dip angles [degrees]"
+            arg_type = Float64
+            required = false
+        "--unc-max-stress-azimuth"
+            help = "Uncertainty in maximum stress azimuth [degrees]"
+            arg_type = Float64
+            required = false
+        "--unc-friction"
+            help = "Uncertainty in friction coefficient"
+            arg_type = Float64
+            required = false
+        "--unc-aphi"
+            help = "Uncertainty in A-phi value"
+            arg_type = Float64
+            required = false
+    end
+
     return parse_args(s)
 end
 
@@ -132,7 +165,37 @@ function read_input_data(args)
         "rock_compressibility" => args["rock-compressibility"]
     )
     
-    return fault_data, stress_data, hydro_data, injection_data
+    # Get uncertainties from CLI arguments
+    uncertainties = get_uncertainties(args)
+    
+    return fault_data, stress_data, hydro_data, injection_data, uncertainties
+end
+
+"""
+Get uncertainties from command line arguments
+"""
+function get_uncertainties(args::Dict)
+    uncertainties = Dict{String, Float64}()
+    
+    # Map CLI argument names to output names
+    uncertainty_mapping = Dict(
+        "unc-vertical-stress" => "vertical_stress_gradient",
+        "unc-pore-pressure" => "initial_pore_pressure_gradient",
+        "unc-strike" => "strike_angles",
+        "unc-dip" => "dip_angles",
+        "unc-max-stress-azimuth" => "max_stress_azimuth",
+        "unc-friction" => "friction_coefficient",
+        "unc-aphi" => "aphi_value"
+    )
+    
+    # Add non-null uncertainties to output
+    for (arg_name, output_name) in uncertainty_mapping
+        if !isnothing(args[arg_name])
+            uncertainties[output_name] = args[arg_name]
+        end
+    end
+    
+    return uncertainties
 end
 
 """
@@ -254,7 +317,7 @@ function main()
     args = parse_commandline()
     
     # Read input data files
-    fault_data, stress_state, hydro_data, injection_data = read_input_data(args)
+    fault_data, stress_state, hydro_data, injection_data, uncertainties = read_input_data(args)
     
     # Create output directory if it doesn't exist
     output_dir = "output"
@@ -277,6 +340,11 @@ function main()
     # Add aphi value to model parameters if using an aphi model
     if stress_state["model_type"] in ["aphi_min", "aphi_no_min"]
         output_data["model_parameters"]["aphi_value"] = args["aphi-value"]
+    end
+    
+    # Add uncertainties if any were provided
+    if !isempty(uncertainties)
+        output_data["uncertainties"] = uncertainties
     end
     
     # Write output to JSON file
