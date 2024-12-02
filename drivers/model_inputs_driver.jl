@@ -1,277 +1,293 @@
-#module DriverStep1
+"""
+Model Inputs Step
 
+This script processes input data for the FSP analysis:
+1. Reads fault data from CSV
+2. Creates stress state from CLI arguments
+3. Creates hydrology parameters from CLI arguments
+4. Processes injection well data from CSV
+5. Outputs all data to JSON for subsequent steps
+"""
+
+using ArgParse
 using JSON
 using CSV
-using ArgParse
 using DataFrames
-using Dates
-using Parameters
-using StaticArrays
-using Random
-using LoggingExtras
-using TypedTables
-#using Serialization
 
-#include("src/input/get_faults_input_csv.jl") # used to get fault data from csv
-#include("src/input/get_well_input_csv.jl") # used to get well data from csv
-#include("src/input/get_stress_input_csv.jl") # used to get stress data from csv
-#include("src/input/get_hydrology_input_csv.jl") # used to get hydrology data from csv
-#include("src/output/model_inputs_wells_output.jl")
-#include("src/surfaceviz/surfaceviz.jl") # main data structure
-#include("src/surfaceviz/setup_data.jl") # data initialization
-#include("src/session/serialize_state.jl") # state serialization
-include("src/core/fault_data_input.jl")
-include("src/core/stress_data_input.jl")
-include("src/core/hydrology_data_input.jl")
+# Include the modules
+include("core/stress_model.jl")
+include("core/fault_model.jl")
+include("core/hydrology_model.jl")
 
-#using .GetFaultsInputCSV
-#using .GetWellInputCSV
-#using .GetStressDataCSV
-#using .GetHydrologyInputCSV
+# Import the modules
+using .StressModel
+using .FaultModel
+using .HydrologyModel
 
-
-#using .ModelInputsWellsOutput
-#using .SurfaceViz
-#using .SetupData
-
-
-
-function parse_cli_args()
-    s = ArgParseSettings(description="FSP Model Inputs Driver")
-
+"""
+Parse command line arguments for the Model Inputs step
+"""
+function parse_commandline()
+    s = ArgParseSettings(description="FSP 3.0 Model Inputs Step")
+    
+    # Input/output files
     @add_arg_table! s begin
         "--fault-data"
-            help = "Path to fault data CSV"
+            help = "Path to fault data CSV file"
             required = true
-        "--stress-data"
-            help = "Path to stress data CSV"
+        "--injection-well-data"
+            help = "Path to injection well data CSV file"
             required = true
-        "--aphi"
-            help = "A-phi value (required when using A-phi stress model)"
-            arg_type = Float64
-            required = false
-        "--well-data"
-            help = "Path to well data CSV (monthly or continuous format)"
-            required = true
-        "--friction-coefficient"
-            help = "Friction coefficient value (applied to all faults)"
+    end
+    
+    # Stress state parameters
+    @add_arg_table! s begin
+        "--vertical-stress"
+            help = "Vertical stress gradient [psi/ft]"
             arg_type = Float64
             required = true
+        "--max-stress-azimuth"
+            help = "Maximum horizontal stress azimuth [degrees]"
+            arg_type = Float64
+            required = true
+        "--pore-pressure"
+            help = "Pore pressure gradient [psi/ft]"
+            arg_type = Float64
+            required = true
+        "--reference-depth"
+            help = "Reference depth [ft]"
+            arg_type = Float64
+            required = true
+    end
+
+    # Hydrology parameters
+    @add_arg_table! s begin
         "--porosity"
-            help = "Porosity (in %). Required for internal hydrology model"
+            help = "Porosity [fraction]"
             arg_type = Float64
-            required = false
+            required = true
         "--permeability"
-            help = "Permeability (in mD). Required for internal hydrology model"
+            help = "Permeability [mD]"
             arg_type = Float64
-            required = false
+            required = true
         "--aquifer-thickness"
-            help = "Aquifer thickness (in feet). Required for internal hydrology model"
+            help = "Aquifer thickness [ft]"
             arg_type = Float64
-            required = false
-        "--density"
-            help = "Fluid density (in kg/m^3)."
+            required = true
+        "--fluid-density"
+            help = "Fluid density [kg/m³]"
             arg_type = Float64
             default = 1000.0
-        "--dynamic_viscosity"
-            help = "Dynamic viscosity (in Pa.s)."
+        "--dynamic-viscosity"
+            help = "Dynamic viscosity [Pa·s]"
             arg_type = Float64
             default = 0.0008
-        "--fluid_compressibility"
-            help = "Fluid compressibility (in 1/Pa)."
+        "--fluid-compressibility"
+            help = "Fluid compressibility [1/Pa]"
             arg_type = Float64
             default = 3.6e-10
         "--rock-compressibility"
-            help = "Rock compressibility (in 1/Pa)."
+            help = "Rock compressibility [1/Pa]"
             arg_type = Float64
-            default = 1.08e-9
-        "--output-json"
-            help = "Path to output JSON file for this step's results"
+            default = 1.08e-09
+    end
+
+    # Model-specific parameters
+    @add_arg_table! s begin
+        "--model-type"
+            help = "Stress model type (gradients, aphi_min, aphi_no_min)"
             required = true
+        "--max-horizontal-stress"
+            help = "Maximum horizontal stress gradient [psi/ft]"
+            arg_type = Float64
+        "--min-horizontal-stress"
+            help = "Minimum horizontal stress gradient [psi/ft]"
+            arg_type = Float64
+        "--aphi-value"
+            help = "A-phi value for stress model"
+            arg_type = Float64
     end
 
     return parse_args(s)
-
 end
 
-# check for required arguments
-function check_fault_data(args::Dict)
-    #println("args[\"fault-data\"]: ", args["fault-data"])
-    if haskey(args, "fault-data") && !isnothing(args["fault-data"])
-        return read_fault_data(args["fault-data"], args["friction-coefficient"])
-    else
-        error("Must provide --faul-data argument")
-    end
+"""
+Read input data from CSV files and CLI arguments
+"""
+function read_input_data(args)
+    fault_data = FaultModel.read_fault_data(args["fault-data"])
+    injection_data = CSV.read(args["injection-well-data"], DataFrame)
+    
+    # Create stress state from CLI arguments
+    stress_data = create_stress_state(args)
+    
+    # Create hydrology data from CLI arguments
+    hydro_data = Dict(
+        "porosity" => args["porosity"],
+        "permeability_md" => args["permeability"],
+        "aquifer_thickness" => args["aquifer-thickness"],
+        "fluid_density" => args["fluid-density"],
+        "dynamic_viscosity" => args["dynamic-viscosity"],
+        "fluid_compressibility" => args["fluid-compressibility"],
+        "rock_compressibility" => args["rock-compressibility"]
+    )
+    
+    return fault_data, stress_data, hydro_data, injection_data
 end
 
-function check_stress_data(args::Dict)
-    if haskey(args, "stress-data") && !isnothing(args["stress-data"]) && haskey(args, "aphi")
-        return read_stress_data(args["stress-data"], args["aphi"])
-    elseif haskey(args, "stress-data") && !isnothing(args["stress-data"] && !haskey(args, "aphi"))
-        return read_stress_data(args["stress-data"])
-    else 
-        error("Must provide --stress-data argument")
-    end
+"""
+Convert DataFrame to Dictionary for JSON serialization
+"""
+function df_to_dict(df::DataFrame)
+    # Convert each row to a dictionary with column names as keys
+    rows = [Dict(name => row[name] for name in names(df)) for row in eachrow(df)]
+    return rows
 end
 
-function check_well_data(args::Dict)
-    if haskey(args, "well-data") && !isnothing(args["well-data"])
-        return read_well_data(args["well-data"])
-    else
-        error("Must provide --well-data argument")
-    end
-end
-
-# here we can expect two types of hydrology data
-# 1. internal hydrology model (user provides porosity, permeability, aquifer thickness as cli arguments)
-# 2. external hydrology model (user provides external hydrology model CSV file path as cli argument)
-function check_hydrology_data(args)
-    # check for external model
-    if haskey(args, "hydrology-data") && !isnothing(args["hydrology-data"])
-        if !isfile(args["hydrology-data"])
-            error("Hydrology data file not found: $(args["hydrology-data"])")
-        end
-        return Dict(
-            "hydrology_model_type" => "external",
-            "file_source" => args["hydrology-data"],
-            # read the CSV into a df and convert to a list of dictionaries
-            "data" => CSV.read(args["hydrology-data"], DataFrame) |> DataFrame -> [Dict(pairs(row)) for row in eachrow(DataFrame)]
-        )
-    else
-        # internal Model
-        required_params = ["porosity", "permeability", "aquifer-thickness"]
-        missing_params = filter(p -> !haskey(args, p) || isnothing(args[p]), required_params)
-
-        if !isempty(missing_params)
-            error("Missing required hydrology parameters: $(join(missing_params, ", "))")
-        end
-
-        return Dict(
-            "hydrology_model_type" => "internal",
-            "internal_hydrology_params" => Dict(
-                "porosity" => args["porosity"],
-                "permeability" => args["permeability"],
-                "aquifer_thickness" => args["aquifer-thickness"]
-                # might have to add compresibility, fluid density, dynamic viscosity etc here
+"""
+Process injection well data into a more convenient format
+"""
+function process_injection_data(df::DataFrame)
+    # Group by well_id and create a dictionary of time series data
+    wells = Dict{Int, Dict{String, Any}}()
+    
+    # Check if we have constant rate data (start_year, end_year) or monthly data (year, month)
+    is_constant_rate = "start_year" in names(df)
+    
+    for well_id in unique(df.well_id)
+        well_data = filter(row -> row.well_id == well_id, df)
+        first_row = first(eachrow(well_data))
+        
+        wells[well_id] = Dict(
+            "location" => Dict(
+                "easting_km" => first_row.easting_km,
+                "northing_km" => first_row.northing_km
             )
         )
+        
+        if is_constant_rate
+            # For constant rate data, store rate and time period
+            wells[well_id]["injection_rate"] = Dict(
+                "rate_bbl_day" => first_row.injection_rate_bbl_day,
+                "start_year" => first_row.start_year,
+                "end_year" => first_row.end_year
+            )
+        else
+            # For monthly data, store injection history
+            wells[well_id]["injection_history"] = [
+                Dict(
+                    "year" => row.year,
+                    "month" => row.month,
+                    "volume_bbl" => row.injection_volume_bbl
+                ) for row in eachrow(well_data)
+            ]
+        end
     end
-
+    
+    return wells
 end
 
-function get_session_metadata()
-    return Dict{String,Any}(
-        "timestamp" => Dates.format(Dates.now(), "yyyy-mm-dd HH:MM:SS"),
-        "julia_version" => string(VERSION),
-        "os" => string(Sys.KERNEL),
-        "machine" => string(Sys.MACHINE)
+"""
+Create stress state from CLI arguments
+"""
+function create_stress_state(args)
+    # Validate model type and required parameters
+    model_type = args["model-type"]
+    if !(model_type in ["gradients", "aphi_min", "aphi_no_min"])
+        error("Invalid model type. Must be one of: gradients, aphi_min, aphi_no_min")
+    end
+    
+    # Common parameters for all models
+    stress_state = Dict(
+        "model_type" => model_type,
+        "vertical_stress" => Float64(args["vertical-stress"]),
+        "max_stress_azimuth" => Float64(args["max-stress-azimuth"]),
+        "pore_pressure" => Float64(args["pore-pressure"]),
+        "reference_depth" => Float64(args["reference-depth"])
     )
+    
+    # Add model-specific parameters
+    if model_type == "gradients"
+        if isnothing(args["max-horizontal-stress"]) || isnothing(args["min-horizontal-stress"])
+            error("gradients model requires both max-horizontal-stress and min-horizontal-stress")
+        end
+        if !isnothing(args["aphi-value"])
+            error("gradients model should not include aphi-value")
+        end
+        stress_state["max_horizontal_stress"] = Float64(args["max-horizontal-stress"])
+        stress_state["min_horizontal_stress"] = Float64(args["min-horizontal-stress"])
+        
+    elseif model_type == "aphi_min"
+        if isnothing(args["min-horizontal-stress"]) || isnothing(args["aphi-value"])
+            error("aphi_min model requires both min-horizontal-stress and aphi-value")
+        end
+        if !isnothing(args["max-horizontal-stress"])
+            error("aphi_min model should not include max-horizontal-stress")
+        end
+        stress_state["min_horizontal_stress"] = Float64(args["min-horizontal-stress"])
+        stress_state["aphi_value"] = Float64(args["aphi-value"])
+        stress_state["max_horizontal_stress"] = nothing
+        
+    else  # aphi_no_min
+        if isnothing(args["aphi-value"])
+            error("aphi_no_min model requires aphi-value")
+        end
+        if !isnothing(args["max-horizontal-stress"]) || !isnothing(args["min-horizontal-stress"])
+            error("aphi_no_min model should not include max-horizontal-stress or min-horizontal-stress")
+        end
+        stress_state["aphi_value"] = Float64(args["aphi-value"])
+        stress_state["max_horizontal_stress"] = nothing
+        stress_state["min_horizontal_stress"] = nothing
+    end
+    
+    # Validate stress state
+    StressModel.validate_stress_state(stress_state)
+    
+    return stress_state
 end
 
-
+"""
+Main function for the Model Inputs step
+"""
 function main()
-    # parse CLI arguments
-    args = parse_cli_args()
-
-    # process input data
-    fault_data = check_fault_data(args)
-    stress_data = check_stress_data(args)
-    well_data = check_well_data(args)
-    hydrology_data = check_hydrology_data(args)
-
-    # output directory for JSON file, create it if it doesn't exist
-    output_dir = dirname(args["output-json"])
-    if !isdir(output_dir)
-        mkdir(output_dir)
-    end
-
-    # output dict
-    output = Dict{String,Any}(
-        "metadata" => get_session_metadata(),
-        "fault_data" => to_dict(fault_data),
-        "stress_data" => to_dict(stress_data),
-        "well_data" => hydrology_to_dict(well_data),
-        "hydrology_data" => hydrology_data
+    # Parse command line arguments
+    args = parse_commandline()
+    
+    # Read input data files
+    fault_data, stress_state, hydro_data, injection_data = read_input_data(args)
+    
+    # Create output directory if it doesn't exist
+    output_dir = "output"
+    mkpath(output_dir)
+    
+    # Prepare output data
+    output_data = Dict(
+        "model_parameters" => Dict(
+            "fluid_density" => args["fluid-density"],
+            "dynamic_viscosity" => args["dynamic-viscosity"],
+            "fluid_compressibility" => args["fluid-compressibility"],
+            "rock_compressibility" => args["rock-compressibility"]
+        ),
+        "faults" => df_to_dict(fault_data),
+        "stress_state" => stress_state,
+        "hydrology" => hydro_data,
+        "injection_wells" => process_injection_data(injection_data)
     )
-
-    # write output to JSON file
-    open(args["output-json"], "w") do f
-        JSON.print(f, output, 4)
+    
+    # Add aphi value to model parameters if using an aphi model
+    if stress_state["model_type"] in ["aphi_min", "aphi_no_min"]
+        output_data["model_parameters"]["aphi_value"] = args["aphi-value"]
     end
+    
+    # Write output to JSON file
+    output_file = joinpath(output_dir, "model_inputs.json")
+    open(output_file, "w") do f
+        JSON.print(f, output_data, 4)  # 4 spaces for indentation
+    end
+    
+    println("Model Inputs step completed. Output written to $output_file")
 end
-
-
-
-#end # step 1 end
 
 if abspath(PROGRAM_FILE) == @__FILE__
     main()
 end
-
-
-
-
-#=
-function main()
-    # hardcode fault data CSV file path for testing
-    #file_path = "/home/seiscomp/fsp_3/fsp_3/src/input/mock_fault_data_input.csv"
-    file_path = "/home/seiscomp/fsp_3/fsp_3/src/input/Bluebonnet_Faults_for_FSP.csv"
-    # load fault data from CSV
-    faults = load_faults_from_csv(file_path)
-    println("Faults loaded from CSV: ", faults)
-
-    # convert fault data to JSON
-    json_output_file = "step1_fault_data_output.json"
-    fault_data_to_json(faults, json_output_file)
-
-    open(json_output_file, "r") do file
-        json_content = read(file, String)
-        println("JSON content: ", json_content)
-    end
-    
-
-    # Well data testing
-    well_data_input_file_path = "/home/seiscomp/fsp_3/fsp_3/src/input/mock_well_data_input.csv"
-
-    # load well data from CSV
-    well_data = load_wells_from_csv(well_data_input_file_path)
-
-    println("Wells loaded from CSV: ", well_data)
-
-    # convert well data to JSON
-    well_data_output_file = "step1_well_data_output.json"
-    well_data_to_json(well_data, well_data_output_file)
-    println("Well data JSON file created: ", well_data_output_file)
-
-    
-
-    # get stress data from csv testing 
-    stress_input_csv_file = "/home/seiscomp/fsp_3/fsp_3/src/input/mock_stress_data_input.csv"
-    stress_data = load_stress_from_csv(stress_input_csv_file)
-
-    # convert stress data to JSON
-    stress_data_json_output_file = "step1_stress_data_output.json"
-    stress_data_to_json(stress_data, stress_data_json_output_file)
-    println("Stress data: ", stress_data)
-
-    
-
-    # get hydrology data from csv testing
-    hydrology_input_csv_file = "/home/seiscomp/fsp_3/fsp_3/src/input/mock_hydrology_data_input.csv"
-    hydrology_data = load_hydrology_from_csv(hydrology_input_csv_file)
-
-    # convert hydrology data to JSON
-    hydrology_data_json_output_file = "step1_hydrology_data_output.json"
-    hydrology_data_to_json(hydrology_data, hydrology_data_json_output_file)
-    println("Hydrology data: ", hydrology_data)
-
-
-end
-
-
-
-
-end # step 1 end
-
-DriverStep1.main()  # Call the main function to execute the driver step 1
-=#
