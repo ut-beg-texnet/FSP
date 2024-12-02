@@ -1,0 +1,4 @@
+well_id,easting_km,northing_km,injection_rate_bbl_day,start_year,end_year
+1,100.5,200.3,1000,2020,2022
+2,150.2,175.8,800,2020,2021
+3,125.7,190.4,1200,2021,2023
