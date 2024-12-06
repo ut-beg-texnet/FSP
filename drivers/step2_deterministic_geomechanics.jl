@@ -3,7 +3,7 @@ Deterministic Geomechanics Analysis Driver Script
 
 This script performs deterministic geomechanical analysis for fault stability assessment.
 It takes stress state and fault data from step1 (Model Inputs) and calculates stability metrics
-for each fault.
+for each fault. Run with --threads argument to enable multi-threading and specify number of threads.
 
 Workflow:
 1. Read input data from step1 JSON file containing:
@@ -42,9 +42,12 @@ Dependencies:
 using JSON
 using ArgParse
 using LinearAlgebra
+using Base.Threads
 
 include("core/geomechanics_model.jl")
 using .GeomechanicsModel
+
+export process_faults, calculate_absolute_stresses
 
 """
 Parse command line arguments
@@ -84,7 +87,7 @@ function calculate_n_phi(aphi::Float64)
 end
 
 """
-Calculate horizontal stresses using Modified A-Phi model (aphi_use == 12)
+Calculate horizontal stresses using Modified A-Phi model
 Following MATLAB implementation in getHorFromAPhi.m
 """
 function calculate_modified_aphi_stresses(n::Int, phi::Float64, sv::Float64, sh::Float64, p0::Float64)
@@ -110,8 +113,8 @@ function calculate_modified_aphi_stresses(n::Int, phi::Float64, sv::Float64, sh:
 end
 
 """
-Calculate horizontal stresses using standard A-Phi model with friction
-Following MATLAB implementation in getHorFromAPhi.m
+Calculate horizontal stresses using standard A-Phi model with friction (no APhi value provided)
+MATLAB --> getHorFromAPhi.m
 """
 function calculate_standard_aphi_stresses(n::Int, phi::Float64, sv::Float64, p0::Float64, mu::Float64)
     if mu <= 0
@@ -121,21 +124,19 @@ function calculate_standard_aphi_stresses(n::Int, phi::Float64, sv::Float64, p0:
     k = (mu + sqrt(1 + mu^2))^2
     
     if n == 0
-        # Case 0: Calculate Sh first, then SH
         sh = (sv - p0)/k + p0
         sH = phi * (sv - sh) + sh
+
     elseif n == 1
-        # Case 1: Solve system of equations
         A = [1.0 -k; phi (1-phi)]
         b = [p0 - k*p0; sv]
         x = A \ b
         sH, sh = x[1], x[2]
+
     elseif n == 2
-        # Case 2: Calculate SH first, then Sh
         sH = k * (sv - p0) + p0
         sh = phi * (sH - sv) + sv
     end
-    
     
     return sH, sh
 end
@@ -163,11 +164,11 @@ function calculate_absolute_stresses(stress_data::Dict, fault_data::Vector)
     
     # Get friction coefficient from first fault (assume all faults have same friction)
     μ = fault_data[1]["friction_coefficient"]
-    println("\nFriction coefficient from first fault: $(μ)")
+    #println("\nFriction coefficient from first fault: $(μ)")
     
     # Calculate horizontal stresses based on model type
     if model_type == "gradients"
-        println("\nUsing gradients model (all stresses provided)")
+        #println("\nUsing gradients model (all stresses provided)")
         # Convert gradients to absolute stresses
         max_horizontal_gradient = stress_data["max_horizontal_stress"]
         min_horizontal_gradient = stress_data["min_horizontal_stress"]
@@ -176,18 +177,17 @@ function calculate_absolute_stresses(stress_data::Dict, fault_data::Vector)
         sh = round(min_horizontal_gradient * reference_depth, digits=1)
         
     elseif model_type == "aphi_min" || model_type == "aphi_no_min"
-        println("\nUsing A-phi model: $(model_type)")
+        #println("\nUsing A-phi model: $(model_type)")
         # Get A-phi value and calculate n and phi
         aphi = stress_data["aphi_value"]
         n, phi = calculate_n_phi(aphi)
-        println("A-phi parameters:")
-        println("  A-phi value = $(aphi)")
-        println("  n = $(n)")
-        println("  φ = $(phi)")
+        #println("A-phi parameters:")
+        #println("  A-phi value = $(aphi)")
+        #println("  n = $(n)")
+        #println("  φ = $(phi)")
         
         if model_type == "aphi_min" && haskey(stress_data, "min_horizontal_stress") && !isnothing(stress_data["min_horizontal_stress"])
             
-            # Convert min horizontal gradient to absolute stress
             sh = stress_data["min_horizontal_stress"] * reference_depth
             sH, _ = calculate_modified_aphi_stresses(n, phi, sV, sh, p0)
         else
@@ -202,16 +202,162 @@ function calculate_absolute_stresses(stress_data::Dict, fault_data::Vector)
     
     # Create stress state object with principal stresses vector [Svert, shmin, sHmax]
     stress_state = StressState([sV, sh, sH], max_stress_azimuth)
+    #println("\nStress state at reference depth:")
+    # print stress state
+    #println("  Vertical stress (Sv) = $(sV) MPa") # VERIFY UNITS!!!!!!!!!!!!!!!!
+    #println("  Minimum horizontal stress (Sh) = $(sh) MPa")
+    #println("  Maximum horizontal stress (SH) = $(sH) MPa")
+    #println("  Max stress azimuth = $(max_stress_azimuth) degrees")
+
     
     return stress_state, p0
 end
 
+
+# This can replace calculate_absolute_stresses (not used yet)
+function ComputeStressTensor_CS_Model(Sv::Real, SHmax::Real, Shmin::Real, Pp::Real, μ::Real, Aphi::Real)
+    #=
+       Compute stress tensor for the critically stressed model
+    =#
+
+    df=DataFrames.DataFrame([])
+    
+    if Aphi > 0 && Aphi <= 1 #normal stress regimen
+        df=ComputeStressTensor_CS_Normal_Faults(Sv::Real, Pp::Real, μ::Real, Aphi::Real; n=0, Shmin=Shmin, SHmax=SHmax)
+    elseif  Aphi > 1 && Aphi <= 2 #strike-slip stress regimen
+        df=ComputeStressTensor_CS_Strike_Slip_Faults(Sv::Real, Pp::Real, μ::Real, Aphi::Real; n=1, Shmin=Shmin, SHmax=SHmax)
+    elseif Aphi > 2 && Aphi <=3 #reverse stress regimen
+        df=ComputeStressTensor_CS_Reverse_Faults(Sv::Real, Pp::Real, μ::Real, Aphi::Real; n=2, Shmin=Shmin, SHmax=SHmax)
+    else
+        throw(ErrorException("Error!!! Aphi parameter must be between 0 and 3"))
+    end
+
+    return df
+end #ComputeStressTensor_CS_Model()
+
+
+function ComputeStressTensor_CS_Normal_Faults(Sv::Real, Pp::Real, μ::Real, Aphi::Real; n=0, Shmin=[], SHmax=[])
+    #=
+    Compute SHmax for the critically stressed faults for normal faults
+    =#
+
+    ## Positive values means compressive stress
+    Sv = abs.(Sv)
+    Pp = abs.(Pp)
+
+    if Aphi < 0 || Aphi > 1
+        throw(ErrorException("Error!!! The Aphi parameter for normal faults should be between 0 and 1"))
+    end
+
+    ## Compute the critically stressed fault factor
+    B = FSP3D.ComputeFrictionalStressLimitFactor(μ)
+
+    # Compute the ϕ parameters
+    ϕ = FSP3D.ComputePhiParameter(Aphi, n)
+
+    if Shmin == 0 && SHmax == 0
+        Shmin = ((Sv .- Pp) ./ B) .+ Pp
+        SHmax = ϕ .* (Sv .- Shmin) .+ Shmin
+    elseif Shmin == 0 && SHmax != 0
+        Shmin = (SHmax .- ϕ .* Sv) ./ (1 .- ϕ)
+    elseif Shmin != 0 && SHmax == 0
+        SHmax = ϕ .* (Sv .- Shmin) .+ Shmin        
+    end
+
+    if any(isempty([Sv, Pp, SHmax, Shmin, Aphi, μ]))
+        throw(ErrorException("Error!!! Stress is empty"))
+    end
+
+    return DataFrames.DataFrame(:Sv => Sv, :Pp => Pp, :μ => μ, :Aphi => Aphi, :SHmax => SHmax, :Shmin => Shmin)
+    
+end #ComputeStressTensor_CS_Normal_Faults
+
+
+function ComputeStressTensor_CS_Strike_Slip_Faults(Sv::Real, Pp::Real, μ::Real, Aphi::Real; n=1, Shmin=[], SHmax = [])
+    #=
+      Compute SHmax for the critically stressed faults for strike-slip faults
+    =#
+
+    ## Positive values means compressive stress
+    Sv = abs.(Sv)
+    Pp = abs.(Pp)
+    
+    if Aphi < 1 || Aphi > 2
+        throw(ErrorException("Error!!! The Aphi parameter for strike slip faults should be between 1 and 2"))
+    end
+
+    ## Compute the critically stressed fault factor
+    B = FSP3D.ComputeFrictionalStressLimitFactor(μ)
+
+    ## Computing the phi parameters
+    ϕ = FSP3D.ComputePhiParameter(Aphi, n)
+
+    if Shmin == 0 && SHmax == 0
+        tmp1 = (Sv ./ ϕ) .+ (Pp ./ (ϕ .* B)) .- (Pp ./ ϕ) .- (Pp ./ B) .+ Pp
+        tmp2 = 1 .+ (1 ./ (ϕ .* B)) .- (1 ./ B)
+        SHmax = tmp1 ./ tmp2
+        Shmin = ( (SHmax .- Pp) ./ B ) .+ Pp
+    elseif Shmin == 0 && SHmax != 0
+        Shmin = ( (SHmax .- Pp) ./ B ) .+ Pp
+    elseif Shmin != 0 && SHmax == 0
+        SHmax = B .* Shmin .- Pp .* (B .- 1)
+    end
+
+    if any(isempty([Sv, Pp, SHmax, Shmin, Aphi, μ]))
+        throw(ErrorException("Error!!! Stress is empty"))
+    end
+
+    return DataFrames.DataFrame(:Sv => Sv, :Pp => Pp, :μ => μ, :Aphi => Aphi, :SHmax => SHmax, :Shmin => Shmin)
+
+end #ComputeStressTensor_CS_Strike_Slip_Faults
+
+
+function ComputeStressTensor_CS_Reverse_Faults(Sv::Real, Pp::Real, μ::Real, Aphi::Real; n=2, Shmin = [], SHmax = [])
+    #=
+    Compute SHmax for the critically stressed faults for normal faults
+    =#
+
+    ## Positive values means compressive stress
+    Sv = abs.(Sv)
+    Pp = abs.(Pp)
+    
+    if Aphi < 2 || Aphi > 3
+        throw(ErrorException("Error!!! The Aphi parameter for normal faults should be between 0 and 1"))
+    end
+
+    ## Compute the critically stressed fault factor
+    B = FSP3D.ComputeFrictionalStressLimitFactor(μ)
+
+    # Compute the ϕ parameters
+    ϕ = FSP3D.ComputePhiParameter(Aphi, n)
+
+    if Shmin == 0 && SHmax == 0
+        SHmax = B .* (Sv .- Pp) .+ Pp
+        Shmin = ϕ .* (SHmax .- Sv) .+ Sv
+    elseif Shmin == 0 && SHmax != 0
+        Shmin = ϕ .* (SHmax .- Sv) .+ Sv
+    elseif Shmin != 0 && SHmax == 0
+        SHmax = (1 ./ ϕ) * (Shmin .- Sv .* (1 - ϕ))
+    end
+
+    if any(isempty([Sv, Pp, SHmax, Shmin, Aphi, μ]))
+        throw(ErrorException("Error!!! Stress is empty"))
+    end
+
+    return DataFrames.DataFrame(:Sv => Sv, :Pp => Pp, :μ => μ, :Aphi => Aphi, :SHmax => SHmax, :Shmin => Shmin)
+    
+end #ComputeStressTensor_CS_Reverse_Faults
+
+
 """
 Process each fault and calculate geomechanical parameters
 """
+
 function process_faults(fault_data::Vector, stress_state::StressState, initial_pressure::Float64)
     results = []
     
+    #for fault in fault_data
+    # analyze faults in parallel using threading
     for fault in fault_data
         # Calculate geomechanical parameters for each fault
         result = analyze_fault(
@@ -235,6 +381,32 @@ function process_faults(fault_data::Vector, stress_state::StressState, initial_p
     
     return results
 end
+
+#=
+# Monte Carlo version - only calculates slip pressure
+function process_faults(faults::Vector, stress_state::StressState, initial_pressure::Float64, ::Val{:monte_carlo})
+    results = []
+    
+    for fault in faults
+        strike = fault["strike"]
+        dip = fault["dip"]
+        friction = fault["friction_coefficient"]
+        
+        # Calculate fault stresses
+        fault_stresses = calculate_fault_effective_stresses(stress_state, strike, dip)
+        
+        # Calculate slip pressure
+        slip_pressure = calculate_slip_pressure(fault_stresses, friction, initial_pressure)
+        
+        # Store only slip pressure for Monte Carlo
+        push!(results, Dict(
+            "slip_pressure" => slip_pressure
+        ))
+    end
+    
+    return results
+end
+=#
 
 function main()
     println("\n=== Starting Deterministic Geomechanics Analysis ===")
@@ -291,3 +463,8 @@ end
 if abspath(PROGRAM_FILE) == @__FILE__
     main()
 end
+
+# To do:
+# Improve error handling
+# Add efficient parallel processing that prevents data-races
+# Add efficient parallel processing potentially making use of Threads.@spawn and :interactive
