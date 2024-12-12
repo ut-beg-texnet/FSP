@@ -6,8 +6,7 @@ This script processes input data for the FSP analysis:
 2. Creates stress state from CLI arguments
 3. Creates hydrology parameters from CLI arguments
 4. Processes injection well data from CSV
-5. Gets uncertainty values from CLI
-6. Outputs all data to JSON for subsequent steps
+5. Outputs all data to JSON for subsequent steps
 """
 
 using ArgParse
