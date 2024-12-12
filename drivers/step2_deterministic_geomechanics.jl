@@ -155,42 +155,80 @@ function calculate_absolute_stresses(stress_data::Dict, fault_data::Vector)
     model_type = stress_data["model_type"]
     pore_pressure_gradient = stress_data["pore_pressure"]
     max_stress_azimuth = stress_data["max_stress_azimuth"]
+    # check if we have min horizontal stress, if not set to 0
+    if !haskey(stress_data, "min_horizontal_stress") || stress_data["min_horizontal_stress"] === nothing
+        stress_data["min_horizontal_stress"] = 0.0
+    end
+
+    if !haskey(stress_data, "max_horizontal_stress") || stress_data["max_horizontal_stress"] === nothing
+        stress_data["max_horizontal_stress"] = 0.0
+    end
+
+    println("Fault data: $(fault_data)")
+
+    #=
+    println("Reference depth: $(reference_depth)")
+    println("Vertical gradient: $(vertical_gradient)")
+    println("Model type: $(model_type)")
+    println("Pore pressure gradient: $(pore_pressure_gradient)")
+    println("Max stress azimuth: $(max_stress_azimuth)")
+    println("Min horizontal stress: $(stress_data["min_horizontal_stress"])")
+    =#
+
+    
+
+
+    # check for aphi_value and set default value if missing
+    if !haskey(stress_data, "aphi_value") || stress_data["aphi_value"] === nothing
+        stress_data["aphi_value"] = 0.0
+    end
+    #println("aphi_value: $(stress_data["aphi_value"])")
     
     
     # Calculate absolute stresses at reference depth
-    sV = round(vertical_gradient * reference_depth, digits=1)
-    p0 = round(pore_pressure_gradient * reference_depth, digits=1)
+    sV = round(vertical_gradient * reference_depth, digits=2)
+    p0 = round(pore_pressure_gradient * reference_depth, digits=2)
+
+    println("Vertical stress: $(sV)")
     
     
     # Get friction coefficient from first fault (assume all faults have same friction)
     μ = fault_data[1]["friction_coefficient"]
+    #println("Friction coefficient from first fault: $(μ)")
     #println("\nFriction coefficient from first fault: $(μ)")
     
     # Calculate horizontal stresses based on model type
     if model_type == "gradients"
-        #println("\nUsing gradients model (all stresses provided)")
+        println("\nUsing gradients model (all stresses provided)")
         # Convert gradients to absolute stresses
         max_horizontal_gradient = stress_data["max_horizontal_stress"]
         min_horizontal_gradient = stress_data["min_horizontal_stress"]
+
+        println("Max horizontal gradient: $(max_horizontal_gradient)")
+        println("Min horizontal gradient: $(min_horizontal_gradient)")
         
-        sH = round(max_horizontal_gradient * reference_depth, digits=1)
-        sh = round(min_horizontal_gradient * reference_depth, digits=1)
+        sH = round(max_horizontal_gradient * reference_depth, digits=2)
+        sh = round(min_horizontal_gradient * reference_depth, digits=2)
         
     elseif model_type == "aphi_min" || model_type == "aphi_no_min"
-        #println("\nUsing A-phi model: $(model_type)")
+        println("\nUsing A-phi model: $(model_type)")
         # Get A-phi value and calculate n and phi
         aphi = stress_data["aphi_value"]
         n, phi = calculate_n_phi(aphi)
         #println("A-phi parameters:")
-        #println("  A-phi value = $(aphi)")
-        #println("  n = $(n)")
-        #println("  φ = $(phi)")
+        println("  A-phi value = $(aphi)")
+        println("  n = $(n)")
+        println("  φ = $(phi)")
         
-        if model_type == "aphi_min" && haskey(stress_data, "min_horizontal_stress") && !isnothing(stress_data["min_horizontal_stress"])
+
+        
+        if model_type == "aphi_min"
+            println("Stress model type: A-phi with min horizontal stress")
             
             sh = stress_data["min_horizontal_stress"] * reference_depth
             sH, _ = calculate_modified_aphi_stresses(n, phi, sV, sh, p0)
         else
+            println("Stress model type: A-phi without min horizontal stress")
             
             # Calculate both horizontal stresses using A-phi model
             sH, sh = calculate_standard_aphi_stresses(n, phi, sV, p0, μ)
@@ -204,10 +242,10 @@ function calculate_absolute_stresses(stress_data::Dict, fault_data::Vector)
     stress_state = StressState([sV, sh, sH], max_stress_azimuth)
     #println("\nStress state at reference depth:")
     # print stress state
-    #println("  Vertical stress (Sv) = $(sV) MPa") # VERIFY UNITS!!!!!!!!!!!!!!!!
-    #println("  Minimum horizontal stress (Sh) = $(sh) MPa")
-    #println("  Maximum horizontal stress (SH) = $(sH) MPa")
-    #println("  Max stress azimuth = $(max_stress_azimuth) degrees")
+    println("  Vertical stress (Sv) = $(sV) MPa") # VERIFY UNITS!!!!!!!!!!!!!!!!
+    println("  Minimum horizontal stress (Sh) = $(sh) MPa")
+    println("  Maximum horizontal stress (SH) = $(sH) MPa")
+    println("  Max stress azimuth = $(max_stress_azimuth) degrees")
 
     
     return stress_state, p0
@@ -235,7 +273,7 @@ function ComputeStressTensor_CS_Model(Sv::Real, SHmax::Real, Shmin::Real, Pp::Re
     return df
 end #ComputeStressTensor_CS_Model()
 
-
+# Josimar code (not used yet)
 function ComputeStressTensor_CS_Normal_Faults(Sv::Real, Pp::Real, μ::Real, Aphi::Real; n=0, Shmin=[], SHmax=[])
     #=
     Compute SHmax for the critically stressed faults for normal faults
@@ -273,6 +311,7 @@ function ComputeStressTensor_CS_Normal_Faults(Sv::Real, Pp::Real, μ::Real, Aphi
 end #ComputeStressTensor_CS_Normal_Faults
 
 
+# Josimar code (not used yet)
 function ComputeStressTensor_CS_Strike_Slip_Faults(Sv::Real, Pp::Real, μ::Real, Aphi::Real; n=1, Shmin=[], SHmax = [])
     #=
       Compute SHmax for the critically stressed faults for strike-slip faults
@@ -311,7 +350,7 @@ function ComputeStressTensor_CS_Strike_Slip_Faults(Sv::Real, Pp::Real, μ::Real,
 
 end #ComputeStressTensor_CS_Strike_Slip_Faults
 
-
+# Josimar code (not used yet)
 function ComputeStressTensor_CS_Reverse_Faults(Sv::Real, Pp::Real, μ::Real, Aphi::Real; n=2, Shmin = [], SHmax = [])
     #=
     Compute SHmax for the critically stressed faults for normal faults
@@ -423,6 +462,10 @@ function main()
     
     fault_data = input_data["faults"]
     stress_data = input_data["stress_state"]
+
+    #println("fault_data: $(fault_data)")
+
+    #println("Stress data: $(stress_data)")
     
     # Calculate absolute stresses at reference depth
     
