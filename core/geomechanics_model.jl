@@ -21,7 +21,7 @@ module GeomechanicsModel
 using LinearAlgebra
 using StaticArrays
 
-export calculate_fault_effective_stresses, calculate_slip_tendency, StressState, analyze_fault
+export calculate_fault_effective_stresses, calculate_slip_tendency, StressState, analyze_fault, process_faults, calculate_slip_pressure
 
 # Constants
 const DEG2RAD = π/180.0
@@ -58,11 +58,13 @@ end
 """
 Calculate normal and shear stresses on fault plane
 Direct implementation of MATLAB mohrs_3D.m calc_ppfail function
+Returns sames results as AuxFunctionComputePcriticalSample from FSP3D.jl (sigmaN and tauN)
 """
 function calculate_fault_effective_stresses(strike::Float64, dip::Float64, stress_state::StressState, p0::Float64, dp::Float64)
 
     # extract azimuth from stress state
     az = stress_state.sH_azimuth
+
 
     # Convert angles from degrees to radians
     az_rad = deg2rad.(az)
@@ -84,6 +86,8 @@ function calculate_fault_effective_stresses(strike::Float64, dip::Float64, stres
     Svert = stress_state.principal_stresses[1]
     shmin = stress_state.principal_stresses[2]
     sHmax = stress_state.principal_stresses[3]
+
+
 
     # Poisson's ratio effect factor (matches MATLAB exactly)
     biot = 1.0
@@ -124,74 +128,9 @@ function calculate_fault_effective_stresses(strike::Float64, dip::Float64, stres
     sig_normal = 2 .* n1 .* n2 .* s12 .+ n1.^2 .* (s11 .- s33) .+ n2.^2 .* (s22 .- s33) .+ s33
 
 
-    #=
-    # Convert angles to radians
-    strike_rad = deg2rad(strike)
-    dip_rad = deg2rad(dip)
-    sH_azimuth_rad = deg2rad(stress_state.sH_azimuth)
-    
-    # Extract principal stresses
-    sV = stress_state.principal_stresses[1]  # Vertical
-    sh = stress_state.principal_stresses[2]  # Min horizontal
-    sH = stress_state.principal_stresses[3]  # Max horizontal
-    
-    println("\nPrincipal Stresses:")
-    println("  σᵥ (vertical) = $(round(sV, digits=1)) psi")
-    println("  σₕ (min horizontal) = $(round(sh, digits=1)) psi")
-    println("  σH (max horizontal) = $(round(sH, digits=1)) psi")
-    println("  σH azimuth = $(stress_state.sH_azimuth)°")
-    
-    # Following MATLAB convention: x=East, y=North, z=Up
-    # Calculate direction cosines of fault normal (unit vector perpendicular to fault plane)
-    l = -sin(dip_rad) * sin(strike_rad)  # East component
-    m = sin(dip_rad) * cos(strike_rad)   # North component
-    n = -cos(dip_rad)                    # Up component
-    
-    println("\nFault Direction Cosines:")
-    println("  l (East) = $(round(l, digits=4))")
-    println("  m (North) = $(round(m, digits=4))")
-    println("  n (Up) = $(round(n, digits=4))")
-    
-    # Calculate stress components in geographic coordinates
-    cos_az = cos(sH_azimuth_rad)
-    sin_az = sin(sH_azimuth_rad)
-    
-    # Stress tensor in geographic coordinates (East-North-Up)
-    σxx = sh * cos_az^2 + sH * sin_az^2
-    σyy = sh * sin_az^2 + sH * cos_az^2
-    σzz = sV
-    σxy = (sH - sh) * sin_az * cos_az
-    σxz = 0.0
-    σyz = 0.0
-    
-    println("\nStress Tensor Components:")
-    println("  σxx = $(round(σxx, digits=1)) psi")
-    println("  σyy = $(round(σyy, digits=1)) psi")
-    println("  σzz = $(round(σzz, digits=1)) psi")
-    println("  σxy = $(round(σxy, digits=1)) psi")
-    println("  σxz = $(round(σxz, digits=1)) psi")
-    println("  σyz = $(round(σyz, digits=1)) psi")
-    
-    # Calculate normal stress on fault plane (sig_fault in MATLAB)
-    sig_normal = l^2 * σxx + m^2 * σyy + n^2 * σzz + 
-                 2 * l * m * σxy + 2 * m * n * σyz + 2 * l * n * σxz
-    
-    # Calculate shear stress components
-    τx = l * σxx + m * σxy + n * σxz
-    τy = l * σxy + m * σyy + n * σyz
-    τz = l * σxz + m * σyz + n * σzz
-    
-    # Calculate total shear stress (tau_fault in MATLAB)
-    # Using Pythagorean theorem in 3D to get magnitude of shear stress vector
-    tau_normal = sqrt((τx - l * sig_normal)^2 + 
-                     (τy - m * sig_normal)^2 + 
-                     (τz - n * sig_normal)^2)
-    =#
-    
-    # Return total stresses, not effective stresses
-    # The slip pressure calculation will handle the effective stress conversion
     return sig_normal, tau_normal, s11, s22, s33, s12, n1, n2
 end
+
 
 """
 Calculate pore pressure required for fault slip using quadratic equation approach
@@ -202,11 +141,13 @@ Calculate pore pressure required for fault slip using quadratic equation approac
             biot: Biot coefficient
             nu: Poisson's ratio
             dp: Current pressure perturbation
+            s11, s22, s33, s12: Stress components
+            n1, n2: Fault normal components
     Output: pore_pressure_to_slip: Pore pressure required for fault slip
 """
 function calculate_slip_pressure(sig_fault::Float64, tau_fault::Float64, mu::Float64, p0::Float64, 
                                biot::Float64=1.0, nu::Float64=0.5, dp::Float64=0.0, s11::Float64=0.0, s22::Float64=0.0, s33::Float64=0.0, s12::Float64=0.0, n1::Float64=0.0, n2::Float64=0.0)
-    println("\n=== Starting Slip Pressure Calculation ===")
+    
 
     # Calculate mobilized friction coefficient
     mobmu = sig_fault > 0.0 ? tau_fault/sig_fault : mu
@@ -216,6 +157,7 @@ function calculate_slip_pressure(sig_fault::Float64, tau_fault::Float64, mu::Flo
     
     # Coefficients of quadratic equation A*dp^2 + B*dp + C = 0
     # such that the mobilized friction coefficient on fault = mu
+    # ASK RALL ABOUT THIS
     C = -4 * (1 + mu^2) * n1^3 * n2 * s12 * (s11 - s33) -
         (1 + mu^2) * n1^4 * (s11 - s33)^2 -
         (1 + mu^2) * n2^4 * (s22 - s33)^2 -
@@ -276,14 +218,14 @@ function calculate_slip_pressure(sig_fault::Float64, tau_fault::Float64, mu::Flo
         ppfail = 0.0
     end
 
-    println("=== End Slip Pressure Calculation ===\n")
-    return round(ppfail)
+    
+    return round(ppfail, digits=2)
 end
 
-"""
-Calculate slip tendency (tau_fault/sig_fault) and normalized slip tendency
-How close is the fault to failure right now
-"""
+
+#Calculate slip tendency (tau_fault/sig_fault)
+# How close is the fault to failure right now
+
 function calculate_slip_tendency(sig_fault::Float64, tau_fault::Float64, p0::Float64)
     # sig_fault is already the effective stress
     # Avoid division by zero
@@ -294,9 +236,9 @@ function calculate_slip_tendency(sig_fault::Float64, tau_fault::Float64, p0::Flo
     return tau_fault/sig_fault
 end
 
-"""
-Calculate shear capacity utilization (SCU)
-"""
+
+#Calculate shear capacity utilization (SCU)
+
 function calculate_scu(sig_fault::Float64, tau_fault::Float64, μ::Float64)
     
     scu = tau_fault/(μ*sig_fault)
@@ -309,24 +251,25 @@ function calculate_scu(sig_fault::Float64, tau_fault::Float64, μ::Float64)
     return scu
 end
 
-"""
-Calculate Coulomb failure function (CFF)
-"""
+
+#Calculate Coulomb failure function (CFF)
+
 function calculate_cff(sig_fault::Float64, tau_fault::Float64, μ::Float64)
     cff = tau_fault - μ*sig_fault
     return cff
 end
 
 """
-Process fault and stress data to calculate geomechanical parameters
+Process fault and stress data 
+
 """
 function analyze_fault(strike::Float64, dip::Float64, friction::Float64,
                       stress_state::StressState, p0::Float64, dp::Float64)
     # Calculate normal and shear stresses on fault plane (sig_normal, tau_normal)
-    sig_fault, tau_fault, s11, s22, s33, s12, n1, n2 = calculate_fault_effective_stresses(strike, dip, stress_state, p0, dp)
+    sig_fault, tau_fault, s11, s22, s33, s12, n1, n2 = calculate_fault_effective_stresses(strike, dip, stress_state, p0, dp) # AuxFunctionComputePcriticalSample --> FSP3D.jl
 
     # Calculate pp to bring fault to failure
-    slip_pressure = calculate_slip_pressure(sig_fault, tau_fault, friction, p0, 1.0, 0.5, dp, s11, s22, s33, s12, n1, n2)
+    slip_pressure = calculate_slip_pressure(sig_fault, tau_fault, friction, p0, 1.0, 0.5, dp, s11, s22, s33, s12, n1, n2) # compare to ComputeCriticalPorePressureForFailure --> FSP3D.jl
     
     # Calculate slip tendency
     slip_tendency = calculate_slip_tendency(sig_fault, tau_fault, p0)
@@ -347,4 +290,70 @@ function analyze_fault(strike::Float64, dip::Float64, friction::Float64,
     )
 end
 
+"""
+Process fault and stress data to calculate geomechanical parameters (Monte Carlo version)
+"""
+function analyze_fault(strike::Float64, dip::Float64, friction::Float64,
+                      stress_state::StressState, p0::Float64, dp::Float64, MC::Bool)
+    # Calculate normal and shear stresses on fault plane (sig_normal, tau_normal)
+    sig_fault, tau_fault, s11, s22, s33, s12, n1, n2 = calculate_fault_effective_stresses(strike, dip, stress_state, p0, dp)
+
+    # Calculate pp to bring fault to failure
+    slip_pressure = calculate_slip_pressure(sig_fault, tau_fault, friction, p0, 1.0, 0.5, dp, s11, s22, s33, s12, n1, n2)
+       
+    return Dict(
+        "normal_stress" => round(sig_fault, digits=2),
+        "shear_stress" => round(tau_fault, digits=2),
+        "slip_pressure" => round(slip_pressure, digits=2)
+    )
+end
+
+
+
+# Default process_faults for deterministic analysis
+function process_faults(faults::Vector, stress_state::StressState, initial_pressure::Float64)
+    results = []
+    
+    for fault in faults
+        strike = fault["strike"]
+        dip = fault["dip"]
+        friction = fault["friction_coefficient"]
+        
+        fault_stresses = calculate_fault_effective_stresses(stress_state, strike, dip)
+        slip_pressure = calculate_slip_pressure(fault_stresses, friction, initial_pressure)
+        scu = calculate_scu(fault_stresses, friction)
+        cff = calculate_cff(fault_stresses, friction)
+        
+        push!(results, Dict(
+            "slip_pressure" => slip_pressure,
+            "scu" => scu,
+            "cff" => cff
+        ))
+    end
+    
+    return results
+end
+
+# Monte Carlo version - only calculates slip pressure
+function process_faults(faults::Vector, stress_state::StressState, initial_pressure::Float64, ::Val{:monte_carlo})
+    results = []
+    
+    for fault in faults
+        strike = fault["strike"]
+        dip = fault["dip"]
+        friction = fault["friction_coefficient"]
+        
+        fault_stresses = calculate_fault_effective_stresses(stress_state, strike, dip)
+        slip_pressure = calculate_slip_pressure(fault_stresses, friction, initial_pressure)
+        
+        push!(results, Dict(
+            "slip_pressure" => slip_pressure
+        ))
+    end
+    
+    return results
+end
+
 end # module
+
+# Optimize tau_normal and sig_normal calculations
