@@ -334,7 +334,7 @@ function process_faults(faults::Vector, stress_state::StressState, initial_press
     return results
 end
 
-# Monte Carlo version - only calculates slip pressure
+# Monte Carlo version - only calculates slip pressure (not used)
 function process_faults(faults::Vector, stress_state::StressState, initial_pressure::Float64, ::Val{:monte_carlo})
     results = []
     
