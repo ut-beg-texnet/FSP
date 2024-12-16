@@ -1,5 +1,5 @@
 """
-Module for deterministic geomechanical calculations
+Deterministic Geomechanics Step
 
     Workflow:
     1. Read stress and fault data
@@ -13,7 +13,7 @@ Module for deterministic geomechanical calculations
     3. For each fault:
         - Transform stresses to fault coordinates
         - Calculate normal and shear stresses
-        - Determine slip pressure and stability metrics
+        - Determine slip pressure, scu, cff
     4. Output results to JSON file (used as input to step 3)
 """
 module GeomechanicsModel
