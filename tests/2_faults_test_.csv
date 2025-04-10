@@ -1,0 +1,3 @@
+FaultID,Latitude(WGS84),Longitude(WGS84),Strike,Dip,LengthKm,FrictionCoefficient
+A,3.6184285185748815,-99.9004208348214,10,40,10,0.58
+B,3.62,-99.91,20,60,8,0.58
