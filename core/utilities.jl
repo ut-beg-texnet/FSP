@@ -510,15 +510,15 @@ function prepare_monthly_fsp_data(
         # Find data for this month
         month_data = well_data[(string.(well_data.Year) .== string(y)) .& (string.(well_data.Month) .== string(m)), :]
         
-        println("DEBUG: Finding data for month $y-$m, found $(nrow(month_data)) rows")
-        println("DEBUG: Year column type: $(eltype(well_data.Year)), Month column type: $(eltype(well_data.Month))")
+        #println("DEBUG: Finding data for month $y-$m, found $(nrow(month_data)) rows")
+        #println("DEBUG: Year column type: $(eltype(well_data.Year)), Month column type: $(eltype(well_data.Month))")
         
         # Calculate daily rate for this month
         if !isempty(month_data)
             monthly_vol = first(month_data[!, "InjectionRate(bbl/month)"])
             daily_rate = monthly_vol / days_in_month
             
-            println("DEBUG: monthly_vol = $monthly_vol, daily_rate = $daily_rate")
+            #println("DEBUG: monthly_vol = $monthly_vol, daily_rate = $daily_rate")
             
             # If rate changed, we add step point
             if abs(daily_rate - current_rate) > 1.0e-6 # check for a change of 0.000001
@@ -526,7 +526,7 @@ function prepare_monthly_fsp_data(
                 push!(step_times, Float64(days_since_start))
                 push!(step_rates, daily_rate)
                 current_rate = daily_rate
-                println("DEBUG: Added step point: day=$(days_since_start), rate=$daily_rate")
+                #println("DEBUG: Added step point: day=$(days_since_start), rate=$daily_rate")
             end
         elseif extrapolate && !isnothing(current_rate) && current_rate > 0
             # Keep using current rate if extrapolating

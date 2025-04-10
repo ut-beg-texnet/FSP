@@ -453,6 +453,8 @@ function process_faults(fault_data::Vector, stress_state::GeomechanicsModel.Stre
                 dp_this_fault  # Use the value from dp for this fault
             )
 
+            #println("input of analyze_fault_hydro for fault $i: $(fault)")
+
             # Add fault metadata to the result
             for key in ["fault_id", "strike", "dip"]
                 results[i][key] = fault[key]

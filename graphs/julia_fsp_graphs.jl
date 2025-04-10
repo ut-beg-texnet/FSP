@@ -2288,7 +2288,8 @@ function mohr_diagram_hydro_data_to_d3_portal(
     fault_ids::Union{Vector{String}, Vector{Int}, Vector{Any}}=["fault"],
     geo_arcs_df::DataFrame=DataFrame(),
     geo_faults_df::DataFrame=DataFrame(),
-    geo_slip_df::DataFrame=DataFrame()
+    geo_slip_df::DataFrame=DataFrame(),
+    fault_inputs::DataFrame=DataFrame()
 )
     N = length(strike)
 
@@ -2322,25 +2323,39 @@ function mohr_diagram_hydro_data_to_d3_portal(
         stress_state = GeomechanicsModel.StressState([sV, sh, sH], stress_regime == "Normal" ? 90.0 : 0.0)
         
         # For each fault, recalculate normal and shear stresses with its specific dp
-        for i in 1:min(size(geo_faults_df, 1), length(dp))
+        for i in 1:min(size(fault_inputs, 1), length(dp))
             # Get fault properties from geomechanics dataframe
-            fault_id = geo_faults_df[i, "fault_id"]
-            fault_strike = strike[i]
-            fault_dip = 90.0  # Assuming vertical faults, adjust if needed
+            fault_id = fault_inputs[i, "FaultID"]
+            fault_strike = fault_inputs[i, "Strike"]
+            println("fault_strike: $(fault_strike)")
+            # Get the dip value from the fault data
+            fault_dip = fault_inputs[i, "Dip"]
+            println("fault_dip: $(fault_dip)")
+
+            println("recalculating stresses for fault: $(fault_id)")
             
-            # Recalculate stresses using GeomechanicsModel function
-            sig_fault, tau_fault, _, _, _, _, _, _ = 
+            # Recalculate effective stresses (now with dp)
+            sig_fault, tau_fault, s11, s22, s33, s12, n1, n2 = 
                 GeomechanicsModel.calculate_fault_effective_stresses(
                     fault_strike, fault_dip, stress_state, p0, dp[i]
                 )
             
+            # Recalculate pore pressure to slip
+            # this function doesn't actually use dp (we account for it in the effective stresses function)
+            slip_pressure = ComputeCriticalPorePressureForFailure(
+                sig_fault, tau_fault, mu, p0, 1.0, 0.5, 0.0
+            )
+
+            
+
             # Create a new row for this fault with updated coordinates
             new_row = Dict(name => geo_faults_df[i, name] for name in names(geo_faults_df))
             
             # Update the x and y coordinates with recalculated values
             new_row["x"] = sig_fault
             new_row["y"] = tau_fault
-            
+            new_row["pore_pressure_slip"] = slip_pressure
+
             # Add the row to the output dataframe
             push!(faultsDF, new_row)
         end

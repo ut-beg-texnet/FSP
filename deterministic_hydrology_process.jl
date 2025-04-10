@@ -58,6 +58,17 @@ function get_injection_dataset_path(helper::TexNetWebToolLaunchHelperJulia, step
     return nothing, nothing
 end
 
+# function that normalizes column names
+# remove spaces, and make lowercase
+function normalize_name(name::Union{String, Vector{String}})
+    if isa(name, String)
+        return lowercase(replace(name, " " => ""))
+    else
+        # Handle vector of strings
+        return [lowercase(replace(s, " " => "")) for s in name]
+    end
+end
+
 
 function main()
     println("\n======================================================")
@@ -70,7 +81,7 @@ function main()
     helper = TexNetWebToolLaunchHelperJulia(scratchPath)
 
     
-    println("LOADING MODEL PARAMETERS...")
+    println("LOADING MODEL PARAMETERS FROM THE PORTAL...")
     
     # Fluid compressibility (1/psi)
     beta = get_parameter_value(helper, 4, "fluid_compressibility")
@@ -105,7 +116,7 @@ function main()
     #year_of_interest_str = 2025 # TO DO: remove this hardcoding for testing
     if year_of_interest_str === nothing
         year_of_interest = Dates.year(Dates.today())
-        println("- Year of interest: $year_of_interest (default value)")
+        #println("- Year of interest: $year_of_interest (default value)")
         add_message_with_step_index!(helper, 4, "Year of interest was not provided, using the current year ($year_of_interest) as the default value", 0)
     else
         # Check if already an integer, if not, try to parse from string
@@ -114,7 +125,7 @@ function main()
         else
             year_of_interest = parse(Int, year_of_interest_str)
         end
-        println("- Year of interest: $year_of_interest")
+        #println("- Year of interest: $year_of_interest")
     end
 
     
@@ -136,6 +147,7 @@ function main()
         kap_md = 200.0  
     end
 
+    #=
     # Summary of all hydrology parameters
     println("\n------------------------------------------------------")
     println("MODEL PARAMETERS SUMMARY")
@@ -149,7 +161,7 @@ function main()
     println("Rock compressibility: $alphav 1/psi")
     println("Year of interest: $year_of_interest")
     println("------------------------------------------------------\n")
-
+    =#
     println("LOADING INJECTION WELL DATA...")
 
     # first we need to get the injection well data
@@ -173,17 +185,14 @@ function main()
 
     # GET THE UNIQUE WELL IDS
     if injection_data_type == "annual_fsp" || injection_data_type == "monthly_fsp"
-        # TO DO: I should probably remove the easting/northing conversion since we use lat/lon now
-        # convert_latlon_to_easting_northing!(injection_wells_df, "Latitude(WGS84)", "Longitude(WGS84)")
-        # extract easting and northing from the dataframe
-        #easting = injection_wells_df[!, "EastingKm"]
-        #northing = injection_wells_df[!, "NorthingKm"]
+        
 
         # get all unique well ids
         well_ids = try
             unique(string.(injection_wells_df[!, "APINumber"]))
         catch
-            unique(string.(injection_wells_df[!, "API Number"]))
+            unique(string.(injection_wells_df[!, "WellID"]))
+            
         end
         println("- Found $(length(well_ids)) unique wells in $(injection_data_type) format")
     elseif injection_data_type == "injection_tool_data"
@@ -246,6 +255,7 @@ function main()
         # Determine which lat/lon columns to use based on data type
         lat_column = injection_data_type == "injection_tool_data" ? "Surface Latitude" : "Latitude(WGS84)"
         lon_column = injection_data_type == "injection_tool_data" ? "Surface Longitude" : "Longitude(WGS84)"
+
         
         # Check if we have well data
         if size(injection_wells_df, 1) == 0
@@ -325,20 +335,23 @@ function main()
             end
             
             # Get well lat/lon coordinates for this well
+            # just get the first row available
             well_lat = first(well_data[!, "Latitude(WGS84)"])
             well_lon = first(well_data[!, "Longitude(WGS84)"])
-            println("- Location: lat=$(well_lat)°, lon=$(well_lon)°")
+            #println("- Location: lat=$(well_lat)°, lon=$(well_lon)°")
             
             # Get injection period
+            # Annual format only has StartYear and EndYear and a daily injection rate
             if "StartYear" in names(well_data) # Annual format
                 inj_start_year = first(well_data[!, "StartYear"])
                 inj_end_year = first(well_data[!, "EndYear"])
-                println("- Injection period: $inj_start_year to $inj_end_year")
+                #println("- Injection period: $inj_start_year to $inj_end_year")
             else
-                if "Year" in names(well_data) # Monthly format
+                # Monthly FSP format has a 'Year' and 'Month'column so we can use that to distinguish between annual and monthly
+                if "Year" in names(well_data) || "Month" in names(well_data)
                     inj_start_year = minimum(well_data[!, "Year"])
                     inj_end_year = maximum(well_data[!, "Year"])
-                    println("- Injection period: $inj_start_year to $inj_end_year")
+                    #println("- Injection period: $inj_start_year to $inj_end_year")
                 else
                     error("Error: Injection start and end years could not be determined because the 'Year' column is missing. Please check the format of the injection well data dataset")
                 end
@@ -359,7 +372,7 @@ function main()
             # Get well lat/lon coordinates
             well_lat = parse(Float64, first(well_data[!, "Surface Latitude"]))
             well_lon = parse(Float64, first(well_data[!, "Surface Longitude"]))
-            println("- Location: lat=$(well_lat)°, lon=$(well_lon)°")
+            #println("- Location: lat=$(well_lat)°, lon=$(well_lon)°")
             
             # Get injection period from 'Date of Injection' column
             if "Date of Injection" in names(well_data)
@@ -386,33 +399,32 @@ function main()
                     years = year.(dates)
                     inj_start_year = minimum(years)
                     inj_end_year = maximum(years)
-                    println("  * Injection period determined from dates: $inj_start_year to $inj_end_year")
+                    #println("  * Injection period determined from dates: $inj_start_year to $inj_end_year")
                 else
                     error("Error: Could not parse dates from the injection tool dataset: $e")
-                    #println("  * No valid dates found for well $well_id, skipping radial curve")
                     continue
                 end
             else
-                println("  * Could not find 'Date of Injection' column for well $well_id, skipping radial curve")
+                error("Could not find 'Date of Injection' column for well $well_id")
                 continue
             end
             
             # Check if well is active at year of interest
             if inj_start_year > year_of_interest
-                println("- Status: NOT ACTIVE before year $year_of_interest (active $inj_start_year-$inj_end_year)")
+                #println("- Status: NOT ACTIVE before year $year_of_interest (active $inj_start_year-$inj_end_year)")
                 continue
             else
-                println("- Status: ACTIVE at or before year $year_of_interest (period: $inj_start_year-$inj_end_year)")
+                #println("- Status: ACTIVE at or before year $year_of_interest (period: $inj_start_year-$inj_end_year)")
             end
             
             # Calculate end year for pressure calculation
             actual_end_year = min(inj_end_year, year_of_interest)
             
             # prepare injection data for pressure front calculation
-            println("- Preparing injection data using $injection_data_type format...")
+            #println("- Preparing injection data using $injection_data_type format...")
             
             # Print available columns for debugging
-            println("- Available columns: $(join(names(injection_wells_df), ", "))")
+            #println("- Available columns: $(join(names(injection_wells_df), ", "))")
             
             # Filter well data
             well_specific_data = injection_wells_df[string.(injection_wells_df[!, "APINumber"]) .== well_id, :]
@@ -448,19 +460,19 @@ function main()
                 extrapolate_injection_rates
             )
             
-            println("DEBUG: Received days: $(length(days)), rates: $(length(rates))")
-            println("DEBUG: inj_start_year: $inj_start_year, actual_end_year: $actual_end_year, year_of_interest: $year_of_interest")
+            #println("DEBUG: Received days: $(length(days)), rates: $(length(rates))")
+            #println("DEBUG: inj_start_year: $inj_start_year, actual_end_year: $actual_end_year, year_of_interest: $year_of_interest")
             
             if isempty(days) || isempty(rates)
                 @warn "No valid injection data for well $well_id"
                 continue
             end
             
-            println("- Injection history: $(length(days)) step changes over $(maximum(days)) days")
+            #println("- Injection history: $(length(days)) step changes over $(maximum(days)) days")
             #println("- Average injection rate: $(mean(rates)) bbl/day")
             
             # Calculate pressure field contribution for this well
-            println("- Calculating pressure field contribution...")
+            #println("- Calculating pressure field contribution...")
             
             # Use the lat/lon version with haversine distance calculation
             pfield_this_well = pfieldcalc_all_rates(
@@ -470,9 +482,9 @@ function main()
                 
             # Add to total field (superposition)
             total_pressure_2d .+= pfield_this_well
-            println("- Maximum pressure contribution: $(maximum(pfield_this_well)) psi")
+            #println("- Maximum pressure contribution: $(maximum(pfield_this_well)) psi")
         else
-            error("Unsupported data type: $injection_data_type")
+            error("Unsupported injection well dataset format: $injection_data_type")
         end
         
         # Store well location
@@ -489,34 +501,11 @@ function main()
         # Calculate end year for pressure calculation
         actual_end_year = min(inj_end_year, year_of_interest)
         
-        # prepare injection data for pressure front calculation
-        println("- Preparing injection data using $injection_data_type format...")
         
-        # Print available columns for debugging
-        println("- Available columns: $(join(names(injection_wells_df), ", "))")
         
         # Filter well data and print sample
         well_specific_data = injection_wells_df[string.(injection_wells_df[!, "APINumber"]) .== well_id, :]
-        #= 
-        if !isempty(well_specific_data)
-            println("- Well has $(nrow(well_specific_data)) data points")
-            
-            # Check for year of interest in data
-            if "Year" in names(well_specific_data)
-                matches = well_specific_data[well_specific_data.Year .== year_of_interest, :]
-                println("- Well has $(nrow(matches)) entries for year $year_of_interest")
-            end
-            
-            # Print sample data point
-            if nrow(well_specific_data) > 0
-                first_row = well_specific_data[1, :]
-                data_str = join(["$col=$(first_row[col])" for col in names(first_row)], ", ")
-                println("- Sample data: $data_str")
-            end
-        else
-            println("- No data found for well $well_id in the dataset")
-        end
-        =#
+        
         
         println("- Processing well data for pressure calculation (start=$inj_start_year, end=$actual_end_year)...")
         days, rates = prepare_well_data_for_pressure_scenario(
@@ -529,19 +518,17 @@ function main()
             extrapolate_injection_rates
         )
         
-        println("DEBUG: Received days: $(length(days)), rates: $(length(rates))")
-        println("DEBUG: inj_start_year: $inj_start_year, actual_end_year: $actual_end_year, year_of_interest: $year_of_interest")
         
         if isempty(days) || isempty(rates)
             @warn "No valid injection data for well $well_id"
             continue
         end
         
-        println("- Injection history: $(length(days)) step changes over $(maximum(days)) days")
+        #println("- Injection history: $(length(days)) step changes over $(maximum(days)) days")
         #println("- Average injection rate: $(mean(rates)) bbl/day")
         
         # Calculate pressure field contribution for this well
-        println("- Calculating pressure field contribution...")
+        #println("- Calculating pressure field contribution...")
         
         # Use the lat/lon version with haversine distance calculation
         pfield_this_well = pfieldcalc_all_rates(
@@ -551,7 +538,7 @@ function main()
             
         # Add to total field (superposition)
         total_pressure_2d .+= pfield_this_well
-        println("- Maximum pressure contribution: $(maximum(pfield_this_well)) psi")
+        #println("- Maximum pressure contribution: $(maximum(pfield_this_well)) psi")
     end
 
     println("\n------------------------------------------------------")
@@ -586,29 +573,7 @@ function main()
     println("Pressure Field Statistics:")
     pretty_table(pressure_stats)
 
-    # Print the entire pressure grid with coordinates
-    println("\nPressure Grid (psi):")
-    # Create a more compact representation of the pressure grid
-    # Subsample the grid to show a more manageable output (every 5th point)
-    grid_sample_rate = 5
-    sample_indices = 1:grid_sample_rate:size(total_pressure_2d, 1)
-
-    # Create header row with longitudes - use lon_range to get correct longitude values
-    header = ["Lat\\Lon"; [@sprintf("%.3f°", lon_range[j]) for j in sample_indices]]
-
-    # Create data rows with latitudes and pressure values
-    grid_data = Matrix{Any}(undef, length(sample_indices), length(sample_indices) + 1)
-    for (i, row_idx) in enumerate(sample_indices)
-        # Use lat_range for latitude values
-        grid_data[i, 1] = @sprintf("%.3f°", lat_range[row_idx])
-        for (j, col_idx) in enumerate(sample_indices)
-            grid_data[i, j+1] = @sprintf("%.1f", total_pressure_2d[row_idx, col_idx])
-        end
-    end
-
-    # Print the subsampled grid
-    pretty_table(grid_data, header=header, alignment=:c)
-    println("Note: Grid shows every $(grid_sample_rate)th point of the full $(size(total_pressure_2d, 1))×$(size(total_pressure_2d, 2)) grid")
+    
 
     # Load fault data to calculate pressure on faults
     println("\n------------------------------------------------------")
@@ -688,19 +653,21 @@ function main()
     end
     
     # Dataframe to store fault pressure for each year
+    # TO DO: this df has 'slip_pressure', which is the pressure added to the fault
+    # we can use that when we generate the new data for the Mohr diagram
     fault_pressure_by_year = DataFrame(
         FaultID = String[],
         Date = Date[],
-        slip_pressure = Float64[],
+        slip_pressure = Float64[], # this is the pressure added to the fault, not the pore pressure required to slip
         probability = Float64[],
         Year = Int[]
     )
     
     # Loop through each year from earliest injection to year of interest
-    println("- Calculating pressure on faults for years $min_injection_year to $year_of_interest")
+    println("- Calculating pressure on faults for years $min_injection_year to $year_of_interest (the year of interest)")
     
     for calc_year in min_injection_year:year_of_interest
-        println("\n  * Processing year $calc_year...")
+        #println("\n  * Processing year $calc_year...")
         
         # Create pressure array for this year
         pressure_on_faults = zeros(num_faults)
@@ -840,7 +807,7 @@ function main()
         end
     end
     
-    # Print the fault pressure DataFrame
+    
     println("\nFault Pressure Results by Year:")
     pretty_table(fault_pressure_by_year)
     
@@ -848,55 +815,7 @@ function main()
     save_dataframe_as_parameter!(helper, 4, "deterministic_hydrology_results", fault_pressure_by_year)
     println("- Saved fault pressure by year data as parameter 'deterministic_hydrology_results'")
     
-    # 4. Create a DataFrame with well information
-    well_info = DataFrame(
-        WellID = String[],
-        Latitude = Float64[],
-        Longitude = Float64[],
-        Active = Bool[]
-    )
     
-    for well_id in well_ids
-        if haskey(well_locations, well_id)
-            coords = well_locations[well_id]
-            
-            # Determine if well is active at year of interest depending on data format
-            is_active = false
-            
-            # Handle different data formats for determining active status
-            if injection_data_type == "annual_fsp"
-                # For annual data, check StartYear and EndYear
-                well_data = injection_wells_df[string.(injection_wells_df[!, "APINumber"]) .== well_id, :]
-                if !isempty(well_data) && "StartYear" in names(well_data) && "EndYear" in names(well_data)
-                    is_active = year_of_interest >= first(well_data.StartYear) && 
-                                year_of_interest <= first(well_data.EndYear)
-                end
-            elseif injection_data_type == "monthly_fsp"
-                # For monthly data, check if there are entries for this year
-                well_data = injection_wells_df[string.(injection_wells_df[!, "APINumber"]) .== well_id, :]
-                if !isempty(well_data) && "Year" in names(well_data)
-                    is_active = any(year_of_interest .== well_data.Year)
-                end
-            elseif injection_data_type == "injection_tool_data"
-                # For injection tool data, check dates
-                well_data = injection_wells_df[string.(injection_wells_df[!, "API Number"]) .== well_id, :]
-                if !isempty(well_data) && "Date of Injection" in names(well_data)
-                    try
-                        dates = Date.(well_data[!, "Date of Injection"])
-                        injection_years = year.(dates)
-                        is_active = any(year_of_interest .== injection_years)
-                    catch
-                        @warn "Could not parse dates for well $well_id"
-                    end
-                end
-            end
-            
-            push!(well_info, (well_id, coords[1], coords[2], is_active))
-        end
-    end
-    
-    println("\nWell Information:")
-    pretty_table(well_info)
     
     # 5. Create a grid statistics DataFrame
     grid_info = DataFrame(
@@ -916,13 +835,12 @@ function main()
     mkpath(results_dir)
     
     CSV.write(joinpath(results_dir, "pressure_statistics.csv"), pressure_stats)
-    CSV.write(joinpath(results_dir, "well_information.csv"), well_info)
     CSV.write(joinpath(results_dir, "grid_information.csv"), grid_info)
     
-    # Save the full pressure grid to CSV
-    println("\nSaving full pressure grid to CSV...")
+    
     
     # Create a DataFrame with lat, lon, and pressure values
+    # this is the full grid that we reformat to the heatmap data
     grid_size = size(LAT_grid)
     n_points = prod(grid_size)
     
@@ -933,8 +851,11 @@ function main()
     )
     
     # Save to CSV
+    #=
     CSV.write(joinpath(results_dir, "full_grid.csv"), full_grid_df)
     println("- Full grid saved to $(joinpath(results_dir, "full_grid.csv"))")
+    =#
+    
 
 
     # reformat the full grid to heatmap data
@@ -943,7 +864,7 @@ function main()
     save_dataframe_as_parameter!(helper, 4, "hydrology_heatmap_data_arcgis", heatmap_data)
     #pretty_table(first(heatmap_data, 10))
     # print the dimensions of the heatmap data
-    println("Heatmap data dimensions: $(size(heatmap_data))")
+    #println("Heatmap data dimensions: $(size(heatmap_data))")
 
 
 
@@ -1124,9 +1045,10 @@ function main()
         "model_type" => get_parameter_value(helper, 2, "stress_field_mode")
     )
 
-    println("model_type: $(stress_inputs["model_type"])")
+    println("stress_model_type: $(stress_inputs["model_type"])")
     
     # Use friction coefficient from fault data
+    # TO DO: we'll make the portal accepts this as a single scalar float value and not as part of the faults dataframe
     friction_coefficient = first(fault_df.FrictionCoefficient)
     println("- Using friction coefficient: $friction_coefficient")
 
@@ -1216,6 +1138,12 @@ function main()
     println("geo_arcs_df from geomechanics results: $(geo_arcs_df)")
 
 
+    fault_inputs_filepath = get_dataset_file_path(helper, 4, "faults")
+    fault_inputs_df = CSV.read(fault_inputs_filepath, DataFrame)
+
+    println("fault_inputs_df: $(fault_inputs_df)")
+
+
 
     # Get data for Mohr diagram with pressure changes
     arcsDF, slipDF, faultsDF = JuliaFSPGraphs.mohr_diagram_hydro_data_to_d3_portal(
@@ -1235,7 +1163,8 @@ function main()
         fault_ids,
         geo_arcs_df,
         geo_faults_df,
-        geo_slip_df
+        geo_slip_df,
+        fault_inputs_df
     )
 
     println("MODIFIED DATAFRAMES FOR SHIFTED MOHR DIAGRAM:")
