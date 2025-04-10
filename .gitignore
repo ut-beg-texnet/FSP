@@ -1,0 +1,18 @@
+# Exclude directories
+tests/
+input/
+output/
+
+# Exclude file types
+*.png
+*.csv
+*.json
+*.mat
+*.m
+
+
+# Additional common exclusions (optional but recommended)
+*.log                 # Log files
+*.tmp                 # Temporary files
+*.bak                 # Backup files
+.DS_Store             # macOS-specific files

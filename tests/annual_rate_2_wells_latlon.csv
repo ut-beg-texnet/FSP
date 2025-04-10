@@ -1,3 +1,0 @@
-APINumber,Latitude(WGS84),Longitude(WGS84),InjectionRate(bbl/day),StartYear,EndYear
-123,32.0,-96.0,27000.0,2020,2024
-345,35.0,-97.0,29000.0,2021,2025

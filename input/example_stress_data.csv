@@ -1,4 +1,0 @@
-vertical_stress,max_horizontal_stress,min_horizontal_stress,max_stress_azimuth,pore_pressure,reference_depth,depth_gradient
-1.0,0.9,0.8,45.0,0.433,5000.0,1.0
-1.0,,0.8,45.0,0.433,5000.0,1.0
-1.0,,,45.0,0.433,5000.0,1.0
