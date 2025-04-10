@@ -13,6 +13,7 @@ include("core/utilities.jl")
 include("core/bill_pfront.jl")
 include("core/geomechanics_model.jl")
 include("graphs/julia_fsp_graphs.jl")
+include("deterministic_geomechanics_process.jl")
 
 using .TexNetWebToolLauncherHelperJulia
 using .HydroCalculations
@@ -20,7 +21,7 @@ using .Utilities
 using .BillPFront
 using .GeomechanicsModel
 using .JuliaFSPGraphs
-
+using .GeomechanicsDriver
 
 const ARGS_FILE_NAME = "args.json"
 const RESULTS_FILE_NAME = "results.json"
@@ -1094,15 +1095,19 @@ function main()
         println("- No wells with valid data for radial curves")
     end
 
+
+    
     println("\n------------------------------------------------------")
     println("PREPARING MOHR DIAGRAM DATA WITH UPDATED FAULT PRESSURES")
     println("------------------------------------------------------")
     
     # Load geomechanics results with original stress state
+    #=
     geo_results_path = get_dataset_file_path(helper, 4, "det_geomechanics_results")
     if geo_results_path === nothing
         error("Required deterministic geomechanics results not found or accessible.")
     end
+    =#
     
     #geo_results_df = CSV.read(geo_results_path, DataFrame)
     #println("- Loaded geomechanics results with $(nrow(geo_results_df)) faults")
@@ -1116,8 +1121,10 @@ function main()
         "max_horizontal_stress" => get_parameter_value(helper, 4, "max_horizontal_stress"),
         "pore_pressure" => get_parameter_value(helper, 4, "pore_pressure"),
         "max_stress_azimuth" => get_parameter_value(helper, 4, "max_stress_azimuth"),
-        "model_type" => get_parameter_value(helper, 4, "stress_model_type")
+        "model_type" => get_parameter_value(helper, 2, "stress_field_mode")
     )
+
+    println("model_type: $(stress_inputs["model_type"])")
     
     # Use friction coefficient from fault data
     friction_coefficient = first(fault_df.FrictionCoefficient)
@@ -1156,17 +1163,22 @@ function main()
     
     # Process faults with updated pressure
     println("- Processing faults with updated pressure...")
-    faults_with_pressure = []
+    faults_with_pressure = Vector{Dict{String, Any}}()
     for i in 1:nrow(fault_df)
-        push!(faults_with_pressure, Dict(
+        push!(faults_with_pressure, Dict{String, Any}(
             "strike" => fault_df[i, "Strike"],
             "dip" => fault_df[i, "Dip"],
-            "friction_coefficient" => fault_df[i, "FrictionCoefficient"]
+            "friction_coefficient" => fault_df[i, "FrictionCoefficient"],
+            "fault_id" => i
         ))
     end
     
-    hydro_results = GeomechanicsModel.process_faults(
-        faults_with_pressure, stress_state, initial_pressure, tab="det_hydro", dp=pressure_changes
+    hydro_results = GeomechanicsDriver.process_faults(
+        faults_with_pressure, 
+        GeomechanicsDriver.GeomechanicsModel.StressState(stress_state.principal_stresses, stress_state.sH_azimuth), 
+        initial_pressure; 
+        tab="det_hydro", 
+        dp=pressure_changes
     )
     
     # Extract data for Mohr diagram
@@ -1189,8 +1201,24 @@ function main()
         "Unknown"
     end
     
+
+    # get arcs, slip, and faults dataframes from the geomechanics results
+    geo_faults_df = get_dataset_file_path(helper, 4, "faultDF")
+    geo_slip_df = get_dataset_file_path(helper, 4, "slipDF")
+    geo_arcs_df = get_dataset_file_path(helper, 4, "arcsDF")
+
+    geo_faults_df = CSV.read(geo_faults_df, DataFrame)
+    geo_slip_df = CSV.read(geo_slip_df, DataFrame)
+    geo_arcs_df = CSV.read(geo_arcs_df, DataFrame)
+
+    println("geo_faults_df from geomechanics results: $(geo_faults_df)")
+    println("geo_slip_df from geomechanics results: $(geo_slip_df)")
+    println("geo_arcs_df from geomechanics results: $(geo_arcs_df)")
+
+
+
     # Get data for Mohr diagram with pressure changes
-    arcsDF, slipDF, faultDF = JuliaFSPGraphs.mohr_diagram_data_to_d3_portal(
+    arcsDF, slipDF, faultsDF = JuliaFSPGraphs.mohr_diagram_hydro_data_to_d3_portal(
         stress_state.principal_stresses[2], 
         stress_state.principal_stresses[3], 
         stress_state.principal_stresses[1], 
@@ -1204,13 +1232,22 @@ function main()
         friction_coefficient, 
         stress_regime, 
         pressure_changes, 
-        fault_ids
+        fault_ids,
+        geo_arcs_df,
+        geo_faults_df,
+        geo_slip_df
     )
+
+    println("MODIFIED DATAFRAMES FOR SHIFTED MOHR DIAGRAM:")
+    println("arcsDF: $(arcsDF)")
+    println("slipDF: $(slipDF)")
+    println("faultsDF: $(faultsDF)")
     
     # Save datasets for visualization
-    save_dataframe_as_parameter!(helper, 4, "hydro_mohr_arcs", arcsDF)
-    save_dataframe_as_parameter!(helper, 4, "hydro_mohr_slip", slipDF)
-    save_dataframe_as_parameter!(helper, 4, "hydro_mohr_faults", faultDF)
+    save_dataframe_as_parameter!(helper, 4, "arcsDF", arcsDF)
+    save_dataframe_as_parameter!(helper, 4, "slipDF", slipDF)
+    save_dataframe_as_parameter!(helper, 4, "faultsDF", faultsDF)
+    
     
     println("- Mohr diagram data prepared and saved for visualization")
 

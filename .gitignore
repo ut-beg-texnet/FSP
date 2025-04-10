@@ -3,10 +3,6 @@ tests/
 input/
 output/
 
-# include specific files from input/
-!tests/2_faults_austin.csv
-!tests/monthly_fsp_injection_3_wells.csv
-
 # Exclude file types
 *.png
 *.csv
@@ -14,14 +10,10 @@ output/
 *.mat
 *.m
 
-# CSVs allowed to be committed
-!2_faults_austin.csv
-!monthly_fsp_injection_3_wells.csv
-
 
 
 # Additional common exclusions (optional but recommended)
-*.log                 # Log files
-*.tmp                 # Temporary files
-*.bak                 # Backup files
-.DS_Store             # macOS-specific files
+*.log  # Log files
+*.tmp  # Temporary files
+*.bak  # Backup files
+.DS_Store  # macOS-specific files

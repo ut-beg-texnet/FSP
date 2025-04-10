@@ -1365,25 +1365,32 @@ end
 
 # function to generate the D3 data for the input distribution histograms
 function input_distribution_histograms_to_d3(
-    mc_results::DataFrame,
-    stress_inputs::Dict,
-    fault_inputs::DataFrame,
-    uncertainties::Dict,
-    stress_model_type::String,
-    stress_param_values::Dict{String, Vector{Float64}},
-    fault_param_values::Dict{Int, Dict{String, Vector{Float64}}}
+    mc_results::DataFrame, # Monte Carlo results
+    stress_inputs::Dict, # Stress inputs (base values)
+    fault_inputs::DataFrame, # Fault inputs (base values)
+    uncertainties::Dict, # Uncertainties (+/- values)
+    stress_model_type::String, # Stress model type
+    stress_param_values::Dict{String, Vector{Float64}}, # Stress parameter values
+    fault_param_values::Dict{Int, Dict{String, Vector{Float64}}} # Fault parameter values
 )
     println("\n====== DEBUG: Starting input_distribution_histograms_to_d3 ======")
     println("Stress Model Type: $stress_model_type")
+
+    println("Inputs for input_distribution_histograms_to_d3:")
+    println("mc_results: $(first(mc_results, 10))")
+    println("stress_inputs: $stress_inputs")
+    println("fault_inputs: $fault_inputs")
+    println("stress_model_type: $stress_model_type")
+    println("stress_param_values: $(first(stress_param_values, 10))")
+    println("fault_param_values: $(first(fault_param_values, 10))")
+    println("uncertainties: $uncertainties")
     
-    # Create a DataFrame with the required structure for D3 visualization
+    # Create a DataFrame with the required structure for histogram visualization in D3
     histogram_data = DataFrame(
-        parameter_name = String[],
-        display_name = String[],
-        min = Float64[],
-        max = Float64[],
-        values = Vector{Float64}[],
-        fault_id = String[]
+        ID = String[],
+        label = String[],
+        x = Float64[],
+        y = Int[]
     )
     
     # Define the parameters to track based on stress model type
@@ -1428,6 +1435,9 @@ function input_distribution_histograms_to_d3(
         "FrictionCoefficient" => "Mu"
     )
     
+    # Number of bins for histogram (previous version was using 25 hardcoded)
+    num_bins = 25
+    
     # Group simulation results by fault
     fault_ids = unique(mc_results.FaultID)
     
@@ -1444,6 +1454,15 @@ function input_distribution_histograms_to_d3(
                 # Get the stored values from the Monte Carlo simulation
                 values = stress_param_values[param]
                 
+                # Filter out any non-finite values
+                values = filter(isfinite, values)
+                
+                # Skip if no valid values
+                if isempty(values)
+                    println("Warning: No finite values for parameter $param, skipping")
+                    continue
+                end
+                
                 # Get uncertainty parameter name
                 uncertainty_param = param == "vertical_stress" ? "vertical_stress_gradient_uncertainty" :
                                    param == "min_horizontal_stress" ? "min_horizontal_stress_uncertainty" :
@@ -1459,15 +1478,52 @@ function input_distribution_histograms_to_d3(
                              (isa(uncertainties[uncertainty_param], AbstractArray) && !isempty(uncertainties[uncertainty_param]) ? 
                               uncertainties[uncertainty_param][1] : 0.0)) : 0.0
                 
-                # Add to histogram data
-                push!(histogram_data, (
-                    parameter_name = param,
-                    display_name = display_names[param],
-                    min = base_value - uncertainty,
-                    max = base_value + uncertainty,
-                    values = values,
-                    fault_id = fault_id
-                ))
+                # Calculate min and max for the range
+                min_val = base_value - uncertainty
+                max_val = base_value + uncertainty
+                
+                # Handle case where min_val equals max_val (add small offset to avoid zero bin width)
+                if min_val >= max_val
+                    println("Warning: min_val ($min_val) >= max_val ($max_val) for parameter $param")
+                    # Add small offset based on scale of the value
+                    offset = max(abs(min_val) * 0.01, 0.0001)
+                    min_val = min_val - offset
+                    max_val = max_val + offset
+                    println("  Adjusted to min_val=$min_val, max_val=$max_val")
+                end
+                
+                # Create histogram bins
+                bin_width = (max_val - min_val) / num_bins
+                
+                # Just to be extra safe, check that bin_width is not zero
+                if bin_width <= 0
+                    println("Warning: bin_width <= 0 for parameter $param, using default bin width")
+                    bin_width = 0.001 # Small default bin width
+                end
+                
+                # Count values in each bin
+                bin_counts = zeros(Int, num_bins)
+                for val in values
+                    if isfinite(val) # Skip NaN or Inf values
+                        # Calculate bin index, ensuring it falls within valid range
+                        bin_ratio = (val - min_val) / bin_width
+                        if isfinite(bin_ratio)
+                            bin_idx = min(num_bins, max(1, ceil(Int, bin_ratio)))
+                            bin_counts[bin_idx] += 1
+                        end
+                    end
+                end
+                
+                # Add histogram data for this parameter
+                for i in 1:num_bins
+                    bin_center = min_val + bin_width * (i - 0.5)
+                    push!(histogram_data, (
+                        ID = fault_id,
+                        label = display_names[param],
+                        x = bin_center,
+                        y = bin_counts[i]
+                    ))
+                end
             end
         end
         
@@ -1476,6 +1532,15 @@ function input_distribution_histograms_to_d3(
             if haskey(fault_param_values[fault_idx], param)
                 # Get the stored values from the Monte Carlo simulation
                 values = fault_param_values[fault_idx][param]
+                
+                # Filter out any non-finite values
+                values = filter(isfinite, values)
+                
+                # Skip if no valid values
+                if isempty(values)
+                    println("Warning: No finite values for fault parameter $param, skipping")
+                    continue
+                end
                 
                 # Get the base value
                 base_value = fault_inputs[fault_idx, param]
@@ -1491,20 +1556,53 @@ function input_distribution_histograms_to_d3(
                              (isa(uncertainties[uncertainty_param], AbstractArray) && !isempty(uncertainties[uncertainty_param]) ? 
                               uncertainties[uncertainty_param][1] : 0.0)) : 0.0
                 
-                # Special handling for display name to include fault number
-                display_name = param == "Strike" ? "Strike of fault #$(fault_id)" :
-                             param == "Dip" ? "Dip of fault #$(fault_id)" :
-                             display_names[param]
+                # Calculate min and max for the range
+                min_val = base_value - uncertainty
+                max_val = base_value + uncertainty
                 
-                # Add to histogram data
-                push!(histogram_data, (
-                    parameter_name = "$(param)_fault_$(fault_id)",
-                    display_name = display_name,
-                    min = base_value - uncertainty,
-                    max = base_value + uncertainty,
-                    values = values,
-                    fault_id = fault_id
-                ))
+                # Handle case where min_val equals max_val (add small offset to avoid zero bin width)
+                if min_val >= max_val
+                    println("Warning: min_val ($min_val) >= max_val ($max_val) for parameter $param")
+                    # Add small offset based on scale of the value
+                    offset = max(abs(min_val) * 0.01, 0.0001)
+                    min_val = min_val - offset
+                    max_val = max_val + offset
+                    println("  Adjusted to min_val=$min_val, max_val=$max_val")
+                end
+                
+                # Create histogram bins
+                bin_width = (max_val - min_val) / num_bins
+                
+                # to be extra safe, check that bin_width is not zero
+                if bin_width <= 0
+                    println("Warning: bin_width <= 0 for parameter $param, using default bin width")
+                    bin_width = 0.001 # Small default bin width
+                end
+                
+                # Count values in each bin
+                bin_counts = zeros(Int, num_bins)
+                for val in values
+                    if isfinite(val) # Skip NaN or Inf values
+                        # Calculate bin index, ensuring it falls within valid range
+                        bin_ratio = (val - min_val) / bin_width
+                        if isfinite(bin_ratio)
+                            bin_idx = min(num_bins, max(1, ceil(Int, bin_ratio)))
+                            bin_counts[bin_idx] += 1
+                        end
+                    end
+                end
+                
+                # Add histogram data for this parameter
+                display_name = display_names[param]
+                for i in 1:num_bins
+                    bin_center = min_val + bin_width * (i - 0.5)
+                    push!(histogram_data, (
+                        ID = fault_id,
+                        label = display_name,
+                        x = bin_center,
+                        y = bin_counts[i]
+                    ))
+                end
             end
         end
         
@@ -1512,19 +1610,67 @@ function input_distribution_histograms_to_d3(
         slip_pressures = fault_data.SlipPressure
         
         if !isempty(slip_pressures)
-            push!(histogram_data, (
-                parameter_name = "slip_pressure_fault_$(fault_id)",
-                display_name = "result: pore pressure to slip for fault number $(fault_id)",
-                min = minimum(slip_pressures),
-                max = maximum(slip_pressures),
-                values = slip_pressures,
-                fault_id = fault_id
-            ))
+            # Filter out any non-finite values
+            slip_pressures = filter(isfinite, slip_pressures)
+            
+            # Skip if no valid values
+            if isempty(slip_pressures)
+                println("Warning: No finite slip pressures for fault $fault_id, skipping")
+                continue
+            end
+            
+            # Calculate min and max for the range
+            min_val = minimum(slip_pressures)
+            max_val = maximum(slip_pressures)
+            
+            # Handle case where min_val equals max_val (add small offset to avoid zero bin width)
+            if min_val >= max_val
+                println("Warning: min_val ($min_val) >= max_val ($max_val) for slip pressures")
+                # Add small offset based on scale of the value
+                offset = max(abs(min_val) * 0.01, 10.0)  # Larger default for pressures
+                min_val = min_val - offset
+                max_val = max_val + offset
+                println("  Adjusted to min_val=$min_val, max_val=$max_val")
+            end
+            
+            # Create histogram bins
+            bin_width = (max_val - min_val) / num_bins
+            
+            # to be extra safe, check that bin_width is not zero
+            if bin_width <= 0
+                println("Warning: bin_width <= 0 for slip pressures, using default bin width")
+                bin_width = 10.0 # Default bin width for pressure (larger than other parameters)
+            end
+            
+            # Count values in each bin
+            bin_counts = zeros(Int, num_bins)
+            for val in slip_pressures
+                # Calculate bin index, ensuring it falls within valid range
+                bin_ratio = (val - min_val) / bin_width
+                if isfinite(bin_ratio)
+                    bin_idx = min(num_bins, max(1, ceil(Int, bin_ratio)))
+                    bin_counts[bin_idx] += 1
+                end
+            end
+            
+            # Add histogram data for slip pressure
+            for i in 1:num_bins
+                bin_center = min_val + bin_width * (i - 0.5)
+                push!(histogram_data, (
+                    ID = fault_id,
+                    label = "result: pore pressure to slip for fault number $(fault_id)",
+                    x = bin_center,
+                    y = bin_counts[i]
+                ))
+            end
         end
     end
     
-    println("Created histogram data with $(nrow(histogram_data)) distributions")
+    println("Created histogram data with $(nrow(histogram_data)) rows")
     println("====== DEBUG: Ending input_distribution_histograms_to_d3 ======\n")
+
+    # Save the histogram data to a CSV file
+    CSV.write("histogram_data.csv", histogram_data)
     
     return histogram_data
 end
@@ -2112,6 +2258,108 @@ function calculate_with_direct_parameter(
     
     println("Calculated pp_to_slip: $pp_to_slip")
     return pp_to_slip
+end
+
+
+
+
+"""
+Generates the data fro the shifter Mohr diagram
+For the arcs, it shifts the circles to the left by the mean dp value
+For the slip line, it doesn't need to be shifted
+For the faults, it adds the dp value to the existing pore pressure
+If those dataframes are not provided, it will calculate from scratch using the existing code
+"""
+
+function mohr_diagram_hydro_data_to_d3_portal(
+    sh::Float64, 
+    sH::Float64, 
+    sV::Float64, 
+    tau_effective::Union{Float64, AbstractVector{Float64}}, 
+    sigma_effective::Union{Float64, AbstractVector{Float64}}, 
+    p0::Float64, 
+    biot::Float64, 
+    nu::Float64, 
+    dp::Union{AbstractVector{Float64}, AbstractVector{Integer}}, 
+    strike::Vector{Float64},
+    mu::Union{Float64, Integer},
+    stress_regime::String,
+    slip_pressure::Union{Float64, AbstractVector{Float64}},
+    fault_ids::Union{Vector{String}, Vector{Int}, Vector{Any}}=["fault"],
+    geo_arcs_df::DataFrame=DataFrame(),
+    geo_faults_df::DataFrame=DataFrame(),
+    geo_slip_df::DataFrame=DataFrame()
+)
+    N = length(strike)
+
+    # Ensure dp is a vector and calculate the mean for Mohr circles
+    dp = dp isa AbstractVector ? dp : fill(dp, N)
+    dp_mean = mean(dp)
+    
+    # Check if we have valid geomechanics dataframes to use
+    has_geo_data = !isempty(geo_arcs_df) && !isempty(geo_faults_df) && !isempty(geo_slip_df)
+    
+    if has_geo_data
+        println("Using geomechanics dataframes as base with mean dp = $(dp_mean) psi")
+        
+        # --- Modify Arcs DataFrame with pressure shift ---
+        arcsDF = copy(geo_arcs_df)
+        println("Arc dataframe column names: ", names(arcsDF))
+        
+        # Shift the circles to the left by dp_mean using string indexing
+        arcsDF[!, "centerX"] .-= dp_mean
+        arcsDF[!, "labelPosX"] .-= dp_mean
+        
+        # --- Keep Slip Line DataFrame unchanged ---
+        slipDF = copy(geo_slip_df)
+        
+        # --- Create new Faults DataFrame with same structure ---
+        faultsDF = DataFrame(
+            [name => similar(geo_faults_df[!, name], 0) for name in names(geo_faults_df)]
+        )
+        
+        # Create the stress state object for recalculating stresses
+        stress_state = GeomechanicsModel.StressState([sV, sh, sH], stress_regime == "Normal" ? 90.0 : 0.0)
+        
+        # For each fault, recalculate normal and shear stresses with its specific dp
+        for i in 1:min(size(geo_faults_df, 1), length(dp))
+            # Get fault properties from geomechanics dataframe
+            fault_id = geo_faults_df[i, "fault_id"]
+            fault_strike = strike[i]
+            fault_dip = 90.0  # Assuming vertical faults, adjust if needed
+            
+            # Recalculate stresses using GeomechanicsModel function
+            sig_fault, tau_fault, _, _, _, _, _, _ = 
+                GeomechanicsModel.calculate_fault_effective_stresses(
+                    fault_strike, fault_dip, stress_state, p0, dp[i]
+                )
+            
+            # Create a new row for this fault with updated coordinates
+            new_row = Dict(name => geo_faults_df[i, name] for name in names(geo_faults_df))
+            
+            # Update the x and y coordinates with recalculated values
+            new_row["x"] = sig_fault
+            new_row["y"] = tau_fault
+            
+            # Add the row to the output dataframe
+            push!(faultsDF, new_row)
+        end
+        
+        # Return dataframes with consistent structure
+        println("MODIFIED DATAFRAMES FOR SHIFTED MOHR DIAGRAM:")
+        println("arcsDF: ", size(arcsDF))
+        println("slipDF: ", size(slipDF))
+        println("faultsDF: ", size(faultsDF))
+        
+        return (arcsDF, slipDF, faultsDF)
+    else
+        # Calculate from scratch (existing logic)
+        # ...
+        
+        # Return all three DataFrames
+        println("Created hydrology Mohr diagram data from scratch with mean dp = $(dp_mean) psi")
+        return (arcsDF, slipDF, faultDF)
+    end
 end
 
 end # module

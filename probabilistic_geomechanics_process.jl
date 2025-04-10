@@ -184,7 +184,8 @@ function run_monte_carlo(stress_inputs::Dict, fault_inputs::DataFrame, uncertain
         end
     end
     
-    # Use threading to parallelize across simulations
+    # Use threading to parallelize 
+    # TO DO: read the threads documentaiton and configure this properly
     Threads.@threads for i in 1:n_sims
         # Create a thread-local random number generator to avoid race conditions
         local_rng = Random.MersenneTwister(base_seed + i)
@@ -203,7 +204,7 @@ function run_monte_carlo(stress_inputs::Dict, fault_inputs::DataFrame, uncertain
                     uncertainty = isa(uncertainty_value, Number) ? uncertainty_value : 
                                 (isa(uncertainty_value, AbstractArray) && !isempty(uncertainty_value) ? uncertainty_value[1] : 0.0)
                     
-                    # Use the thread-local random number generator (RNG) for randomization
+                    
                     # Only apply randomization if uncertainty is greater than 0
                     if uncertainty > 0.0
                         sim_stress[stress_param] = base_value + rand(local_rng, Uniform(-uncertainty, uncertainty))
@@ -233,7 +234,7 @@ function run_monte_carlo(stress_inputs::Dict, fault_inputs::DataFrame, uncertain
                         uncertainty = isa(uncertainty_value, Number) ? uncertainty_value : 
                                     (isa(uncertainty_value, AbstractArray) && !isempty(uncertainty_value) ? uncertainty_value[1] : 0.0)
                         
-                        # Apply random variation using thread-local RNG
+                        
                         # Only apply randomization if uncertainty is greater than 0
                         if uncertainty > 0.0
                             sim_fault[fault_param] += rand(local_rng, Uniform(-uncertainty, uncertainty))
@@ -248,7 +249,7 @@ function run_monte_carlo(stress_inputs::Dict, fault_inputs::DataFrame, uncertain
             sim_faults[idx] = sim_fault
         end
         
-        # Get friction coefficient from first fault (as originally intended)
+        # Get friction coefficient from first fault 
         friction_coefficient = sim_faults[1]["FrictionCoefficient"]
         
         # Calculate absolute stresses using the first fault's friction coefficient
@@ -283,7 +284,7 @@ function run_monte_carlo(stress_inputs::Dict, fault_inputs::DataFrame, uncertain
                 pp_to_slip = ComputeCriticalPorePressureForFailure(
                     sig_normal,
                     tau_normal,
-                    fault["FrictionCoefficient"],  # Use each fault's own friction coefficient
+                    fault["FrictionCoefficient"],  # Use each fault's own friction coefficient (we apply the same friction coefficient to all faults so it doesn't matter)
                     sim_stress["pore_pressure"],
                     1.0,  # biot coefficient
                     0.5,  # Poisson's ratio
@@ -471,6 +472,7 @@ function main()
 
     # Generate input parameter distributions for histograms
     println("Generating input parameter distributions for histograms...")
+    #=
     input_histograms_data = input_distribution_histograms_to_d3(
         mc_pp_results,
         stress_inputs,
@@ -480,9 +482,10 @@ function main()
         stress_param_values,
         fault_param_values
     )
+        =#
 
     # Save the histogram data as a parameter
-    save_dataframe_as_parameter!(helper, 3, "prob_geomechanics_input_histograms", input_histograms_data)
+    #save_dataframe_as_parameter!(helper, 3, "prob_geomechanics_input_histograms", input_histograms_data)
     println("Input parameter distributions saved for visualization")
 
     # Calculate statistics
