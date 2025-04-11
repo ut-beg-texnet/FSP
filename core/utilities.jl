@@ -275,7 +275,8 @@ function prepare_well_data_for_pressure_scenario(
     end_year::Int, 
     injection_data_type::String,
     year_of_interest::Int,
-    extrapolate::Bool=false
+    extrapolate::Bool=false,
+    year_of_interest_date::Date=Date(year_of_interest-1, 12, 31)
 )
     # Validate inputs - start_year should not exceed end_year
     @assert start_year <= end_year "Start year must be <= end year"
@@ -331,13 +332,13 @@ function prepare_well_data_for_pressure_scenario(
     # Select the appropriate preparation method based on data type
     if injection_data_type == "annual_fsp"
         println("DEBUG: Calling prepare_annual_fsp_data")
-        return prepare_annual_fsp_data(well_data, start_year, end_year, year_of_interest)
+        return prepare_annual_fsp_data(well_data, start_year, end_year, year_of_interest, year_of_interest_date)
     elseif injection_data_type == "monthly_fsp"
         println("DEBUG: Calling prepare_monthly_fsp_data")
-        return prepare_monthly_fsp_data(well_data, start_year, end_year, year_of_interest, extrapolate)
+        return prepare_monthly_fsp_data(well_data, start_year, end_year, year_of_interest, extrapolate, year_of_interest_date)
     elseif injection_data_type == "injection_tool_data"
         println("DEBUG: Calling prepare_injection_tool_data")
-        return prepare_injection_tool_data(well_data, start_year, end_year, year_of_interest, extrapolate)
+        return prepare_injection_tool_data(well_data, start_year, end_year, year_of_interest, extrapolate, year_of_interest_date)
     else
         error("Unsupported well dataset data type: $injection_data_type")
     end
@@ -353,11 +354,12 @@ function prepare_annual_fsp_data(
     well_data::DataFrame, 
     start_year::Int, 
     end_year::Int, 
-    year_of_interest::Int
+    year_of_interest::Int,
+    year_of_interest_date::Date
 )
     # Use the provided end_year (already calculated as min(inj_end_year, year_of_interest))
     # If well starts after end year, return empty arrays
-    if start_year > end_year
+    if start_year > year(year_of_interest_date)
         println("DEBUG: Well starts after calculation end year - start_year ($start_year) > end_year ($end_year)")
         return Float64[], Float64[]
     end
@@ -372,10 +374,17 @@ function prepare_annual_fsp_data(
     @assert daily_rate_bbl >= 0 "Injection rate must be >= 0"
     
     # Define the time period
-    # in this case, the user only provides the year, so we need to get the actual date (Jan 1)
+    
     global_start_date = Date(start_year, 1, 1)
-    # For consistency with other formats, end_year means injection up to Dec 31 of the previous year
-    global_end_date = Date(end_year-1, 12, 31)
+    
+    # Special handling for the case where start_year equals end_year
+    if start_year == end_year
+        # Use end of the start_year instead of previous year
+        global_end_date = min(Date(start_year, 12, 31), year_of_interest_date)
+    else
+        # Original logic: End_year means data up to Dec 31 of the previous year
+        global_end_date = min(Date(end_year-1, 12, 31), year_of_interest_date)
+    end
     
     # Calculate total days in the injection period
     days_total = (global_end_date - global_start_date).value + 1
@@ -411,17 +420,11 @@ function prepare_monthly_fsp_data(
     start_year::Int, 
     end_year::Int, 
     year_of_interest::Int, 
-    extrapolate::Bool
+    extrapolate::Bool,
+    year_of_interest_date::Date
 )
-    println("\nDEBUG: Inside prepare_monthly_fsp_data")
-    println("DEBUG: well_data columns: $(names(well_data))")
-    println("DEBUG: well_data has $(nrow(well_data)) rows")
-    if nrow(well_data) > 0
-        println("DEBUG: First row: $(first(well_data))")
-        println("DEBUG: First row Year type: $(typeof(first(well_data).Year))")
-        println("DEBUG: First row Month type: $(typeof(first(well_data).Month))")
-        println("DEBUG: First row WellID type: $(typeof(first(well_data).WellID))")
-    end
+    println("\n===== DEBUG: Inside prepare_monthly_fsp_data =====")
+    
     println("DEBUG: start_year=$start_year, end_year=$end_year, year_of_interest=$year_of_interest")
     
     # If well starts after end_year, return empty arrays
@@ -432,7 +435,18 @@ function prepare_monthly_fsp_data(
     
     # Define boundaries
     global_start_date = Date(start_year, 1, 1)
-    global_end_date = Date(end_year, 12, 31)
+    
+    # Special handling for the case where start_year equals end_year
+    if start_year == end_year
+        # Use end of the start_year instead of previous year
+        global_end_date = min(Date(start_year, 12, 31), year_of_interest_date)
+    else
+        # Original logic: End_year means data up to Dec 31 of the previous year
+        global_end_date = min(Date(end_year-1, 12, 31), year_of_interest_date)
+    end
+    
+    println("DEBUG: global_start_date = $global_start_date, global_end_date = $global_end_date")
+    println("DEBUG: Timespan is $((global_end_date - global_start_date).value + 1) days")
     
     # Arrays for step changes
     step_times = Float64[]
@@ -449,19 +463,17 @@ function prepare_monthly_fsp_data(
         end
     end
     
-    
     # Debugging output
     println("  * Processing monthly FSP data for well")
     println("  * Year range: $start_year to $end_year")
-    println("  * Data points available: $(nrow(well_data))")
-    println("  * Column names: $(names(well_data))")
+    
     
     # Verify required columns exist
     required_cols = ["Year", "Month", "InjectionRate(bbl/month)"]
     missing_cols = filter(col -> !(col in names(well_data)), required_cols)
     
     if !isempty(missing_cols)
-        @warn "Missing required columns: $(join(missing_cols, ", "))"
+        println("DEBUG: Missing required columns: $(join(missing_cols, ", "))")
         
         # Try alternative column names for "InjectionRate(bbl/month)"
         if "InjectionRate(bbl/month)" in missing_cols
@@ -470,7 +482,7 @@ function prepare_monthly_fsp_data(
             
             for alt_col in alt_rate_cols
                 if alt_col in names(well_data)
-                    println("  * Using alternative column '$alt_col' for injection rate")
+                    println("DEBUG: Using alternative column '$alt_col' for injection rate")
                     rename!(well_data, alt_col => "InjectionRate(bbl/month)")
                     found_alt = true
                     missing_cols = filter(col -> !(col in names(well_data)), required_cols)
@@ -479,28 +491,37 @@ function prepare_monthly_fsp_data(
             end
             
             if !found_alt
-                @warn "No suitable monthlyinjection rate column found"
+                println("DEBUG: No suitable monthly injection rate column found")
                 return Float64[], Float64[]
             end
         end
         
         # If still missing required columns, return empty
         if !isempty(missing_cols)
-            @warn "Still missing required columns after attempting alternatives: $(join(missing_cols, ", "))"
+            println("DEBUG: Still missing required columns after attempting alternatives: $(join(missing_cols, ", "))")
             return Float64[], Float64[]
         end
     end
     
+    
+    
+    # Print the ranges we're looking for
+    years_to_find = start_year:end_year-1
+    months_to_find = 1:12
+    
+    
     # Print out all well data rows for debugging
-    #=
-    println("DEBUG: Well data rows:")
+    println("DEBUG: Well data rows (first 5 rows max):")
     for (i, row) in enumerate(eachrow(well_data))
-        println("DEBUG: Row $i: Year=$(row.Year), Month=$(row.Month), Rate=$(row["Injection Rate (bbl/month)"])")
+        if i <= 5
+            println("DEBUG: Row $i: Year=$(row.Year), Month=$(row.Month), Rate=$(row["InjectionRate(bbl/month)"])")
+        else
+            break
+        end
     end
-    =#
     
     current_month_date = global_start_date
-    #println("DEBUG: global_start_date = $global_start_date, global_end_date = $global_end_date")
+    println("DEBUG: Starting month loop with current_month_date = $current_month_date")
     
     # Process each month
     processed_months = 0
@@ -508,24 +529,29 @@ function prepare_monthly_fsp_data(
         y, m = year(current_month_date), month(current_month_date)
         next_m = next_month(current_month_date)
         
-        println("DEBUG: Processing month $y-$m")
+        
         processed_months += 1
         
         # Calculate days in this month
         days_in_month = Dates.daysinmonth(current_month_date)
         
-        # Find data for this month
-        month_data = well_data[(string.(well_data.Year) .== string(y)) .& (string.(well_data.Month) .== string(m)), :]
         
-        #println("DEBUG: Finding data for month $y-$m, found $(nrow(month_data)) rows")
-        #println("DEBUG: Year column type: $(eltype(well_data.Year)), Month column type: $(eltype(well_data.Month))")
+        # Try different approaches to find matching data
+        month_data_numeric = well_data[(well_data.Year .== y) .& (well_data.Month .== m), :]
+        month_data_string = well_data[(string.(well_data.Year) .== string(y)) .& (string.(well_data.Month) .== string(m)), :]
+        
+        
+        
+        # Determine which approach worked better
+        month_data = nrow(month_data_numeric) > 0 ? month_data_numeric : month_data_string
         
         # Calculate daily rate for this month
         if !isempty(month_data)
+            
             monthly_vol = first(month_data[!, "InjectionRate(bbl/month)"])
             daily_rate = monthly_vol / days_in_month
             
-            #println("DEBUG: monthly_vol = $monthly_vol, daily_rate = $daily_rate")
+            
             
             # If rate changed, we add step point
             if abs(daily_rate - current_rate) > 1.0e-6 # check for a change of 0.000001
@@ -533,11 +559,12 @@ function prepare_monthly_fsp_data(
                 push!(step_times, Float64(days_since_start))
                 push!(step_rates, daily_rate)
                 current_rate = daily_rate
-                #println("DEBUG: Added step point: day=$(days_since_start), rate=$daily_rate")
+            else
+                println("DEBUG: No significant rate change (current=$current_rate, new=$daily_rate), skipping step point")
             end
         elseif extrapolate && !isnothing(current_rate) && current_rate > 0
             # Keep using current rate if extrapolating
-            println("DEBUG: Extrapolating using current rate $current_rate")
+            println("DEBUG: Extrapolating using current rate $current_rate for month $y-$m")
         else
             # No data for this month and not extrapolating
             # If current rate is non-zero, step down to zero
@@ -546,7 +573,7 @@ function prepare_monthly_fsp_data(
                 push!(step_times, Float64(days_since_start))
                 push!(step_rates, 0.0)
                 current_rate = 0.0
-                println("DEBUG: Added step down to zero: day=$(days_since_start)")
+                println("DEBUG: Added step down to zero: day=$(days_since_start) for month $y-$m (no data)")
             else
                 println("DEBUG: No data for month $y-$m, current rate already zero")
             end
@@ -556,25 +583,26 @@ function prepare_monthly_fsp_data(
         current_month_date = next_m
     end
     
-    println("DEBUG: Processed $processed_months months")
+    
     
     # Ensure we end with zero if we had any non-zero rates
     if !isempty(step_rates) && step_rates[end] > 0
         days_total = (global_end_date - global_start_date).value + 1
         push!(step_times, Float64(days_total))
         push!(step_rates, 0.0)
-        println("DEBUG: Added final step down to zero: day=$(days_total)")
     end
     
     # If we have no data, return empty arrays
     if isempty(step_times)
-        @warn "No valid step changes found"
+        println("DEBUG: NO VALID STEP CHANGES FOUND. step_times and step_rates are empty.")
         return Float64[], Float64[]
     end
     
     # Print summary of steps
-    println("  * Created $(length(step_times)) injection rate step changes")
-    println("  * Rate changes: $(join(string.(step_rates), ", "))")
+    println("DEBUG: Created $(length(step_times)) injection rate step changes")
+    println("DEBUG: step_times: $(step_times)")
+    println("DEBUG: step_rates: $(step_rates)")
+    println("===== END DEBUG prepare_monthly_fsp_data =====\n")
     
     return step_times, step_rates
 end
@@ -593,7 +621,8 @@ function prepare_injection_tool_data(
     start_year::Int, 
     end_year::Int, 
     year_of_interest::Int, 
-    extrapolate::Bool
+    extrapolate::Bool,
+    year_of_interest_date::Date
 )
     # If well starts after calculation end year, return empty arrays
     if start_year > end_year
@@ -648,8 +677,17 @@ function prepare_daily_injection_tool_data(
     requested_start_date = Date(start_year, 1, 1)
     global_start_date = max(earliest_data_date, requested_start_date)
     
-    # Keep the end date calculation as before
-    global_end_date = Date(end_year - 1, 12, 31)
+    # For consistency with domain logic:
+    # - end_year means "data up to Dec 31 of the year before end_year"
+    # - BUT we need special handling when start_year == end_year
+    if start_year == end_year
+        # For same-year data, use at least a month of data
+        global_end_date = Date(end_year, 1, 31)
+        println("DEBUG: Special case - start_year equals end_year, using Jan 31 of $end_year as end date")
+    else
+        # Normal case: end_year means data up to Dec 31 of the previous year
+        global_end_date = Date(end_year-1, 12, 31)
+    end
     
     println("DEBUG: Using actual start date from data: $global_start_date (earliest data: $earliest_data_date)")
     

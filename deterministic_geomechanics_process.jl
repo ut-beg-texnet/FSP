@@ -550,10 +550,15 @@ function main()
         "max_horizontal_stress" => get_parameter_value(helper, 2, "max_horizontal_stress"),
         "pore_pressure" => get_parameter_value(helper, 2, "pore_pressure"),
         "max_stress_azimuth" => get_parameter_value(helper, 2, "max_stress_azimuth"),
-        "aphi_value" => nothing,
+        "aphi_value" => get_parameter_value(helper, 2, "aphi_value") === nothing ? nothing : get_parameter_value(helper, 2, "aphi_value"),
         "stress_field_mode" => get_parameter_value(helper, 2, "stress_field_mode")
         #"aphi_value" => get_parameter_value(helper, 2, "aphi_value")
     )
+
+    # if both aphi_value and max_horizontal_stress are not nothing, then we need to throw an error
+    if stress_inputs["aphi_value"] !== nothing && stress_inputs["max_horizontal_stress"] !== nothing
+        throw(ErrorException("Error: Aphi value and Max Horizontal Stress Gradient cannot both be provided"))
+    end
     
 
     # make the 'stress_model_type' of the stress_inputs get the value from the 'get_stress_model_type' function
@@ -651,7 +656,7 @@ function main()
     println("step2_faults_output: $(step2_faults_output)")
     save_dataframe_as_parameter!(helper, 2, "det_geomechanics_results", step2_faults_output)
 
-    add_message_with_step_index!(helper, 2, "step2_faults_output: $(step2_faults_output)", 0)
+    #add_message_with_step_index!(helper, 2, "step2_faults_output: $(step2_faults_output)", 0)
 
     # extract tau and sigme effective from results (to use in the Mohr diagram)
     tau_effective_faults = [result["shear_stress"] for result in results]

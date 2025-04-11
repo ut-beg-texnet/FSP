@@ -128,6 +128,8 @@ function main()
         #println("- Year of interest: $year_of_interest")
     end
 
+    year_of_interest_date = Date(year_of_interest-1, 12, 31)
+
     
     # Aquifer thickness (ft)
     h_feet = get_parameter_value(helper, 4, "aquifer_thickness_ft")
@@ -415,11 +417,11 @@ function main()
             end
             
             # Check if well is active at year of interest
-            if inj_start_year > year_of_interest
-                #println("- Status: NOT ACTIVE before year $year_of_interest (active $inj_start_year-$inj_end_year)")
+            if inj_start_year > year_of_interest || (inj_start_year == year_of_interest && Date(inj_start_year, 1, 1) > year_of_interest_date)
+                println("- Status: NOT ACTIVE before year $year_of_interest (active $inj_start_year-$inj_end_year)")
                 continue
             else
-                #println("- Status: ACTIVE at or before year $year_of_interest (period: $inj_start_year-$inj_end_year)")
+                println("- Status: ACTIVE at or before year $year_of_interest (period: $inj_start_year-$inj_end_year)")
             end
             
             # Calculate end year for pressure calculation
@@ -478,7 +480,8 @@ function main()
                 actual_end_year,
                 injection_data_type,
                 year_of_interest,
-                extrapolate_injection_rates
+                extrapolate_injection_rates,
+                year_of_interest_date
             )
             
             #println("DEBUG: Received days: $(length(days)), rates: $(length(rates))")
@@ -498,7 +501,7 @@ function main()
             # Use the lat/lon version with haversine distance calculation
             pfield_this_well = pfieldcalc_all_rates(
                 LON_grid, LAT_grid, STRho, days, rates,
-                well_lon, well_lat, Date(year_of_interest, 1, 1, coordinate_type="latlon")
+                well_lon, well_lat, coordinate_type="latlon"
             )
                 
             # Add to total field (superposition)
@@ -512,7 +515,7 @@ function main()
         well_locations[well_id] = (well_lat, well_lon)
         
         # Check if well was active before or during the year of interest
-        if inj_start_year > year_of_interest
+        if inj_start_year > year_of_interest || (inj_start_year == year_of_interest && Date(inj_start_year, 1, 1) > year_of_interest_date)
             println("- Status: NOT ACTIVE before year $year_of_interest (active $inj_start_year-$inj_end_year)")
             continue
         else
@@ -568,14 +571,14 @@ function main()
         #println("- Calculating pressure field contribution...")
         
         # Use the lat/lon version with haversine distance calculation
-        pfield_this_well = pfieldcalc_all_rates(
+        pressure_contribution = pfieldcalc_all_rates(
             LON_grid, LAT_grid, STRho, days, rates,
-            well_lon, well_lat, Date(year_of_interest, 1, 1)
+            well_lon, well_lat
         )
             
         # Add to total field (superposition)
-        total_pressure_2d .+= pfield_this_well
-        #println("- Maximum pressure contribution: $(maximum(pfield_this_well)) psi")
+        total_pressure_2d .+= pressure_contribution
+        #println("- Maximum pressure contribution: $(maximum(pressure_contribution)) psi")
     end
 
     println("\n------------------------------------------------------")
@@ -609,6 +612,8 @@ function main()
     
     println("Pressure Field Statistics:")
     pretty_table(pressure_stats)
+
+    
 
     
 
@@ -718,7 +723,14 @@ function main()
             # Get fault coordinates
             fault_lat = fault_df[f, "Latitude(WGS84)"]
             fault_lon = fault_df[f, "Longitude(WGS84)"]
-            fault_id = string(f)
+            
+            # Get the actual fault ID from the fault dataset
+            fault_id = if "FaultID" in names(fault_df)
+                string(fault_df[f, "FaultID"])
+            else
+                # Fall back to using the index as the ID
+                string(f)
+            end
             
             println("    - Fault $fault_id: lat=$(fault_lat)°, lon=$(fault_lon)°")
             
@@ -822,8 +834,7 @@ function main()
                     days,
                     rates,
                     well_lon,  # longitude is x
-                    well_lat,  # latitude is y
-                    Date(calc_year, 1, 1)
+                    well_lat  # latitude is y
                 )
                 
                 # Add to total pressure for this fault
@@ -995,7 +1006,7 @@ function main()
         end
         
         # Check if well is active at year of interest
-        if year_of_interest < inj_start_year
+        if year_of_interest < inj_start_year || (year_of_interest == inj_start_year && Date(inj_start_year, 1, 1) > year_of_interest_date)
             println("  * Well $well_id not active at year $year_of_interest, skipping radial curve")
             continue
         end
@@ -1054,9 +1065,10 @@ function main()
         csv_output_path = joinpath(results_dir, "radial_curves.csv")
         CSV.write(csv_output_path, radial_df)
 
-        println(first(radial_df, 10))
+        #println(first(radial_df, 10))
         save_dataframe_as_parameter!(helper, 4, "radial_curves_data", radial_df)
         println("- All radial curve data saved to $csv_output_path")
+        println("radial_df: $(radial_df)")
         
         # Save to the web tool portal parameter
         #save_dataframe_as_parameter!(helper, 4, "radial_curve_data", radial_df)
@@ -1116,7 +1128,7 @@ function main()
     # for each fault and year we have two rows: one with probability = 0.0 and one with probability = 1.0
     # they both have the same data (pressure), but we only need one of them
     year_specific_data = fault_pressure_by_year[
-        (fault_pressure_by_year.Date .== Date(year_of_interest, 1, 1)) .& 
+        (fault_pressure_by_year.Date .== year_of_interest_date) .& 
         (fault_pressure_by_year.probability .== 0.0),
         :
     ]
@@ -1136,11 +1148,19 @@ function main()
     println("- Processing faults with updated pressure...")
     faults_with_pressure = Vector{Dict{String, Any}}()
     for i in 1:nrow(fault_df)
+        # Get the actual fault ID from the fault dataset
+        fault_id = if "FaultID" in names(fault_df)
+            string(fault_df[i, "FaultID"])
+        else
+            # Fall back to using the index as the ID
+            string(i)
+        end
+        
         push!(faults_with_pressure, Dict{String, Any}(
             "strike" => fault_df[i, "Strike"],
             "dip" => fault_df[i, "Dip"],
             "friction_coefficient" => fault_df[i, "FrictionCoefficient"],
-            "fault_id" => i
+            "fault_id" => fault_id
         ))
     end
     
@@ -1155,7 +1175,9 @@ function main()
     # Extract data for Mohr diagram
     tau_effective_faults = [result["shear_stress"] for result in hydro_results]
     sigma_n_faults = [result["normal_stress"] for result in hydro_results]
-    fault_ids = string.(1:nrow(fault_df))
+    
+    # Use actual fault IDs instead of indices
+    fault_ids = [fault["fault_id"] for fault in faults_with_pressure]
     strikes = [fault["strike"] for fault in faults_with_pressure]
     
     # Determine stress regime
@@ -1225,9 +1247,9 @@ function main()
     println("faultsDF: $(faultsDF)")
     
     # Save datasets for visualization
-    save_dataframe_as_parameter!(helper, 4, "arcsDF", arcsDF)
-    save_dataframe_as_parameter!(helper, 4, "slipDF", slipDF)
-    save_dataframe_as_parameter!(helper, 4, "faultsDF", faultsDF)
+    save_dataframe_as_parameter!(helper, 4, "arcsDF_hydro", arcsDF)
+    save_dataframe_as_parameter!(helper, 4, "slipDF_hydro", slipDF)
+    save_dataframe_as_parameter!(helper, 4, "faultsDF_hydro", faultsDF)
     
     
     println("- Mohr diagram data prepared and saved for visualization")

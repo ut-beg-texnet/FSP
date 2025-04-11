@@ -1337,15 +1337,15 @@ function prob_hydrology_cdf(prob_hydro_results_df::DataFrame)
     points_df = DataFrame(
         "slip_pressure" => Float64[],
         "probability" => Float64[],
-        "FaultID" => String[]
+        "ID" => String[]
     )
 
     # Get the unique fault IDs
-    fault_ids = unique(prob_hydro_results_df.FaultID)
+    fault_ids = unique(prob_hydro_results_df.ID)
     
     for fault_id in fault_ids
         # Get the 'Pressure' column data for this fault from the probabilistic hydrology results
-        fault_data = prob_hydro_results_df[prob_hydro_results_df.FaultID .== fault_id, :Pressure]
+        fault_data = prob_hydro_results_df[prob_hydro_results_df.ID .== fault_id, :Pressure]
 
         # Sort the values
         sorted_pressure_values = sort(fault_data)

@@ -297,7 +297,6 @@ function pfieldcalc_all_rates(
     bpds::Vector{Float64}, 
     xwell_km::Union{Float64, Integer}, 
     ywell_km::Union{Float64, Integer}, 
-    output_date::Date,
     coordinate_type::String="latlon"
     )
     
@@ -370,6 +369,7 @@ function haversine_distance(lat1::Float64, lon1::Float64, lat2::Float64, lon2::F
 end
 
 # keep original (for backwards compatibility, will remove later)
+#=
 function pfieldcalc_all_rates(
     xGrid_km::AbstractMatrix, 
     yGrid_km::AbstractMatrix, 
@@ -382,9 +382,10 @@ function pfieldcalc_all_rates(
     )
     
     return pfieldcalc_all_rates(
-        xGrid_km, yGrid_km, STRho, days, bpds, xwell_km, ywell_km, output_date, "latlon"
+        xGrid_km, yGrid_km, STRho, days, bpds, xwell_km, ywell_km, "latlon"
     )
 end
+=#
 
 
 # pressure field calculation (Geomechanics version)
@@ -396,8 +397,7 @@ function pfieldcalc_all_rates(
     days::Vector{Float64}, 
     bpds::Vector{Float64}, 
     xwell_km::Union{Float64, Integer}, 
-    ywell_km::Union{Float64, Integer}, 
-    output_date::Date
+    ywell_km::Union{Float64, Integer}
     )
 
     #get distance from each well to the faul (in km)

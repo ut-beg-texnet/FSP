@@ -105,6 +105,23 @@ function run_monte_carlo_hydrology(helper::TexNetWebToolLaunchHelperJulia,
     fault_df = CSV.read(fault_data_path, DataFrame)
     num_faults = nrow(fault_df)
     println("Read faults_model_inputs_output.csv: $fault_df")
+    
+    # Extract actual fault IDs from the input file
+    fault_id_col = "FaultID" in names(fault_df) ? "FaultID" : "ID"
+    if !(fault_id_col in names(fault_df))
+        # If neither FaultID nor ID exists, use a fallback column or create numeric IDs
+        if "Name" in names(fault_df)
+            fault_id_col = "Name"
+        else
+            println("Warning: No FaultID, ID, or Name column found in fault data. Using row indices as IDs.")
+            fault_df[!, :AutoID] = string.(1:num_faults)
+            fault_id_col = "AutoID"
+        end
+    end
+    
+    # Extract the actual fault IDs
+    fault_ids = string.(fault_df[!, fault_id_col])
+    println("Using fault IDs: $(join(fault_ids, ", "))")
 
     # create the matrix to store the results of the Monte Carlo simulations
     ppOnFaultMC = zeros(params.n_iterations, num_faults) # rows are iterations, columns are faults
@@ -136,7 +153,7 @@ function run_monte_carlo_hydrology(helper::TexNetWebToolLaunchHelperJulia,
     injection_wells_df = CSV.read(injection_wells_filepath, DataFrame)
     
     # Get unique well IDs based on data format - moved outside the loops for efficiency
-    well_id_col = injection_data_type == "injection_tool_data" ? "API Number" : "APINumber"
+    well_id_col = injection_data_type == "injection_tool_data" ? "API Number" : "WellID"
     well_ids = unique(injection_wells_df[!, well_id_col])
     
     # Pre-process well data outside the Monte Carlo loop
@@ -209,7 +226,7 @@ function run_monte_carlo_hydrology(helper::TexNetWebToolLaunchHelperJulia,
             continue
         end
         actual_end = min(inj_end_year, year_of_interest)
-        if actual_end <= inj_start_year
+        if actual_end < inj_start_year
             continue
         end
         
@@ -286,8 +303,13 @@ function run_monte_carlo_hydrology(helper::TexNetWebToolLaunchHelperJulia,
             x_fault_km = fault_df[f, "Longitude(WGS84)"]
             y_fault_km = fault_df[f, "Latitude(WGS84)"]
             
+            # Get fault ID for logging
+            fault_id = fault_ids[f]
+            
             # initialize pp
             ppOnFault = 0.0
+            
+            println("  * Processing fault ID: $fault_id")
             
             # Loop over wells using PRE-PROCESSED DATA
             for (well_id, data) in prepared_well_data
@@ -300,12 +322,13 @@ function run_monte_carlo_hydrology(helper::TexNetWebToolLaunchHelperJulia,
                     data["rates"],
                     data["lon"],
                     data["lat"],
-                    Date(year_of_interest, 1, 1)
                 )
                 
                 # Add to total pressure for this fault
                 ppOnFault += pressure_contribution
             end
+            
+            println("  * Total pressure on fault $fault_id: $ppOnFault psi")
             
             # Store the result for this fault and iteration
             ppOnFaultMC[i, f] = ppOnFault
@@ -318,7 +341,7 @@ function run_monte_carlo_hydrology(helper::TexNetWebToolLaunchHelperJulia,
         for f in 1:num_faults
             push!(result_rows, (
                 IterationID = i,
-                FaultID = string(f),
+                ID = fault_ids[f],  # Use actual fault ID instead of numeric index
                 Pressure = ppOnFaultMC[i, f]
             ))
         end
@@ -328,7 +351,7 @@ function run_monte_carlo_hydrology(helper::TexNetWebToolLaunchHelperJulia,
     
     # Calculate statistics
     stats_df = DataFrame(
-        FaultID = String[],
+        ID = String[],
         Mean = Float64[],
         StdDev = Float64[],
         Median = Float64[],
@@ -337,9 +360,10 @@ function run_monte_carlo_hydrology(helper::TexNetWebToolLaunchHelperJulia,
     )
     
     for f in 1:num_faults
-        fault_data = results_df[results_df.FaultID .== string(f), :Pressure]
+        fault_id = fault_ids[f]
+        fault_data = results_df[results_df.ID .== fault_id, :Pressure]
         push!(stats_df, (
-            string(f),
+            fault_id,
             mean(fault_data),
             std(fault_data),
             median(fault_data),
@@ -394,9 +418,21 @@ function calculate_deterministic_slip_potential(prob_geo_cdf::DataFrame, det_hyd
         slip_pressure = Float64[],
         probability = Float64[]
     )
+
+    if !isempty(prob_geo_cdf)
+        println("prob_geo_df:")
+        pretty_table(prob_geo_cdf)
+    end
+
+    if !isempty(det_hydro_pressures)
+        println("det_hydro_pressures:")
+        pretty_table(det_hydro_pressures)
+    end
     
     # Get unique fault IDs
-    fault_ids = unique(prob_geo_cdf.FaultID)
+    fault_ids = unique(prob_geo_cdf.ID)
+
+    println("DEBUG: Found $(length(fault_ids)) unique fault IDs!!!!!!!!!")
     
     # Filter deterministic hydrology data by year if specified
     filtered_hydro_pressures = det_hydro_pressures
@@ -407,7 +443,7 @@ function calculate_deterministic_slip_potential(prob_geo_cdf::DataFrame, det_hyd
     
     for fault_id in fault_ids
         # Get fault's geomechanics CDF
-        fault_cdf = prob_geo_cdf[prob_geo_cdf.FaultID .== fault_id, :]
+        fault_cdf = prob_geo_cdf[prob_geo_cdf.ID .== fault_id, :]
         
         # Get all deterministic pressure entries for this fault
         fault_pressures = filtered_hydro_pressures[filtered_hydro_pressures.FaultID .== fault_id, :]
@@ -469,24 +505,30 @@ Calculate slip potential by combining probabilistic geomechanics CDF with probab
 function calculate_probabilistic_slip_potential(prob_geo_cdf::DataFrame, prob_hydro_results::DataFrame)
     # Create result dataframe
     slip_potential_df = DataFrame(
-        FaultID = String[],
+        ID = String[],
         MeanPorePressure = Float64[],
         MeanSlipPotential = Float64[],
         StdDevSlipPotential = Float64[],
         MinSlipPotential = Float64[],
         MaxSlipPotential = Float64[]
     )
+
+    
+
+    println("prob_geo_cdf:")
+    pretty_table(prob_geo_cdf)
+    
     
     # Get unique fault IDs
-    fault_ids = unique(prob_geo_cdf.FaultID)
+    fault_ids = unique(prob_geo_cdf.ID)
     
     for fault_id in fault_ids
         # Get fault's geomechanics CDF
-        fault_cdf = prob_geo_cdf[prob_geo_cdf.FaultID .== fault_id, :]
+        fault_cdf = prob_geo_cdf[prob_geo_cdf.ID .== fault_id, :]
         sort!(fault_cdf, :slip_pressure)
         
         # Get all probabilistic hydrology pressures for this fault
-        fault_pressures = prob_hydro_results[prob_hydro_results.FaultID .== fault_id, :Pressure]
+        fault_pressures = prob_hydro_results[prob_hydro_results.ID .== fault_id, :Pressure]
         
         if isempty(fault_pressures)
             continue
@@ -646,14 +688,16 @@ function main()
         # Save all years slip potential results
         save_dataframe_as_parameter!(helper, 5, "hydro_slip_potential_results_all_years", all_years_slip_potential)
 
-        println("All years slip potential results:")
+        println("hydro_slip_potential_results_all_years:")
         pretty_table(all_years_slip_potential)
         
         # Filter for the specific year of interest
         year_specific_slip_potential = all_years_slip_potential[all_years_slip_potential.Year .== year_of_interest, :]
         
         # Save the year-specific slip potential results
-        #save_dataframe_as_parameter!(helper, 5, "hydro_slip_potential_results", year_specific_slip_potential)
+        save_dataframe_as_parameter!(helper, 5, "hydro_slip_potential_results", year_specific_slip_potential)
+        println("hydro_slip_potential_results (year specific):")
+        pretty_table(year_specific_slip_potential)
         
         # Save the slip potential results
         #save_dataframe_as_parameter!(helper, 5, "slip_potential_results", slip_potential)
@@ -730,6 +774,8 @@ function main()
         # Generate probabilistic hydrology CDF data
         prob_hydro_cdf_data = prob_hydrology_cdf(prob_hydro_results)
         save_dataframe_as_parameter!(helper, 5, "prob_hydrology_cdf_graph_data", prob_hydro_cdf_data)
+        println("prob_hydrology_cdf_graph_data:")
+        pretty_table(prob_hydro_cdf_data)
         
         # Calculate slip potential by combining with probabilistic geomechanics CDF
         slip_potential = calculate_probabilistic_slip_potential(prob_geo_cdf, prob_hydro_results)
@@ -743,6 +789,7 @@ function main()
         
         println("\nSlip Potential Results (Probabilistic Hydrology):")
         pretty_table(slip_potential)
+        println("size of slip_potential: $(size(slip_potential))")
         
         # Plot results (could call a function from julia_fsp_graphs.jl)
         # plot_prob_hydro_combined_cdf(prob_geo_cdf, prob_hydro_results)
