@@ -1298,7 +1298,7 @@ function prob_geomechanics_cdf(mc_results_df::DataFrame)
     points_df = DataFrame(
         "slip_pressure" => Float64[],
         "probability" => Float64[],
-        "FaultID" => String[]
+        "ID" => String[]
     )
 
     # get the unique fault IDs

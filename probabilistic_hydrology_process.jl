@@ -645,6 +645,9 @@ function main()
         
         # Save all years slip potential results
         save_dataframe_as_parameter!(helper, 5, "hydro_slip_potential_results_all_years", all_years_slip_potential)
+
+        println("All years slip potential results:")
+        pretty_table(all_years_slip_potential)
         
         # Filter for the specific year of interest
         year_specific_slip_potential = all_years_slip_potential[all_years_slip_potential.Year .== year_of_interest, :]

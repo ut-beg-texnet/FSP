@@ -189,25 +189,30 @@ function main()
 
         # get all unique well ids
         well_ids = try
-            unique(string.(injection_wells_df[!, "APINumber"]))
-        catch
-            unique(string.(injection_wells_df[!, "WellID"]))
+            # Check for "WellID" column first for FSP formats
+            if "WellID" in names(injection_wells_df)
+                unique(string.(injection_wells_df[!, "WellID"]))
             
+            end
+        catch e
+            @warn "Error getting well IDs: $e, available columns: $(names(injection_wells_df))"
+            String[]
         end
         println("- Found $(length(well_ids)) unique wells in $(injection_data_type) format")
     elseif injection_data_type == "injection_tool_data"
-        # TO DO: I should probably remove the easting/northing conversion since we use lat/lon now
-        #convert_latlon_to_easting_northing!(injection_wells_df, "Surface Latitude", "Surface Longitude")
         
         well_ids = try 
-            unique(string.(injection_wells_df[!, "API Number"]))
-        catch e1
-            try
+            # For injection tool data format, check for "API Number" first
+            if "API Number" in names(injection_wells_df)
+                unique(string.(injection_wells_df[!, "API Number"]))
+            elseif "APINumber" in names(injection_wells_df)
                 unique(string.(injection_wells_df[!, "APINumber"]))
-            catch e2
+            else
                 unique(string.(injection_wells_df[!, "UIC Number"]))
-                
             end
+        catch e
+            @warn "Error getting well IDs: $e, available columns: $(names(injection_wells_df))"
+            String[]
         end
         println("- Found $(length(well_ids)) unique wells in injection_tool_data format")
     else
@@ -328,7 +333,7 @@ function main()
         # Get well coordinates based on data type
         if injection_data_type == "annual_fsp" || injection_data_type == "monthly_fsp"
             # filter the dataframe for the well id
-            well_data = injection_wells_df[string.(injection_wells_df[!, "APINumber"]) .== well_id, :]
+            well_data = injection_wells_df[string.(injection_wells_df[!, "WellID"]) .== well_id, :]
             if isempty(well_data)
                 @warn "No data found for well $well_id"
                 continue
@@ -426,8 +431,24 @@ function main()
             # Print available columns for debugging
             #println("- Available columns: $(join(names(injection_wells_df), ", "))")
             
-            # Filter well data
-            well_specific_data = injection_wells_df[string.(injection_wells_df[!, "APINumber"]) .== well_id, :]
+            # Filter well-specific data
+            if injection_data_type == "annual_fsp" || injection_data_type == "monthly_fsp"
+                # For FSP formats, check for WellID first
+                if "WellID" in names(injection_wells_df)
+                    well_specific_data = injection_wells_df[string.(injection_wells_df[!, "WellID"]) .== well_id, :]
+                else
+                    well_specific_data = injection_wells_df[string.(injection_wells_df[!, "APINumber"]) .== well_id, :]
+                end
+            elseif injection_data_type == "injection_tool_data"
+                # For injection tool data, check for API Number first
+                if "API Number" in names(injection_wells_df)
+                    well_specific_data = injection_wells_df[string.(injection_wells_df[!, "API Number"]) .== well_id, :]
+                elseif "APINumber" in names(injection_wells_df)
+                    well_specific_data = injection_wells_df[string.(injection_wells_df[!, "APINumber"]) .== well_id, :]
+                else
+                    well_specific_data = injection_wells_df[string.(injection_wells_df[!, "UIC Number"]) .== well_id, :]
+                end
+            end
             #= 
             if !isempty(well_specific_data)
                 println("- Well has $(nrow(well_specific_data)) data points")
@@ -503,8 +524,24 @@ function main()
         
         
         
-        # Filter well data and print sample
-        well_specific_data = injection_wells_df[string.(injection_wells_df[!, "APINumber"]) .== well_id, :]
+        # Filter well-specific data
+        if injection_data_type == "annual_fsp" || injection_data_type == "monthly_fsp"
+            # For FSP formats, check for WellID first
+            if "WellID" in names(injection_wells_df)
+                well_specific_data = injection_wells_df[string.(injection_wells_df[!, "WellID"]) .== well_id, :]
+            else
+                well_specific_data = injection_wells_df[string.(injection_wells_df[!, "APINumber"]) .== well_id, :]
+            end
+        elseif injection_data_type == "injection_tool_data"
+            # For injection tool data, check for API Number first
+            if "API Number" in names(injection_wells_df)
+                well_specific_data = injection_wells_df[string.(injection_wells_df[!, "API Number"]) .== well_id, :]
+            elseif "APINumber" in names(injection_wells_df)
+                well_specific_data = injection_wells_df[string.(injection_wells_df[!, "APINumber"]) .== well_id, :]
+            else
+                well_specific_data = injection_wells_df[string.(injection_wells_df[!, "UIC Number"]) .== well_id, :]
+            end
+        end
         
         
         println("- Processing well data for pressure calculation (start=$inj_start_year, end=$actual_end_year)...")
@@ -601,7 +638,11 @@ function main()
         end
         
         # Filter well-specific data
-        well_specific_data = injection_wells_df[string.(injection_wells_df[!, "APINumber"]) .== well_id, :]
+        if injection_data_type == "annual_fsp" || injection_data_type == "monthly_fsp"
+            well_specific_data = injection_wells_df[string.(injection_wells_df[!, "WellID"]) .== well_id, :]
+        elseif injection_data_type == "injection_tool_data"
+            well_specific_data = injection_wells_df[string.(injection_wells_df[!, "API Number"]) .== well_id, :]
+        end
         
         if isempty(well_specific_data)
             continue
@@ -692,7 +733,11 @@ function main()
                 well_lat, well_lon = well_locations[well_id]
                 
                 # Filter well-specific data
-                well_specific_data = injection_wells_df[string.(injection_wells_df[!, "APINumber"]) .== well_id, :]
+                if injection_data_type == "annual_fsp" || injection_data_type == "monthly_fsp"
+                    well_specific_data = injection_wells_df[string.(injection_wells_df[!, "WellID"]) .== well_id, :]
+                elseif injection_data_type == "injection_tool_data"
+                    well_specific_data = injection_wells_df[string.(injection_wells_df[!, "API Number"]) .== well_id, :]
+                end
                 
                 if isempty(well_specific_data)
                     continue
@@ -891,7 +936,11 @@ function main()
         well_lat, well_lon = well_locations[well_id]
         
         # Filter well-specific data
-        well_specific_data = injection_wells_df[string.(injection_wells_df[!, "APINumber"]) .== well_id, :]
+        if injection_data_type == "annual_fsp" || injection_data_type == "monthly_fsp"
+            well_specific_data = injection_wells_df[string.(injection_wells_df[!, "WellID"]) .== well_id, :]
+        elseif injection_data_type == "injection_tool_data"
+            well_specific_data = injection_wells_df[string.(injection_wells_df[!, "API Number"]) .== well_id, :]
+        end
         
         if isempty(well_specific_data)
             println("  * No data found for well $well_id, skipping radial curve")
@@ -987,15 +1036,15 @@ function main()
         radial_df = DataFrame(
             Distance_km = Float64[],
             Pressure_psi = Float64[],
-            APINumber = Int[]
+            WellID = String[]
         )
         
         # Process each well's data
         for (well_id, distances, pressures) in radial_info
             # Add data for this well to the combined DataFrame
-            well_id_int = parse(Int64, replace(well_id, "-" => ""))
+            # Use the well_id as is (don't try to parse it as an integer)
             for (dist, pres) in zip(distances, pressures)
-                push!(radial_df, (dist, pres, well_id_int))
+                push!(radial_df, (dist, pres, well_id))
             end
             
             println("  * Added data for well $well_id (max pressure: $(maximum(pressures)) psi)")

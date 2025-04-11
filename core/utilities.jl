@@ -292,10 +292,17 @@ function prepare_well_data_for_pressure_scenario(
         already_filtered = true
         println("DEBUG: Data is already filtered for well $well_id")
         well_data = df
+    elseif "WellID" in names(df) && all(df.WellID .== well_id)
+        already_filtered = true
+        println("DEBUG: Data is already filtered for well $well_id")
+        well_data = df
     else
         # Filter data for the specific well - handle different possible well ID column names
         well_data = DataFrame()
-        if "APINumber" in names(df)
+        if "WellID" in names(df) && (injection_data_type == "annual_fsp" || injection_data_type == "monthly_fsp")
+            well_data = df[string.(df[!, "WellID"]) .== well_id, :]
+            println("DEBUG: Filtered by WellID, got $(nrow(well_data)) rows")
+        elseif "APINumber" in names(df)
             well_data = df[string.(df[!, "APINumber"]) .== well_id, :]
             println("DEBUG: Filtered by APINumber, got $(nrow(well_data)) rows")
         elseif "API Number" in names(df)
@@ -413,7 +420,7 @@ function prepare_monthly_fsp_data(
         println("DEBUG: First row: $(first(well_data))")
         println("DEBUG: First row Year type: $(typeof(first(well_data).Year))")
         println("DEBUG: First row Month type: $(typeof(first(well_data).Month))")
-        println("DEBUG: First row APINumber type: $(typeof(first(well_data).APINumber))")
+        println("DEBUG: First row WellID type: $(typeof(first(well_data).WellID))")
     end
     println("DEBUG: start_year=$start_year, end_year=$end_year, year_of_interest=$year_of_interest")
     
@@ -577,7 +584,7 @@ end
 
 Prepares injection data from injection tool format using monthly averages.
 The injection tool data format has daily injection data with columns:
-- "UIC Number" or "API Number" for well identification
+- "UIC Number" or "API Number" or "WellID" for well identification
 - "Date of Injection" for the date
 - "Volume Injected (BBLs)" for the daily injection volume
 """

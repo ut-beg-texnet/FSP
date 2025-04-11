@@ -159,6 +159,17 @@ function run_monte_carlo(stress_inputs::Dict, fault_inputs::DataFrame, uncertain
     # Pre-convert DataFrame to array of dictionaries
     fault_dicts = [Dict(name => row[name] for name in names(fault_inputs)) for row in eachrow(fault_inputs)]
     
+    # Store actual fault IDs if present in the input dataframe
+    actual_fault_ids = []
+    if "FaultID" in names(fault_inputs)
+        actual_fault_ids = string.(fault_inputs.FaultID)
+    elseif "ID" in names(fault_inputs)
+        actual_fault_ids = string.(fault_inputs.ID)
+    else
+        # If no ID column exists, use sequential numbers as strings
+        actual_fault_ids = string.(1:n_faults)
+    end
+    
     # Set a base seed for deterministic results
     if isnothing(random_seed)
         # Use time-based seed for different results each run
@@ -309,7 +320,7 @@ function run_monte_carlo(stress_inputs::Dict, fault_inputs::DataFrame, uncertain
         for fault_idx in 1:n_faults
             push!(result_rows, (
                 SimulationID = sim_id,
-                FaultID = string(fault_idx),
+                FaultID = actual_fault_ids[fault_idx],  # Use the actual fault ID instead of just the loop index
                 SlipPressure = pps_to_slip[fault_idx, sim_id]
             ))
         end
