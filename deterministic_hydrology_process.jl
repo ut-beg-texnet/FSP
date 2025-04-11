@@ -1110,12 +1110,15 @@ function main()
     strikes = [fault["strike"] for fault in faults_with_pressure]
     
     # Determine stress regime
+    # Normal: σV > σH > σh
     stress_regime = if stress_state.principal_stresses[1] >= stress_state.principal_stresses[3] &&
                       stress_state.principal_stresses[3] >= stress_state.principal_stresses[2]
         "Normal"
+    # Reverse: σH > σh > σV
     elseif stress_state.principal_stresses[3] >= stress_state.principal_stresses[2] &&
            stress_state.principal_stresses[2] >= stress_state.principal_stresses[1]
         "Reverse"
+    # Strike-Slip: σH > σV > σh
     elseif stress_state.principal_stresses[3] >= stress_state.principal_stresses[1] &&
            stress_state.principal_stresses[1] >= stress_state.principal_stresses[2]
         "Strike-Slip"

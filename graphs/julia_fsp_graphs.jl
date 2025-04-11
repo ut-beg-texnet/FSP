@@ -947,8 +947,8 @@ function injection_rate_data_to_d3(well_df::DataFrame, injection_data_type::Stri
 
             # well data for each row
             wells_reformatted = DataFrame(
-                "APINumber" => String[],
-                "Injection Rate (bbl/month)" => Float64[],
+                "WellID" => String[],
+                "InjectionRate(bbl/month)" => Float64[],
                 "Year" => Int[],
                 "Month" => Int[],
                 "Date" => String[],
@@ -961,7 +961,7 @@ function injection_rate_data_to_d3(well_df::DataFrame, injection_data_type::Stri
                 println("Iterating over rows...")
                 
                 try
-                    well_id = string(row["APINumber"])
+                    well_id = string(row["WellID"])
                     injection_rate_daily = row["InjectionRate(bbl/day)"]
                     start_year = row["StartYear"]
                     end_year = row["EndYear"]
@@ -1032,10 +1032,12 @@ function injection_rate_data_to_d3(well_df::DataFrame, injection_data_type::Stri
         # monthly injection rates (FSP format)
         elseif injection_data_type == "monthly_fsp"
 
+            println("we have fsp monthly injection data in injection_rate_data_to_d3")
+
             # well data for each row
             wells_reformatted = DataFrame(
-                "APINumber" => String[],
-                "Injection Rate (bbl/month)" => Float64[],
+                "WellID" => String[],
+                "InjectionRate(bbl/month)" => Float64[],
                 "Month" => Int[],
                 "Year" => Int[],
                 "Date" => String[],
@@ -1043,14 +1045,14 @@ function injection_rate_data_to_d3(well_df::DataFrame, injection_data_type::Stri
             )
 
             # Get unique API numbers
-            unique_api_numbers = unique(string.(well_df.APINumber))
-            num_unique_wells = length(unique_api_numbers)
+            unique_well_ids = unique(string.(well_df.WellID))
+            num_unique_wells = length(unique_well_ids)
             
             
             
             for (i, row) in enumerate(eachrow(well_df))
                 try
-                    well_id = string(row["APINumber"])
+                    well_id = string(row["WellID"])
                     injection_rate = row["InjectionRate(bbl/month)"]
                     month = row["Month"]
                     year = row["Year"]
@@ -1087,6 +1089,9 @@ function injection_rate_data_to_d3(well_df::DataFrame, injection_data_type::Stri
                 end
             end
 
+            println("wells_reformatted:")
+            println(wells_reformatted)
+
             
             return wells_reformatted
 
@@ -1107,8 +1112,8 @@ function injection_rate_data_to_d3(well_df::DataFrame, injection_data_type::Stri
             
             # well data for each row
             wells_reformatted = DataFrame(
-                "APINumber" => String[],
-                "Injection Rate (bbl/month)" => Float64[],
+                "WellID" => String[],
+                "InjectionRate(bbl/month)" => Float64[],
                 "Year" => Int[],
                 "Month" => Int[],
                 "Date" => String[],

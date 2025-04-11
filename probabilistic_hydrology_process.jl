@@ -121,7 +121,7 @@ function run_monte_carlo_hydrology(helper::TexNetWebToolLaunchHelperJulia,
         if isa(year_of_interest, String)
             year_of_interest = parse(Int, year_of_interest)
         elseif !isa(year_of_interest, Int)
-            # Handle unexpected types if necessary, e.g., throw an error or log a warning
+            # Handle unexpected types if necessary (even though the portal should prevent this)
             error("Unexpected type for year_of_interest: $(typeof(year_of_interest))")
         end
         # If it's already an Int, we don't need to do anything
@@ -152,11 +152,11 @@ function run_monte_carlo_hydrology(helper::TexNetWebToolLaunchHelperJulia,
                 end
             end
             
-            # Get well coordinates - use lat/lon directly
+            # Get well coordinates 
             well_lat = first(well_data[!, "Surface Latitude"])
             well_lon = first(well_data[!, "Surface Longitude"])
             
-            # Determine injection period
+            # find injection period
             dates = Date[]
             try
                 dates = Date.(well_data[!, "Date of Injection"], dateformat"y-m-d")
@@ -191,6 +191,8 @@ function run_monte_carlo_hydrology(helper::TexNetWebToolLaunchHelperJulia,
             well_lon = first(well_data[!, "Longitude(WGS84)"])
             
             # Get injection period
+            # FSP Annual format has StartYear and EndYear columns
+            # FSP Monthly format has Year column
             if "StartYear" in names(well_data)
                 inj_start_year = first(well_data[!, "StartYear"])
                 inj_end_year = first(well_data[!, "EndYear"])
@@ -235,11 +237,11 @@ function run_monte_carlo_hydrology(helper::TexNetWebToolLaunchHelperJulia,
             info["actual_end"],
             injection_data_type,
             year_of_interest,
-            extrapolate_injection_rates # Use extrapolation parameter
+            extrapolate_injection_rates
         )
         
         if !isempty(days) && !isempty(rates)
-            # Store the prepared data
+            # Store the data for pressure scenario 
             prepared_well_data[well_id] = Dict{String, Any}(
                 "days" => days,
                 "rates" => rates,
@@ -454,7 +456,7 @@ function calculate_deterministic_slip_potential(prob_geo_cdf::DataFrame, det_hyd
         end
     end
 
-    println("Slip potential df:")
+    println("Slip potential (by combining deterministic hydrology with probabilistic geomechanics):")
     pretty_table(slip_potential_df)
     
     
@@ -531,10 +533,10 @@ function interpolate_cdf(x_values::Vector{Float64}, y_values::Vector{Float64}, x
         return 0.0
     end
     
-    # Find indices where x falls between x_values
+    # We need to find the indices where x falls between x_values
     i = findfirst(v -> v >= x, x_values)
     
-    # Handle edge cases
+    # edge cases
     if i === nothing
         return last(y_values)
     elseif i == 1
