@@ -412,27 +412,17 @@ by the CDF curve in probabilistic geomechanics for the appropriate pore pressure
 function calculate_deterministic_slip_potential(prob_geo_cdf::DataFrame, det_hydro_pressures::DataFrame, year_of_interest::Union{Int, Nothing}=nothing)
     # results df
     slip_potential_df = DataFrame(
-        FaultID = String[],
+        ID = String[],
         Year = Int[],
         Date = Date[],
         slip_pressure = Float64[],
         probability = Float64[]
     )
 
-    if !isempty(prob_geo_cdf)
-        println("prob_geo_df:")
-        pretty_table(prob_geo_cdf)
-    end
-
-    if !isempty(det_hydro_pressures)
-        println("det_hydro_pressures:")
-        pretty_table(det_hydro_pressures)
-    end
     
     # Get unique fault IDs
     fault_ids = unique(prob_geo_cdf.ID)
 
-    println("DEBUG: Found $(length(fault_ids)) unique fault IDs!!!!!!!!!")
     
     # Filter deterministic hydrology data by year if specified
     filtered_hydro_pressures = det_hydro_pressures
@@ -446,7 +436,7 @@ function calculate_deterministic_slip_potential(prob_geo_cdf::DataFrame, det_hyd
         fault_cdf = prob_geo_cdf[prob_geo_cdf.ID .== fault_id, :]
         
         # Get all deterministic pressure entries for this fault
-        fault_pressures = filtered_hydro_pressures[filtered_hydro_pressures.FaultID .== fault_id, :]
+        fault_pressures = filtered_hydro_pressures[filtered_hydro_pressures.ID .== fault_id, :]
         
         if isempty(fault_pressures)
             continue
@@ -492,8 +482,6 @@ function calculate_deterministic_slip_potential(prob_geo_cdf::DataFrame, det_hyd
         end
     end
 
-    println("Slip potential (by combining deterministic hydrology with probabilistic geomechanics):")
-    pretty_table(slip_potential_df)
     
     
     return slip_potential_df
@@ -660,7 +648,8 @@ function main()
     # CONTINUE FROM HERE: configure 'prob_geomechanics_cdf_graph_data' in the portal
     prob_geo_results = get_dataset_file_path(helper, 5, "prob_geomechanics_cdf_graph_data")
     prob_geo_cdf = CSV.read(prob_geo_results, DataFrame)
-    println("Loaded probabilistic geomechanics CDF data with $(nrow(prob_geo_cdf)) rows")
+    println("Loaded probabilistic geomechanics CDF data:")
+    pretty_table(prob_geo_cdf)
 
     if hydro_model_type == "deterministic"
         # deterministic hydrology
@@ -670,7 +659,23 @@ function main()
         # TO DO: verify that this properly parses that data from the previous step
         det_hydro_results = get_dataset_file_path(helper, 5, "deterministic_hydrology_results")
         det_hydro_df = CSV.read(det_hydro_results, DataFrame)
-        println("Using existing deterministic hydrology results")
+        println("Using existing deterministic hydrology results:")
+        # for all the row in the 'probability' column, replace 1.0 with 100.0
+        det_hydro_df.probability = replace(det_hydro_df.probability, 1.0 => 100.0)
+        pretty_table(det_hydro_df)
+
+        # filter the deterministic hydrology results to include everything up to the year of interest
+        # icnlude only the rows where their 'Date' column Dat object is less than December 31st of {year_of_interest - 1}
+        det_hydro_df = det_hydro_df[det_hydro_df.Date .< Date(year_of_interest - 1, 12, 31), :]
+        println("Filtered deterministic hydrology results to year $year_of_interest:")
+        # rename the 'FaultID' column to 'ID'
+        rename!(det_hydro_df, :FaultID => :ID)
+        pretty_table(det_hydro_df)
+        
+
+        
+        
+
         
         
         # Calculate slip potential by combining with probabilistic geomechanics CDF
@@ -686,25 +691,24 @@ function main()
         all_years_slip_potential = calculate_deterministic_slip_potential(prob_geo_cdf, det_hydro_df, nothing)
         
         # Save all years slip potential results
-        save_dataframe_as_parameter!(helper, 5, "hydro_slip_potential_results_all_years", all_years_slip_potential)
+        #save_dataframe_as_parameter!(helper, 5, "hydro_slip_potential_results_all_years", all_years_slip_potential)
 
-        println("hydro_slip_potential_results_all_years:")
-        pretty_table(all_years_slip_potential)
+        #println("hydro_slip_potential_results_all_years:")
+        #pretty_table(all_years_slip_potential)
         
         # Filter for the specific year of interest
         year_specific_slip_potential = all_years_slip_potential[all_years_slip_potential.Year .== year_of_interest, :]
         
         # Save the year-specific slip potential results
-        save_dataframe_as_parameter!(helper, 5, "hydro_slip_potential_results", year_specific_slip_potential)
-        println("hydro_slip_potential_results (year specific):")
-        pretty_table(year_specific_slip_potential)
+        save_dataframe_as_parameter!(helper, 5, "prob_hydrology_cdf_graph_data", det_hydro_df)
+        println("prob_hydrology_cdf_graph_data (filtered to year $year_of_interest):")
+        pretty_table(det_hydro_df)
+
+
         
         # Save the slip potential results
         #save_dataframe_as_parameter!(helper, 5, "slip_potential_results", slip_potential)
         
-        # Pretty print the results
-        println("\nSlip Potential Results (Deterministic Hydrology) for year $year_of_interest:")
-        #pretty_table(year_specific_slip_potential)
         
         println("\nTotal Slip Potential Results (Deterministic Hydrology) - All Years:")
         println("Years: $(minimum(all_years_slip_potential.Year)) to $(maximum(all_years_slip_potential.Year))")

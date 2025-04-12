@@ -351,13 +351,24 @@ function main()
             # Annual format only has StartYear and EndYear and a daily injection rate
             if "StartYear" in names(well_data) # Annual format
                 inj_start_year = first(well_data[!, "StartYear"])
+                inj_start_date = Date(inj_start_year, 1, 1)
                 inj_end_year = first(well_data[!, "EndYear"])
+                inj_end_date = Date(inj_end_year-1, 12, 31)
                 #println("- Injection period: $inj_start_year to $inj_end_year")
             else
                 # Monthly FSP format has a 'Year' and 'Month'column so we can use that to distinguish between annual and monthly
                 if "Year" in names(well_data) || "Month" in names(well_data)
                     inj_start_year = minimum(well_data[!, "Year"])
+                    # now for the columns with the inj_start_year, look for the minimum 'Month' value
+                    inj_start_month = minimum(well_data[well_data[!, "Year"] .== inj_start_year, "Month"])
+                    inj_start_date = Date(inj_start_year, inj_start_month, 1)
+                    # now for the columns with the inj_end_year, look for the maximum 'Month' value
                     inj_end_year = maximum(well_data[!, "Year"])
+                    inj_end_month = maximum(well_data[well_data[!, "Year"] .== inj_end_year, "Month"])
+                    # inje_end_date should be the last day of that month
+                    inj_end_date = Date(inj_end_year, inj_end_month, 1)
+                    # get the last day of that month
+                    inj_end_date = lastdayofmonth(inj_end_date)
                     #println("- Injection period: $inj_start_year to $inj_end_year")
                 else
                     error("Error: Injection start and end years could not be determined because the 'Year' column is missing. Please check the format of the injection well data dataset")
@@ -402,9 +413,14 @@ function main()
                 end
                 
                 if !isempty(dates)
+                    # get the start (minimum date) and end (maximum date)
+                    inj_start_date = minimum(dates)
+                    inj_end_date = maximum(dates)
+
                     # Extract the years using the Dates package
                     years = year.(dates)
                     inj_start_year = minimum(years)
+                    
                     inj_end_year = maximum(years)
                     #println("  * Injection period determined from dates: $inj_start_year to $inj_end_year")
                 else
@@ -417,12 +433,24 @@ function main()
             end
             
             # Check if well is active at year of interest
+            #=
             if inj_start_year > year_of_interest || (inj_start_year == year_of_interest && Date(inj_start_year, 1, 1) > year_of_interest_date)
                 println("- Status: NOT ACTIVE before year $year_of_interest (active $inj_start_year-$inj_end_year)")
                 continue
             else
                 println("- Status: ACTIVE at or before year $year_of_interest (period: $inj_start_year-$inj_end_year)")
             end
+            =#
+
+            # check if the well hasn't started injecting yet at the year of interest
+            if inj_start_date > year_of_interest_date
+                println("- Status: NOT ACTIVE before year $year_of_interest (active $inj_start_year-$inj_end_year)")
+                continue
+            end
+
+            
+            
+
             
             # Calculate end year for pressure calculation
             actual_end_year = min(inj_end_year, year_of_interest)
@@ -1047,7 +1075,7 @@ function main()
         radial_df = DataFrame(
             Distance_km = Float64[],
             Pressure_psi = Float64[],
-            WellID = String[]
+            ID = String[]
         )
         
         # Process each well's data
