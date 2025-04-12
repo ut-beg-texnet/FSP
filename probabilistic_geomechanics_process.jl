@@ -474,9 +474,15 @@ function main()
     #println(first(mc_pp_results, 10))
 
 
+    # before we create the CDF graph data, we need to read the deterministic colors from the previous step 
+    # read the dataframe with the deterministic results
+    deterministic_results_filepath = get_dataset_file_path(helper, 2, "det_geomechanics_results")
+    deterministic_results_df = CSV.read(deterministic_results_filepath, DataFrame)
+    
+    
     
     # prepare the data for the d3.js CDF plot
-    d3_cdf_data = prob_geomechanics_cdf(mc_pp_results)
+    d3_cdf_data = prob_geomechanics_cdf(mc_pp_results, deterministic_results_df)
 
     # save the d3.js CDF data as a dataset to the portal
     save_dataframe_as_parameter!(helper, 3, "prob_geomechanics_cdf_graph_data", d3_cdf_data)

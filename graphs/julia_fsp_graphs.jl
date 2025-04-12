@@ -1293,12 +1293,13 @@ end
 
 ########################## PORTAL GRAPHS #########################################
 
-function prob_geomechanics_cdf(mc_results_df::DataFrame)
+function prob_geomechanics_cdf(mc_results_df::DataFrame, det_geomechanics_results_df::DataFrame)
 
     points_df = DataFrame(
         "slip_pressure" => Float64[],
         "probability" => Float64[],
-        "ID" => String[]
+        "ID" => String[],
+        "det_slip_pressure" => Float64[]
     )
 
     # get the unique fault IDs
@@ -1307,6 +1308,17 @@ function prob_geomechanics_cdf(mc_results_df::DataFrame)
     for fault_id in fault_ids
         # Get the 'slip pressure' column data for this fault
         fault_data = mc_results_df[mc_results_df.FaultID .== fault_id, :SlipPressure]
+
+        # also get the deterministic slip pressure for this fault
+        det_slip_pressure_df = det_geomechanics_results_df[det_geomechanics_results_df.FaultID .== fault_id, :slip_pressure]
+        
+        if isempty(det_slip_pressure_df)
+            # Skip if no deterministic data for this fault
+            continue
+        end
+        
+        # Extract the single value (assuming one result per fault in deterministic data)
+        det_slip_pressure = det_slip_pressure_df[1]
 
         # Sort the values
         sorted_pressure_values = sort(fault_data)
@@ -1320,7 +1332,7 @@ function prob_geomechanics_cdf(mc_results_df::DataFrame)
         
         # Add points for this fault to the DataFrame
         for (pressure, probability) in zip(sorted_pressure_values, probability_values)
-            push!(points_df, (pressure, probability, fault_id))
+            push!(points_df, (pressure, probability, fault_id, det_slip_pressure))
         end
     end
 
