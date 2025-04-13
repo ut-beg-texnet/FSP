@@ -269,11 +269,11 @@ function main()
             error("No well data available. Please provide well data.")
         else
 
-            # for dynamic bounds, get the (lat_max - lat_min) and (lon_max - lon_min), and add 5% to each
+            # for dynamic bounds, get the (lat_max - lat_min) and (lon_max - lon_min), and add 10% to each
             lat_range = maximum(injection_wells_df[!, lat_column]) - minimum(injection_wells_df[!, lat_column])
             lon_range = maximum(injection_wells_df[!, lon_column]) - minimum(injection_wells_df[!, lon_column])
-            lat_range_buffer = lat_range * 0.05
-            lon_range_buffer = lon_range * 0.05
+            lat_range_buffer = lat_range * 0.1
+            lon_range_buffer = lon_range * 0.1
             lat_min = minimum(injection_wells_df[!, lat_column]) - lat_range_buffer
             lat_max = maximum(injection_wells_df[!, lat_column]) + lat_range_buffer
             lon_min = minimum(injection_wells_df[!, lon_column]) - lon_range_buffer
@@ -387,42 +387,51 @@ function main()
                 end
             end
             
-            # Get well lat/lon coordinates
-            well_lat = parse(Float64, first(well_data[!, "Surface Latitude"]))
-            well_lon = parse(Float64, first(well_data[!, "Surface Longitude"]))
-            #println("- Location: lat=$(well_lat)°, lon=$(well_lon)°")
+            # Get well lat/lon coordinates (they are already floats)
+            well_lat = first(well_data[!, "Surface Latitude"])
+            well_lon = first(well_data[!, "Surface Longitude"])
+            
             
             # Get injection period from 'Date of Injection' column
             if "Date of Injection" in names(well_data)
                 # Parse dates to determine year range
                 dates = Date[]
-                try
-                    # try Year/Month/Day format (injection tool default)
-                    dates = Date.(well_data[!, "Date of Injection"], dateformat"y-m-d")
-                catch
+                
+                # Check the type of the date values first
+                if eltype(well_data[!, "Date of Injection"]) <: Date
+                    # Already Date objects, no need to explicitly parse them as Date objects
+                    dates = well_data[!, "Date of Injection"]
+                else
+                    # Need to parse from strings
                     try
-                        # try Month/Day/Year format 
-                        dates = Date.(well_data[!, "Date of Injection"], dateformat"m/d/y")
+                        # try Year/Month/Day format (injection tool default)
+                        dates = Date.(well_data[!, "Date of Injection"], dateformat"y-m-d")
                     catch
                         try
-                            dates = Date.(well_data[!, "Date of Injection"], dateformat"m/d/yyyy")
-                        catch e
-                            error("Error: Could not parse dates from the injection tool dataset: $e")
+                            # try Month/Day/Year format 
+                            dates = Date.(well_data[!, "Date of Injection"], dateformat"m/d/y")
+                        catch
+                            try
+                                dates = Date.(well_data[!, "Date of Injection"], dateformat"m/d/yyyy")
+                            catch e
+                                error("Error: Could not parse dates from the injection tool dataset: $e")
+                            end
                         end
                     end
                 end
                 
                 if !isempty(dates)
-                    # get the start (minimum date) and end (maximum date)
-                    inj_start_date = minimum(dates)
-                    inj_end_date = maximum(dates)
-
                     # Extract the years using the Dates package
                     years = year.(dates)
                     inj_start_year = minimum(years)
-                    
                     inj_end_year = maximum(years)
-                    #println("  * Injection period determined from dates: $inj_start_year to $inj_end_year")
+                    
+                    # Get the start and end dates
+                    inj_start_date = minimum(dates)
+                    inj_end_date = min(maximum(dates), year_of_interest_date)
+                    #error("Stop here")
+                    
+                    println("  * Injection period determined from dates: $inj_start_year to $inj_end_year")
                 else
                     error("Error: Could not parse dates from the injection tool dataset: $e")
                     continue
@@ -454,6 +463,9 @@ function main()
             
             # Calculate end year for pressure calculation
             actual_end_year = min(inj_end_year, year_of_interest)
+
+            println("DEBUG: actual_end_year: $actual_end_year")
+            #error("Stop here")
             
             # prepare injection data for pressure front calculation
             #println("- Preparing injection data using $injection_data_type format...")
@@ -479,33 +491,16 @@ function main()
                     well_specific_data = injection_wells_df[string.(injection_wells_df[!, "UIC Number"]) .== well_id, :]
                 end
             end
-            #= 
-            if !isempty(well_specific_data)
-                println("- Well has $(nrow(well_specific_data)) data points")
-                
-                # Check for year of interest in data
-                if "Year" in names(well_specific_data)
-                    matches = well_specific_data[well_specific_data.Year .== year_of_interest, :]
-                    println("- Well has $(nrow(matches)) entries for year $year_of_interest")
-                end
-                
-                # Print sample data point
-                if nrow(well_specific_data) > 0
-                    first_row = well_specific_data[1, :]
-                    data_str = join(["$col=$(first_row[col])" for col in names(first_row)], ", ")
-                    println("- Sample data: $data_str")
-                end
-            else
-                println("- No data found for well $well_id in the dataset")
-            end
-            =#
+            
             
             println("- Processing well data for pressure calculation (start=$inj_start_year, end=$actual_end_year)...")
             days, rates = prepare_well_data_for_pressure_scenario(
                 well_specific_data,  # Pass the filtered data for this well only
                 well_id,
                 inj_start_year,
+                inj_start_date,
                 actual_end_year,
+                inj_end_date,
                 injection_data_type,
                 year_of_interest,
                 extrapolate_injection_rates,
@@ -529,11 +524,12 @@ function main()
             # Use the lat/lon version with haversine distance calculation
             pfield_this_well = pfieldcalc_all_rates(
                 LON_grid, LAT_grid, STRho, days, rates,
-                well_lon, well_lat, coordinate_type="latlon"
+                well_lon, well_lat, "latlon"
             )
                 
             # Add to total field (superposition)
             total_pressure_2d .+= pfield_this_well
+            println("DEBUG: added to the total pressure field, now it's $(sum(total_pressure_2d))")
             #println("- Maximum pressure contribution: $(maximum(pfield_this_well)) psi")
         else
             error("Unsupported injection well dataset format: $injection_data_type")
@@ -577,10 +573,12 @@ function main()
         
         println("- Processing well data for pressure calculation (start=$inj_start_year, end=$actual_end_year)...")
         days, rates = prepare_well_data_for_pressure_scenario(
-            well_specific_data,  # Pass the filtered data for this well only
+            well_specific_data,
             well_id,
             inj_start_year,
+            inj_start_date,
             actual_end_year,
+            inj_end_date,
             injection_data_type,
             year_of_interest,
             extrapolate_injection_rates
@@ -601,11 +599,12 @@ function main()
         # Use the lat/lon version with haversine distance calculation
         pressure_contribution = pfieldcalc_all_rates(
             LON_grid, LAT_grid, STRho, days, rates,
-            well_lon, well_lat
+            well_lon, well_lat, "latlon"
         )
             
         # Add to total field (superposition)
         total_pressure_2d .+= pressure_contribution
+        println("DEBUG: added to the total pressure field 2nd time, now it's $(sum(total_pressure_2d))")
         #println("- Maximum pressure contribution: $(maximum(pressure_contribution)) psi")
     end
 
@@ -657,13 +656,13 @@ function main()
     end
     fault_df = CSV.read(fault_data_path, DataFrame)
     num_faults = nrow(fault_df)
-    println("- Loaded fault dataset with $num_faults faults")
-    println("FAULT DATA:")
-    pretty_table(fault_df)
+    
     
     # Determine the range of years to calculate
     # Find minimum injection start year across all wells
     min_injection_year = year_of_interest
+    println("min_injection_year (initialized to year of interest): $min_injection_year ---------------------------------------------------------")
+    
     for well_id in well_ids
         # Skip wells with no location data
         if !haskey(well_locations, well_id)
@@ -687,26 +686,51 @@ function main()
         if injection_data_type == "annual_fsp"
             # Get injection period
             inj_start_year = minimum(well_specific_data[!, "StartYear"])
+            min_injection_year = min(min_injection_year, inj_start_year)
+            inj_start_date = Date(inj_start_year, 1, 1)
+            inj_end_year = maximum(well_specific_data[!, "EndYear"])
+            inj_end_date = Date(inj_end_year-1, 12, 31)
         elseif injection_data_type == "monthly_fsp"
             # Get injection period
-            inj_start_year = minimum(well_specific_data[!, "Year"])
+            inj_start_year = minimum(well_data[!, "Year"])
+            # now for the columns with the inj_start_year, look for the minimum 'Month' value
+            inj_start_month = minimum(well_data[well_data[!, "Year"] .== inj_start_year, "Month"])
+            inj_start_date = Date(inj_start_year, inj_start_month, 1)
+            # now for the columns with the inj_end_year, look for the maximum 'Month' value
+            inj_end_year = maximum(well_data[!, "Year"])
+            inj_end_month = maximum(well_data[well_data[!, "Year"] .== inj_end_year, "Month"])
+            # inje_end_date should be the last day of that month
+            inj_end_date = Date(inj_end_year, inj_end_month, 1)
+            # get the last day of that month
+            inj_end_date = lastdayofmonth(inj_end_date)
+            #println("- Injection period: $inj_start_year to $inj_end_year")
+            min_injection_year = min(min_injection_year, inj_start_year)
         elseif injection_data_type == "injection_tool_data"
+            
             # Get injection period from Date of Injection column
             if "Date of Injection" in names(well_specific_data)
+                
                 # Parse dates to determine year range
                 dates = Date[]
-                try
-                    # try Year/Month/Day format (injection tool default)
-                    dates = Date.(well_specific_data[!, "Date of Injection"], dateformat"y-m-d")
-                catch
+                # Check the type of the date values first
+                if eltype(well_specific_data[!, "Date of Injection"]) <: Date
+                    # Already Date objects, no need to explicitly parse them as Date objects
+                    dates = well_specific_data[!, "Date of Injection"]
+                else
+                    # Need to parse from strings
                     try
-                        # try Month/Day/Year format 
-                        dates = Date.(well_specific_data[!, "Date of Injection"], dateformat"m/d/y")
+                        # try Year/Month/Day format (injection tool default)
+                        dates = Date.(well_specific_data[!, "Date of Injection"], dateformat"y-m-d")
                     catch
                         try
-                            dates = Date.(well_specific_data[!, "Date of Injection"], dateformat"m/d/yyyy")
-                        catch e
-                            continue
+                            # try Month/Day/Year format 
+                            dates = Date.(well_specific_data[!, "Date of Injection"], dateformat"m/d/y")
+                        catch
+                            try
+                                dates = Date.(well_specific_data[!, "Date of Injection"], dateformat"m/d/yyyy")
+                            catch e
+                                error("Error: Could not parse dates from the injection tool dataset: $e")
+                            end
                         end
                     end
                 end
@@ -715,16 +739,43 @@ function main()
                     # Extract the years using the Dates package
                     years = year.(dates)
                     inj_start_year = minimum(years)
+                    inj_end_year = maximum(years)
+                    
+                    # Get the start and end dates
+                    inj_start_date = minimum(dates)
+                    inj_end_date = maximum(dates)
+
+                    min_injection_year = min(min_injection_year, inj_start_year)
+                    
+                    println("  * Injection period determined from dates: $inj_start_year to $inj_end_year")
+                    println("min_injection_year: $min_injection_year ---------------------------------------------------------")
+                    println("inj_start_year: $inj_start_year ---------------------------------------------------------")
+                    println("year_of_interest: $year_of_interest ---------------------------------------------------------")
                 else
+                    error("Error: Could not parse dates from the injection tool dataset: $e")
+                    continue
+                end
+
+                    
+                else
+                    println("dates is empty ---------------------------------------------------------")
                     continue
                 end
             else
                 continue
             end
-        end
+            
+        end    
         
-        min_injection_year = min(min_injection_year, inj_start_year)
     end
+    
+
+    # CONTINUE HERE: min_injection_year IS OUT OF SCOPE 
+    println("min_injection_year: $min_injection_year ---------------------------------------------------------")
+    #error("Stop here")
+
+    
+    
     
     # Dataframe to store fault pressure for each year
     # TO DO: this df has 'slip_pressure', which is the pressure added to the fault
@@ -738,7 +789,7 @@ function main()
     )
     
     # Loop through each year from earliest injection to year of interest
-    println("- Calculating pressure on faults for years $min_injection_year to $year_of_interest (the year of interest)")
+    #println("- Calculating pressure on faults for years $min_injection_year to $year_of_interest (the year of interest)")
     
     for calc_year in min_injection_year:year_of_interest
         #println("\n  * Processing year $calc_year...")
@@ -844,7 +895,9 @@ function main()
                     well_specific_data,
                     well_id,
                     inj_start_year,
+                    inj_start_date,
                     actual_end_year,
+                    inj_end_date,
                     injection_data_type,
                     calc_year,
                     extrapolate_injection_rates
@@ -862,7 +915,8 @@ function main()
                     days,
                     rates,
                     well_lon,  # longitude is x
-                    well_lat  # latitude is y
+                    well_lat,  # latitude is y
+                    "latlon"
                 )
                 
                 # Add to total pressure for this fault
@@ -898,6 +952,8 @@ function main()
     # Save the fault pressure DataFrame as a parameter
     save_dataframe_as_parameter!(helper, 4, "deterministic_hydrology_results", fault_pressure_by_year)
     println("- Saved fault pressure by year data as parameter 'deterministic_hydrology_results'")
+    println("deterministic_hydrology_results:")
+    pretty_table(fault_pressure_by_year)
     
     
     
@@ -996,21 +1052,30 @@ function main()
             inj_end_year = maximum(well_specific_data[!, "Year"])
         elseif injection_data_type == "injection_tool_data"
             # Get injection period from Date of Injection column
+            # Get injection period from 'Date of Injection' column
             if "Date of Injection" in names(well_specific_data)
                 # Parse dates to determine year range
                 dates = Date[]
-                try
-                    # try Year/Month/Day format (injection tool default)
-                    dates = Date.(well_specific_data[!, "Date of Injection"], dateformat"y-m-d")
-                catch
+                
+                # Check the type of the date values first
+                if eltype(well_specific_data[!, "Date of Injection"]) <: Date
+                    # Already Date objects, no need to explicitly parse them as Date objects
+                    dates = well_specific_data[!, "Date of Injection"]
+                else
+                    # Need to parse from strings
                     try
-                        # try Month/Day/Year format 
-                        dates = Date.(well_specific_data[!, "Date of Injection"], dateformat"m/d/y")
+                        # try Year/Month/Day format (injection tool default)
+                        dates = Date.(well_specific_data[!, "Date of Injection"], dateformat"y-m-d")
                     catch
                         try
-                            dates = Date.(well_specific_data[!, "Date of Injection"], dateformat"m/d/yyyy")
-                        catch e
-                            error("Error: Could not parse dates from the injection tool dataset: $e")
+                            # try Month/Day/Year format 
+                            dates = Date.(well_specific_data[!, "Date of Injection"], dateformat"m/d/y")
+                        catch
+                            try
+                                dates = Date.(well_specific_data[!, "Date of Injection"], dateformat"m/d/yyyy")
+                            catch e
+                                error("Error: Could not parse dates from the injection tool dataset: $e")
+                            end
                         end
                     end
                 end
@@ -1020,13 +1085,18 @@ function main()
                     years = year.(dates)
                     inj_start_year = minimum(years)
                     inj_end_year = maximum(years)
+                    
+                    # Get the start and end dates
+                    inj_start_date = minimum(dates)
+                    inj_end_date = maximum(dates)
+                    
                     println("  * Injection period determined from dates: $inj_start_year to $inj_end_year")
                 else
-                    println("  * No valid dates found for well $well_id, skipping radial curve")
+                    error("Error: Could not parse dates from the injection tool dataset: $e")
                     continue
                 end
             else
-                println("  * Could not find 'Date of Injection' column for well $well_id, skipping radial curve")
+                error("Could not find 'Date of Injection' column for well $well_id")
                 continue
             end
         else
@@ -1047,7 +1117,9 @@ function main()
             well_specific_data,
             well_id,
             inj_start_year,
+            inj_start_date,
             actual_end_year,
+            inj_end_date,
             injection_data_type,
             year_of_interest,
             extrapolate_injection_rates
@@ -1083,7 +1155,7 @@ function main()
             # Add data for this well to the combined DataFrame
             # Use the well_id as is (don't try to parse it as an integer)
             for (dist, pres) in zip(distances, pressures)
-                push!(radial_df, (dist, pres, well_id))
+                push!(radial_df, (dist, pres, string(well_id)))
             end
             
             println("  * Added data for well $well_id (max pressure: $(maximum(pressures)) psi)")

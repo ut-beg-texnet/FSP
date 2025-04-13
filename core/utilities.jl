@@ -272,7 +272,9 @@ function prepare_well_data_for_pressure_scenario(
     df::DataFrame, 
     well_id::String, 
     start_year::Int, 
+    inj_start_date::Date,
     end_year::Int, 
+    inj_end_date::Date,
     injection_data_type::String,
     year_of_interest::Int,
     extrapolate::Bool=false,
@@ -332,13 +334,13 @@ function prepare_well_data_for_pressure_scenario(
     # Select the appropriate preparation method based on data type
     if injection_data_type == "annual_fsp"
         println("DEBUG: Calling prepare_annual_fsp_data")
-        return prepare_annual_fsp_data(well_data, start_year, end_year, year_of_interest, year_of_interest_date)
+        return prepare_annual_fsp_data(well_data, start_year, inj_start_date, end_year, inj_end_date, year_of_interest, year_of_interest_date)
     elseif injection_data_type == "monthly_fsp"
         println("DEBUG: Calling prepare_monthly_fsp_data")
-        return prepare_monthly_fsp_data(well_data, start_year, end_year, year_of_interest, extrapolate, year_of_interest_date)
+        return prepare_monthly_fsp_data(well_data, start_year, inj_start_date, end_year, inj_end_date, year_of_interest, extrapolate, year_of_interest_date)
     elseif injection_data_type == "injection_tool_data"
         println("DEBUG: Calling prepare_injection_tool_data")
-        return prepare_injection_tool_data(well_data, start_year, end_year, year_of_interest, extrapolate, year_of_interest_date)
+        return prepare_injection_tool_data(well_data, start_year, inj_start_date, end_year, inj_end_date, year_of_interest, extrapolate, year_of_interest_date)
     else
         error("Unsupported well dataset data type: $injection_data_type")
     end
@@ -353,7 +355,9 @@ This assumes the user provides a single injection rate for the entire period fro
 function prepare_annual_fsp_data(
     well_data::DataFrame, 
     start_year::Int, 
+    inj_start_date::Date,
     end_year::Int, 
+    inj_end_date::Date,
     year_of_interest::Int,
     year_of_interest_date::Date
 )
@@ -375,9 +379,11 @@ function prepare_annual_fsp_data(
     
     # Define the time period
     
-    global_start_date = Date(start_year, 1, 1)
+    global_start_date = inj_start_date
+    global_end_date = min(inj_end_date, year_of_interest_date)
     
     # Special handling for the case where start_year equals end_year
+    #=
     if start_year == end_year
         # Use end of the start_year instead of previous year
         global_end_date = min(Date(start_year, 12, 31), year_of_interest_date)
@@ -385,6 +391,8 @@ function prepare_annual_fsp_data(
         # Original logic: End_year means data up to Dec 31 of the previous year
         global_end_date = min(Date(end_year-1, 12, 31), year_of_interest_date)
     end
+    =#
+    
     
     # Calculate total days in the injection period
     days_total = (global_end_date - global_start_date).value + 1
@@ -418,7 +426,9 @@ Prepares monthly injection data from FSP format with step changes at month bound
 function prepare_monthly_fsp_data(
     well_data::DataFrame, 
     start_year::Int, 
+    inj_start_date::Date,
     end_year::Int, 
+    inj_end_date::Date,
     year_of_interest::Int, 
     extrapolate::Bool,
     year_of_interest_date::Date
@@ -434,16 +444,9 @@ function prepare_monthly_fsp_data(
     end
     
     # Define boundaries
-    global_start_date = Date(start_year, 1, 1)
+    global_start_date = inj_start_date
+    global_end_date = min(inj_end_date, year_of_interest_date)
     
-    # Special handling for the case where start_year equals end_year
-    if start_year == end_year
-        # Use end of the start_year instead of previous year
-        global_end_date = min(Date(start_year, 12, 31), year_of_interest_date)
-    else
-        # Original logic: End_year means data up to Dec 31 of the previous year
-        global_end_date = min(Date(end_year-1, 12, 31), year_of_interest_date)
-    end
     
     println("DEBUG: global_start_date = $global_start_date, global_end_date = $global_end_date")
     println("DEBUG: Timespan is $((global_end_date - global_start_date).value + 1) days")
@@ -619,13 +622,15 @@ The injection tool data format has daily injection data with columns:
 function prepare_injection_tool_data(
     well_data::DataFrame, 
     start_year::Int, 
+    inj_start_date::Date,
     end_year::Int, 
+    inj_end_date::Date,
     year_of_interest::Int, 
-    extrapolate::Bool,
-    year_of_interest_date::Date
+    extrapolate::Bool=false,
+    year_of_interest_date::Date=Date(year_of_interest-1, 12, 31)
 )
     # If well starts after calculation end year, return empty arrays
-    if start_year > end_year
+    if inj_start_date > year_of_interest_date
         println("DEBUG: Well starts after calculation end year - start_year ($start_year) > end_year ($end_year)")
         return Float64[], Float64[]
     end
@@ -633,7 +638,7 @@ function prepare_injection_tool_data(
     # Check columns to determine data format
     if "Date of Injection" in names(well_data) && "Volume Injected (BBLs)" in names(well_data)
         # Standard injection tool data format with daily values
-        return prepare_daily_injection_tool_data(well_data, start_year, end_year, extrapolate)
+        return prepare_daily_injection_tool_data(well_data, start_year, inj_start_date, end_year, inj_end_date, extrapolate, year_of_interest_date)
     end
 end
 
@@ -650,8 +655,11 @@ Returns monthly step changes based on the average daily rates for each month.
 function prepare_daily_injection_tool_data(
     well_data::DataFrame, 
     start_year::Int, 
-    end_year::Int,
-    extrapolate::Bool=false
+    inj_start_date::Date,
+    end_year::Int, 
+    inj_end_date::Date,
+    extrapolate::Bool=false,
+    year_of_interest_date::Date=Date(end_year-1, 12, 31)
 )
     # Ensure we have the right columns
     date_col = "Date of Injection"
@@ -659,11 +667,20 @@ function prepare_daily_injection_tool_data(
     
     # Ensure dates are in Date format
     dates = Date[]
-    try
-        # Try different date formats
-        dates = Date.(well_data[!, date_col], dateformat"y-m-d")
-    catch e
-        error("Could not parse dates in column $date_col: $e")
+    
+    # Check the type of date values first
+    if eltype(well_data[!, date_col]) <: Date
+        # Already Date objects, no need to parse
+        println("DEBUG: Date column already contains Date objects")
+        dates = well_data[!, date_col]
+    else
+        # Need to parse from strings
+        try
+            # Try different date formats
+            dates = Date.(well_data[!, date_col], dateformat"y-m-d")
+        catch e
+            error("Could not parse dates in column $date_col: $e")
+        end
     end
     
     # Find the earliest and latest dates in the data
@@ -672,22 +689,12 @@ function prepare_daily_injection_tool_data(
         return Float64[], Float64[]
     end
     
-    # Use the actual earliest date from the data, but not earlier than start_year
+    # Calculate earliest data date
     earliest_data_date = minimum(dates)
-    requested_start_date = Date(start_year, 1, 1)
-    global_start_date = max(earliest_data_date, requested_start_date)
     
-    # For consistency with domain logic:
-    # - end_year means "data up to Dec 31 of the year before end_year"
-    # - BUT we need special handling when start_year == end_year
-    if start_year == end_year
-        # For same-year data, use at least a month of data
-        global_end_date = Date(end_year, 1, 31)
-        println("DEBUG: Special case - start_year equals end_year, using Jan 31 of $end_year as end date")
-    else
-        # Normal case: end_year means data up to Dec 31 of the previous year
-        global_end_date = Date(end_year-1, 12, 31)
-    end
+    # Use the actual earliest date from the data, but not earlier than start_year
+    global_start_date = inj_start_date
+    global_end_date = min(inj_end_date, year_of_interest_date)
     
     println("DEBUG: Using actual start date from data: $global_start_date (earliest data: $earliest_data_date)")
     
@@ -719,7 +726,7 @@ function prepare_daily_injection_tool_data(
     filtered_dates = dates[filtered_indices] # convert the filtered indices to dates
     
     # Group by month and calculate average daily rates
-    monthly_rates = Dict{Tuple{Int, Int}, Float64}()  # (year, month) => avg_daily_rate
+    monthly_totals = Dict{Tuple{Int, Int}, Tuple{Float64, Int}}()  # (year, month) => (total_volume, count)
     
     for i in 1:length(filtered_dates)
         d = filtered_dates[i]
@@ -737,19 +744,22 @@ function prepare_daily_injection_tool_data(
         end
         
         # Add to monthly totals
-        if !haskey(monthly_rates, (y, m))
-            monthly_rates[(y, m)] = (daily_volume, 1)  # (total_volume, count)
+        if !haskey(monthly_totals, (y, m))
+            monthly_totals[(y, m)] = (daily_volume, 1)  # (total_volume, count)
         else
-            total, count = monthly_rates[(y, m)]
-            monthly_rates[(y, m)] = (total + daily_volume, count + 1)
+            total, count = monthly_totals[(y, m)]
+            monthly_totals[(y, m)] = (total + daily_volume, count + 1)
         end
     end
     
     # Convert monthly totals to average daily rates
-    for key in keys(monthly_rates)
-        total_volume, days_count = monthly_rates[key]
+    monthly_rates = Dict{Tuple{Int, Int}, Float64}()  # (year, month) => avg_daily_rate
+    for key in keys(monthly_totals)
+        total_volume, days_count = monthly_totals[key]
         monthly_rates[key] = total_volume / days_count
     end
+
+    
     
     # Fill in missing months with 0 or extrapolated values
     if extrapolate && !isempty(monthly_rates)
