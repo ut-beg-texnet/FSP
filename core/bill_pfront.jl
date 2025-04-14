@@ -132,11 +132,9 @@ function pressureScenario_Rall(
     # 2) Convert rates to m³/s
     Q_m3s = bpds .* 1.84013e-6
 
-    println("Q_m3s min: ", minimum(Q_m3s))
-    println("Q_m3s max: ", maximum(Q_m3s))
 
     # 3) Build ΔQ array, plus a time array for each step
-    #    We'll define step_times[i] = days[i], step_dQ[i] = Q_m3s[i] - Q_m3s[i-1],
+    #    step_times[i] = days[i], step_dQ[i] = Q_m3s[i] - Q_m3s[i-1],
     #    with Q_m3s[-1] = 0 (initial jump).
     n = length(Q_m3s)
     step_times = Vector{Float64}(undef, n)
@@ -144,7 +142,7 @@ function pressureScenario_Rall(
 
     # First step: from Q=0 to Q_m3s[1] at time days[1]
     step_times[1] = days[1]
-    step_dQ[1]    = Q_m3s[1]  # i.e. Q(1) - 0
+    step_dQ[1]    = Q_m3s[1]  # for example Q(1) - 0 for the first step
 
     for i in 2:n
         step_times[i] = days[i]
@@ -183,8 +181,7 @@ function pressureScenario_Rall(
     dp_pascals = head_m .* (rho * g)
     dp_psi     = dp_pascals ./ 6894.76
 
-    println("head_m min: ", minimum(head_m))
-    println("head_m max: ", maximum(head_m))
+    
 
     # Clean up NaN/Inf
     dp_psi[.!isfinite.(dp_psi)] .= 0.0
@@ -194,93 +191,10 @@ function pressureScenario_Rall(
         dp_psi = reshape(dp_psi, original_size)
     end
 
-    println("pressureScenario_Rall max pressure in psi: ", maximum(dp_psi))
-    println("pressureScenario_Rall min pressure in psi: ", minimum(dp_psi))
 
     return dp_psi
 end
 
-
-
-
-#=
-function pressureScenario_Rall(
-    bpds::Vector{Float64},
-    days::Vector{Float64},
-    r_meters::Float64,
-    STRho::Tuple{Float64, Float64, Float64}
-)
-
-    # 0) If there's no data, return zeros
-    if isempty(bpds) || isempty(days)
-        return zeros(size(r_meters))
-    end
-
-    # Unpack S, T, rho
-    S, T, rho = STRho
-    g = 9.81  # gravitational acceleration
-
-    # 1) Convert final time: t_final_sec
-    t_final_sec = maximum(days) * 86400.0
-
-    # 2) Convert rates to m³/s
-    Q_m3s = bpds .* 1.84013e-6
-
-    # 3) Build ΔQ array, plus a time array for each step
-    #    We'll define step_times[i] = days[i], step_dQ[i] = Q_m3s[i] - Q_m3s[i-1],
-    #    with Q_m3s[-1] = 0 (initial jump).
-    n = length(Q_m3s)
-    step_times = Vector{Float64}(undef, n)
-    step_dQ    = Vector{Float64}(undef, n)
-
-    # First step: from Q=0 to Q_m3s[1] at time days[1]
-    step_times[1] = days[1]
-    step_dQ[1]    = Q_m3s[1]  # i.e. Q(1) - 0
-
-    for i in 2:n
-        step_times[i] = days[i]
-        step_dQ[i]    = Q_m3s[i] - Q_m3s[i-1]
-    end
-
-    # 4) Accumulate Theis contributions
-    tstep_sum = 0.0
-
-    for i in 1:n
-        dQ = step_dQ[i]
-        if dQ == 0
-            continue
-        end
-
-        # time of this step
-        t_i_sec = step_times[i] * 86400.0
-        dt = t_final_sec - t_i_sec
-
-        if dt <= 0
-            # final time is before this step started => no contribution
-            continue
-        end
-
-        # Theis dimensionless parameter: u(r) = (r^2 * S) / (4 * T * (t_final - t_i))
-        u = (r_meters .^ 2 .* S) ./ (4.0 * T * dt)
-
-        well_func = expint.(u)
-
-        # Add this step’s contribution: well_func * dQ
-        tstep_sum += well_func * dQ
-    end
-
-    # 5) Convert to hydraulic head => pressure => PSI
-    head_m    = tstep_sum ./ (4π * T)
-    dp_pascals = head_m .* (rho * g)
-    dp_psi     = dp_pascals ./ 6894.76
-
-    # Clean up NaN/Inf
-    dp_psi = isfinite(dp_psi) ? dp_psi : 0.0
-
-
-    return dp_psi
-end
-=#
 
 
 

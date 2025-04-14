@@ -254,6 +254,10 @@ function calculate_fault_effective_stresses(strike::Union{Float64, Integer}, dip
     # normal stress on fault plane
     sig_normal = 2 .* n1_n2 .* s12 .+ n1_sq .* s11_s33 .+ n2_sq .* s22_s33 .+ s33
 
+    # if sig_normal and tau_normal are negative, set them to 0
+    sig_normal = max.(sig_normal, 0.0)
+    tau_normal = max.(tau_normal, 0.0)
+
     #println("sig_normal: ", sig_normal)
     #println("tau_normal: ", tau_normal)
     #println("s11: ", s11)
@@ -379,7 +383,7 @@ function ComputeCriticalPorePressureForFailure(
     )
 
     # input validation
-    if sig_fault ≤ 0.0
+    if sig_fault < 0.0
         error("Error: Normal stress 'sig_fault' must be positive. Got: $sig_fault")
     end
 
@@ -504,10 +508,10 @@ function analyze_fault_hydro(strike::Float64, dip::Float64, friction::Float64,
 
 
     # Josimar's simplified function
-    slip_pressure = ComputeCriticalPorePressureForFailure(sig_fault, tau_fault, friction, p0, 1.0, 0.5)
+    #slip_pressure = ComputeCriticalPorePressureForFailure(sig_fault, tau_fault, friction, p0, 1.0, 0.5)
 
     # Calculate pp to bring fault to failure (MATLAB approach)
-    #slip_pressure = calculate_slip_pressure(sig_fault, tau_fault, friction, p0, 1.0, 0.5, dp, s11, s22, s33, s12, n1, n2) # compare to ComputeCriticalPorePressureForFailure --> FSP3D.jl
+    slip_pressure = calculate_slip_pressure(sig_fault, tau_fault, friction, p0, 1.0, 0.5, dp, s11, s22, s33, s12, n1, n2) # compare to ComputeCriticalPorePressureForFailure --> FSP3D.jl
 
 
     return Dict(
@@ -542,31 +546,7 @@ function analyze_fault(strike::Float64, dip::Float64, friction::Float64,
 end
 
 
-# Default process_faults for deterministic analysis
-function process_faults(faults::Vector, stress_state::StressState, initial_pressure::Float64)
-    results = []
-    
-    for fault in faults
-        strike = fault["strike"]
-        dip = fault["dip"]
-        friction = fault["friction_coefficient"]
-        
-        fault_stresses = calculate_fault_effective_stresses(stress_state, strike, dip)
-        slip_pressure = calculate_slip_pressure(fault_stresses, friction, initial_pressure)
-        scu = calculate_scu(fault_stresses, friction)
-        cff = calculate_cff(fault_stresses, friction)
-        
-        push!(results, Dict(
-            "slip_pressure" => slip_pressure,
-            "scu" => scu,
-            "cff" => cff
-        ))
-    end
 
-    
-    
-    return results
-end
 
 # Monte Carlo version - only calculates slip pressure
 function process_faults(faults::Vector, stress_state::StressState, initial_pressure::Float64, ::Val{:monte_carlo})

@@ -43,7 +43,9 @@ end
 function run_monte_carlo_hydrology(helper::TexNetWebToolLaunchHelperJulia, 
                                   params::HydrologyParams, 
                                   distribution_type::String="uniform",
-                                  extrapolate_injection_rates::Bool=false)
+                                  extrapolate_injection_rates::Bool=false,
+                                  year_of_interest_date::Date=Date(year_of_interest-1, 12, 31),
+                                  year_of_interest::Int64=Dates.year(today()))
 
     if distribution_type == "uniform"
         # check if we are missing the plus_minus value for a parameter, set it to 0.0
@@ -126,24 +128,7 @@ function run_monte_carlo_hydrology(helper::TexNetWebToolLaunchHelperJulia,
     # create the matrix to store the results of the Monte Carlo simulations
     ppOnFaultMC = zeros(params.n_iterations, num_faults) # rows are iterations, columns are faults
 
-    # get the year of interest
-    year_of_interest = get_parameter_value(helper, 5, "year_of_interest")
-    #year_of_interest = 2022
     
-    if year_of_interest === nothing
-        year_of_interest = Dates.year(today())  # default to current year
-        add_message_with_step_index!(helper, 5, "Year of interest was not provided, using the current year ($year_of_interest) as the default value", 0)
-    else
-        # Check if year_of_interest is already an Int before parsing
-        if isa(year_of_interest, String)
-            year_of_interest = parse(Int, year_of_interest)
-        elseif !isa(year_of_interest, Int)
-            # Handle unexpected types if necessary (even though the portal should prevent this)
-            error("Unexpected type for year_of_interest: $(typeof(year_of_interest))")
-        end
-        # If it's already an Int, we don't need to do anything
-        println("Year of interest: $year_of_interest")
-    end
 
     # Get injection well data
     injection_wells_filepath, injection_data_type = get_injection_dataset_path(helper, 5)
@@ -196,6 +181,8 @@ function run_monte_carlo_hydrology(helper::TexNetWebToolLaunchHelperJulia,
             
             inj_start_year = year(minimum(dates))
             inj_end_year = year(maximum(dates))
+            inj_start_date = minimum(dates)
+            inj_end_date = min(maximum(dates), year_of_interest_date)
         else
             # Annual or monthly format
             well_data = injection_wells_df[injection_wells_df[!, well_id_col] .== well_id, :]
@@ -213,20 +200,27 @@ function run_monte_carlo_hydrology(helper::TexNetWebToolLaunchHelperJulia,
             if "StartYear" in names(well_data)
                 inj_start_year = first(well_data[!, "StartYear"])
                 inj_end_year = first(well_data[!, "EndYear"])
+                inj_start_date = Date(inj_start_year, 1, 1)
+                inj_end_date = Date(inj_end_year-1, 12, 31)
             elseif "Year" in names(well_data)
                 inj_start_year = minimum(well_data[!, "Year"])
+                inj_start_month = minimum(well_data[well_data[!, "Year"] .== inj_start_year, "Month"])
+                inj_start_date = Date(inj_start_year, inj_start_month, 1)
                 inj_end_year = maximum(well_data[!, "Year"])
+                inj_end_month = maximum(well_data[well_data[!, "Year"] .== inj_end_year, "Month"])
+                inj_end_date = Date(inj_end_year, inj_end_month, 1)
+                inj_end_date = lastdayofmonth(inj_end_date)
             else
                 continue
             end
         end
         
-        # Check if the well's injection period overlaps with year of interest
-        if year_of_interest < inj_start_year
+        # Check if the well's injection period started after the year of interest
+        if inj_start_date > year_of_interest_date
             continue
         end
-        actual_end = min(inj_end_year, year_of_interest)
-        if actual_end < inj_start_year
+        actual_end_date = min(inj_end_date, year_of_interest_date)
+        if actual_end_date < inj_start_date
             continue
         end
         
@@ -235,12 +229,14 @@ function run_monte_carlo_hydrology(helper::TexNetWebToolLaunchHelperJulia,
             "lat" => well_lat,
             "lon" => well_lon,
             "inj_start_year" => inj_start_year,
+            "inj_start_date" => inj_start_date,
             "inj_end_year" => inj_end_year,
-            "actual_end" => actual_end
+            "inj_end_date" => inj_end_date,
+            "actual_end_date" => actual_end_date
         )
     end
     
-    println("Processed $(length(well_info)) wells that are active in year $year_of_interest")
+    
 
     # PRE-PROCESS WELL DATA WITH EXTRAPOLATION (for efficiency)
     println("Pre-processing well injection data with extrapolation = $(extrapolate_injection_rates)...")
@@ -251,10 +247,13 @@ function run_monte_carlo_hydrology(helper::TexNetWebToolLaunchHelperJulia,
             injection_wells_df,
             well_id,
             info["inj_start_year"],
-            info["actual_end"],
+            info["inj_start_date"],
+            info["inj_end_year"],
+            info["actual_end_date"],
             injection_data_type,
             year_of_interest,
-            extrapolate_injection_rates
+            extrapolate_injection_rates,
+            year_of_interest_date
         )
         
         if !isempty(days) && !isempty(rates)
@@ -500,11 +499,6 @@ function calculate_probabilistic_slip_potential(prob_geo_cdf::DataFrame, prob_hy
         MinSlipPotential = Float64[],
         MaxSlipPotential = Float64[]
     )
-
-    
-
-    println("prob_geo_cdf:")
-    pretty_table(prob_geo_cdf)
     
     
     # Get unique fault IDs
@@ -644,6 +638,8 @@ function main()
         println("Year of interest: $year_of_interest")
     end
 
+    year_of_interest_date = Date(year_of_interest-1, 12, 31)
+
     # Read probabilistic geomechanics CDF data
     # CONTINUE FROM HERE: configure 'prob_geomechanics_cdf_graph_data' in the portal
     prob_geo_results = get_dataset_file_path(helper, 5, "prob_geomechanics_cdf_graph_data")
@@ -662,20 +658,10 @@ function main()
         println("Using existing deterministic hydrology results:")
         # for all the row in the 'probability' column, replace 1.0 with 100.0
         det_hydro_df.probability = replace(det_hydro_df.probability, 1.0 => 100.0)
-        pretty_table(det_hydro_df)
 
-        # filter the deterministic hydrology results to include everything up to the year of interest
-        # icnlude only the rows where their 'Date' column Dat object is less than December 31st of {year_of_interest - 1}
-        det_hydro_df = det_hydro_df[det_hydro_df.Date .< Date(year_of_interest - 1, 12, 31), :]
-        println("Filtered deterministic hydrology results to year $year_of_interest:")
         # rename the 'FaultID' column to 'ID'
         rename!(det_hydro_df, :FaultID => :ID)
         pretty_table(det_hydro_df)
-        
-
-        
-        
-
         
         
         # Calculate slip potential by combining with probabilistic geomechanics CDF
@@ -688,21 +674,19 @@ function main()
         =#
         
         # Calculate slip potential for all years in the dataset
-        all_years_slip_potential = calculate_deterministic_slip_potential(prob_geo_cdf, det_hydro_df, nothing)
-        
-        # Save all years slip potential results
-        #save_dataframe_as_parameter!(helper, 5, "hydro_slip_potential_results_all_years", all_years_slip_potential)
+        deterministic_slip_potential = calculate_deterministic_slip_potential(prob_geo_cdf, det_hydro_df, nothing)
 
-        #println("hydro_slip_potential_results_all_years:")
-        #pretty_table(all_years_slip_potential)
+        println("deterministic_slip_potential:")
+        pretty_table(deterministic_slip_potential)
+        
+       
         
         # Filter for the specific year of interest
-        year_specific_slip_potential = all_years_slip_potential[all_years_slip_potential.Year .== year_of_interest, :]
+        #year_specific_slip_potential = deterministic_slip_potential[deterministic_slip_potential.Year .== year_of_interest, :]
         
         # Save the year-specific slip potential results
         save_dataframe_as_parameter!(helper, 5, "prob_hydrology_cdf_graph_data", det_hydro_df)
-        println("prob_hydrology_cdf_graph_data (filtered to year $year_of_interest):")
-        pretty_table(det_hydro_df)
+        
 
 
         
@@ -711,8 +695,7 @@ function main()
         
         
         println("\nTotal Slip Potential Results (Deterministic Hydrology) - All Years:")
-        println("Years: $(minimum(all_years_slip_potential.Year)) to $(maximum(all_years_slip_potential.Year))")
-        println("Number of data points: $(nrow(all_years_slip_potential))")
+       
         
         
         
@@ -769,7 +752,7 @@ function main()
         )
         
         # Run Monte Carlo simulation
-        prob_hydro_results, prob_hydro_stats = run_monte_carlo_hydrology(helper, params, "uniform", extrapolate_injection_rates)
+        prob_hydro_results, prob_hydro_stats = run_monte_carlo_hydrology(helper, params, "uniform", extrapolate_injection_rates, year_of_interest_date, year_of_interest)
         
         # Save the results
         #save_dataframe_as_parameter!(helper, 5, "prob_hydrology_results", prob_hydro_results)
@@ -783,9 +766,12 @@ function main()
         
         # Calculate slip potential by combining with probabilistic geomechanics CDF
         slip_potential = calculate_probabilistic_slip_potential(prob_geo_cdf, prob_hydro_results)
+
+        println("slip_potential:")
+        pretty_table(slip_potential)
         
         # Save the slip potential results
-        save_dataframe_as_parameter!(helper, 5, "hydro_slip_potential_results", slip_potential)
+        #save_dataframe_as_parameter!(helper, 5, "hydro_slip_potential_results", slip_potential)
         
         # Pretty print the statistics
         println("\nProbabilistic Hydrology Statistics:")

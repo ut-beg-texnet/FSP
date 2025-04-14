@@ -2,7 +2,7 @@ module JuliaFSPGraphs
 
 export plot_pressure_distance_graph, plot_pressure_grid_heatmap, plot_mohr_diagram_geo, plot_mohr_diagram_hydro, plot_injection_rate_line_chart, plot_fault_surface_map,
 plot_cdf_det_hydro, plot_prob_hydro_combined_cdf, fault_surface_map_data_to_d3, mohr_diagram_data_to_d3_portal, injection_rate_data_to_d3, prob_geomechanics_cdf, fault_sensitivity_tornado_chart_to_d3,
-uncertainty_variability_inputs_to_d3, prob_hydrology_cdf, input_distribution_histograms_to_d3
+uncertainty_variability_inputs_to_d3, prob_hydrology_cdf, input_distribution_histograms_to_d3, mohr_diagram_hydro_data_to_d3_portal
 
 using Plots
 using JSON
@@ -458,12 +458,12 @@ function mohr_diagram_data_to_d3_portal(
         stress_regime = String[],
         start_angle = Float64[],
         end_angle = Float64[],
-        labelPosX = Float64[],
+        labelPosX = Float64[], # we add 300 to the effective stress to avoid overlap with the arc lines
         labelPosY = Float64[]
     )
-    push!(arcsDF, (arc1_label, centerX1, 0.0, radius1, stress_regime, 0.0, π, S1_eff, 0.0))
-    push!(arcsDF, (arc2_label, centerX2, 0.0, radius2, stress_regime, 0.0, π, S2_eff, 0.0))
-    push!(arcsDF, (arc3_label, centerX3, 0.0, radius3, stress_regime, 0.0, π, S3_eff, 0.0))
+    push!(arcsDF, (arc1_label, centerX1, 0.0, radius1, stress_regime, 0.0, π, S1_eff+300, 0.0))
+    push!(arcsDF, (arc2_label, centerX2, 0.0, radius2, stress_regime, 0.0, π, S2_eff+300, 0.0))
+    push!(arcsDF, (arc3_label, centerX3, 0.0, radius3, stress_regime, 0.0, π, S3_eff+300, 0.0))
     
     # --- Compute Frictional Slip Line (common for all faults) ---
     sigma_range = collect(range(0, stop=S1, length=100))
@@ -2387,7 +2387,7 @@ function mohr_diagram_hydro_data_to_d3_portal(
     else
         # Calculate from scratch (existing logic)
         # ...
-        
+        error("No geomechanics dataframes provided for the hydrology Mohr diagram, cannot calculate from scratch")
         # Return all three DataFrames
         println("Created hydrology Mohr diagram data from scratch with mean dp = $(dp_mean) psi")
         return (arcsDF, slipDF, faultDF)

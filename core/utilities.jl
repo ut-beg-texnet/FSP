@@ -263,7 +263,9 @@ Parameters:
 - df: DataFrame containing the well data
 - well_id: Identifier of the well
 - start_year: Starting year for the injection period
+- inj_start_date: Start date of the injection period for this well
 - end_year: Ending year for the injection period
+- inj_end_date: End date of the injection period for this well
 - injection_data_type: Type of the data ("annual_fsp", "monthly_fsp", or "injection_tool_data")
 - year_of_interest: The year for which to calculate pressure
 - extrapolate: Whether to extrapolate missing data (default: false)
@@ -289,39 +291,39 @@ function prepare_well_data_for_pressure_scenario(
     already_filtered = false
     if "APINumber" in names(df) && all(df.APINumber .== well_id)
         already_filtered = true
-        println("DEBUG: Data is already filtered for well $well_id")
+        #println("DEBUG: Data is already filtered for well $well_id")
         well_data = df
     elseif "API Number" in names(df) && all(df[!, "API Number"] .== well_id)
         already_filtered = true
-        println("DEBUG: Data is already filtered for well $well_id")
+        #println("DEBUG: Data is already filtered for well $well_id")
         well_data = df
     elseif "WellID" in names(df) && all(df.WellID .== well_id)
         already_filtered = true
-        println("DEBUG: Data is already filtered for well $well_id")
+        #println("DEBUG: Data is already filtered for well $well_id")
         well_data = df
     else
         # Filter data for the specific well - handle different possible well ID column names
         well_data = DataFrame()
         if "WellID" in names(df) && (injection_data_type == "annual_fsp" || injection_data_type == "monthly_fsp")
             well_data = df[string.(df[!, "WellID"]) .== well_id, :]
-            println("DEBUG: Filtered by WellID, got $(nrow(well_data)) rows")
+            #println("DEBUG: Filtered by WellID, got $(nrow(well_data)) rows")
         elseif "APINumber" in names(df)
             well_data = df[string.(df[!, "APINumber"]) .== well_id, :]
-            println("DEBUG: Filtered by APINumber, got $(nrow(well_data)) rows")
+            #println("DEBUG: Filtered by APINumber, got $(nrow(well_data)) rows")
         elseif "API Number" in names(df)
             well_data = df[string.(df[!, "API Number"]) .== well_id, :]
-            println("DEBUG: Filtered by API Number, got $(nrow(well_data)) rows")
+            #println("DEBUG: Filtered by API Number, got $(nrow(well_data)) rows")
         elseif "Well ID" in names(df)
             well_data = df[string.(df[!, "Well ID"]) .== well_id, :]
-            println("DEBUG: Filtered by Well ID, got $(nrow(well_data)) rows")
+            #println("DEBUG: Filtered by Well ID, got $(nrow(well_data)) rows")
         elseif "Well_ID" in names(df)
             well_data = df[string.(df[!, "Well_ID"]) .== well_id, :]
-            println("DEBUG: Filtered by Well_ID, got $(nrow(well_data)) rows")
+            #println("DEBUG: Filtered by Well_ID, got $(nrow(well_data)) rows")
         elseif "ID" in names(df)
             well_data = df[string.(df[!, "ID"]) .== well_id, :]
-            println("DEBUG: Filtered by ID, got $(nrow(well_data)) rows")
+            #println("DEBUG: Filtered by ID, got $(nrow(well_data)) rows")
         else
-            println("DEBUG: Could not find well ID column in data. Available columns: $(join(names(df), ", "))")
+            #println("DEBUG: Could not find well ID column in data. Available columns: $(join(names(df), ", "))")
             error("Could not find well ID column in data")
         end
     end
@@ -382,16 +384,6 @@ function prepare_annual_fsp_data(
     global_start_date = inj_start_date
     global_end_date = min(inj_end_date, year_of_interest_date)
     
-    # Special handling for the case where start_year equals end_year
-    #=
-    if start_year == end_year
-        # Use end of the start_year instead of previous year
-        global_end_date = min(Date(start_year, 12, 31), year_of_interest_date)
-    else
-        # Original logic: End_year means data up to Dec 31 of the previous year
-        global_end_date = min(Date(end_year-1, 12, 31), year_of_interest_date)
-    end
-    =#
     
     
     # Calculate total days in the injection period
@@ -433,12 +425,12 @@ function prepare_monthly_fsp_data(
     extrapolate::Bool,
     year_of_interest_date::Date
 )
-    println("\n===== DEBUG: Inside prepare_monthly_fsp_data =====")
+    #println("\n===== DEBUG: Inside prepare_monthly_fsp_data =====")
     
-    println("DEBUG: start_year=$start_year, end_year=$end_year, year_of_interest=$year_of_interest")
+    #println("DEBUG: start_year=$start_year, end_year=$end_year, year_of_interest=$year_of_interest")
     
     # If well starts after end_year, return empty arrays
-    if start_year > end_year
+    if start_year > year(year_of_interest_date)
         println("DEBUG: Well starts after calculation end year - start_year ($start_year) > end_year ($end_year)")
         return Float64[], Float64[]
     end
@@ -465,10 +457,6 @@ function prepare_monthly_fsp_data(
             return Date(y+1, 1, 1)
         end
     end
-    
-    # Debugging output
-    println("  * Processing monthly FSP data for well")
-    println("  * Year range: $start_year to $end_year")
     
     
     # Verify required columns exist
@@ -514,6 +502,7 @@ function prepare_monthly_fsp_data(
     
     
     # Print out all well data rows for debugging
+    #=
     println("DEBUG: Well data rows (first 5 rows max):")
     for (i, row) in enumerate(eachrow(well_data))
         if i <= 5
@@ -522,9 +511,10 @@ function prepare_monthly_fsp_data(
             break
         end
     end
+    =#
     
     current_month_date = global_start_date
-    println("DEBUG: Starting month loop with current_month_date = $current_month_date")
+    #println("DEBUG: Starting month loop with current_month_date = $current_month_date")
     
     # Process each month
     processed_months = 0
