@@ -17,6 +17,7 @@ using CSV
 using Printf
 using Random
 using Distributions
+using StatsBase  # Added for ecdf function
 
 include("../TexNetWebToolLauncherHelperJulia.jl")
 include("../core/geomechanics_model.jl")
@@ -1294,7 +1295,6 @@ end
 ########################## PORTAL GRAPHS #########################################
 
 function prob_geomechanics_cdf(mc_results_df::DataFrame, det_geomechanics_results_df::DataFrame)
-
     points_df = DataFrame(
         "slip_pressure" => Float64[],
         "probability" => Float64[],
@@ -1320,6 +1320,29 @@ function prob_geomechanics_cdf(mc_results_df::DataFrame, det_geomechanics_result
         # Extract the single value (assuming one result per fault in deterministic data)
         det_slip_pressure = det_slip_pressure_df[1]
 
+        # Skip if no data for this fault
+        number_of_points = length(fault_data)
+        if number_of_points == 0
+            continue 
+        end
+
+        # Convert to vector of Float64 if needed (to handle Any type arrays)
+        fault_data_float = convert(Vector{Float64}, fault_data)
+        
+        # Use StatsBase.ecdf to create the empirical CDF function
+        ecdf_func = ecdf(fault_data_float)
+        
+        # Get sorted pressure values for creating the CDF points
+        sorted_pressure_values = sort(fault_data_float)
+        
+        # Evaluate the ECDF function at each sorted pressure value
+        # Note: StatsBase's ecdf returns probabilities in [0,1], so multiply by 100 for percentage
+        for pressure in sorted_pressure_values
+            probability = ecdf_func(pressure) * 100.0
+            push!(points_df, (pressure, probability, fault_id, det_slip_pressure))
+        end
+        
+        #= Original implementation (commented out)
         # Sort the values
         sorted_pressure_values = sort(fault_data)
 
@@ -1334,6 +1357,7 @@ function prob_geomechanics_cdf(mc_results_df::DataFrame, det_geomechanics_result
         for (pressure, probability) in zip(sorted_pressure_values, probability_values)
             push!(points_df, (pressure, probability, fault_id, det_slip_pressure))
         end
+        =#
     end
 
     return points_df
@@ -1359,6 +1383,29 @@ function prob_hydrology_cdf(prob_hydro_results_df::DataFrame)
         # Get the 'Pressure' column data for this fault from the probabilistic hydrology results
         fault_data = prob_hydro_results_df[prob_hydro_results_df.ID .== fault_id, :Pressure]
 
+        # Skip if no data for this fault
+        number_of_points = length(fault_data)
+        if number_of_points == 0
+            continue 
+        end
+
+        # Convert to vector of Float64 if needed (to handle Any type arrays)
+        fault_data_float = convert(Vector{Float64}, fault_data)
+        
+        # Use StatsBase.ecdf to create the empirical CDF function
+        ecdf_func = ecdf(fault_data_float)
+        
+        # Get sorted pressure values for creating the CDF points
+        sorted_pressure_values = sort(fault_data_float)
+        
+        # Evaluate the ECDF function at each sorted pressure value
+        # Note: StatsBase's ecdf returns probabilities in [0,1], so multiply by 100 for percentage
+        for pressure in sorted_pressure_values
+            probability = ecdf_func(pressure) * 100.0
+            push!(points_df, (pressure, probability, fault_id))
+        end
+        
+        #= Original implementation (commented out)
         # Sort the values
         sorted_pressure_values = sort(fault_data)
 
@@ -1373,6 +1420,7 @@ function prob_hydrology_cdf(prob_hydro_results_df::DataFrame)
         for (pressure, probability) in zip(sorted_pressure_values, probability_values)
             push!(points_df, (pressure, probability, fault_id))
         end
+        =#
     end
 
     return points_df

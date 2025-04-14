@@ -25,6 +25,7 @@ using DataFrames
 using CSV
 using Base.Threads
 using PrettyTables
+using StatsBase  # Add StatsBase for ecdf function
 gr()
 
 include("core/geomechanics_model.jl")
