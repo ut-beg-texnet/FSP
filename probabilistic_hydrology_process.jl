@@ -135,7 +135,17 @@ function run_monte_carlo_hydrology(helper::TexNetWebToolLaunchHelperJulia,
     if injection_wells_filepath === nothing
         error("No injection well dataset found. Please provide injection well data.")
     end
-    injection_wells_df = CSV.read(injection_wells_filepath, DataFrame)
+    
+    # Explicitly read API Number as String to preserve leading zeros
+    if injection_data_type == "injection_tool_data"
+        injection_wells_df = CSV.read(injection_wells_filepath, DataFrame, types = Dict(
+            "API Number" => String,
+            "APINumber" => String,
+            "UIC Number" => String
+        ))
+    else
+        injection_wells_df = CSV.read(injection_wells_filepath, DataFrame)
+    end
     
     # Get unique well IDs based on data format - moved outside the loops for efficiency
     well_id_col = injection_data_type == "injection_tool_data" ? "API Number" : "WellID"
@@ -148,10 +158,10 @@ function run_monte_carlo_hydrology(helper::TexNetWebToolLaunchHelperJulia,
         println("Processing well ID: $well_id")
         
         if injection_data_type == "injection_tool_data"
-            well_data = injection_wells_df[injection_wells_df[!, well_id_col] .== well_id, :]
+            well_data = injection_wells_df[string.(injection_wells_df[!, well_id_col]) .== string(well_id), :]
             if isempty(well_data)
                 # Try UIC Number
-                well_data = injection_wells_df[injection_wells_df[!, "UIC Number"] .== well_id, :]
+                well_data = injection_wells_df[string.(injection_wells_df[!, "UIC Number"]) .== string(well_id), :]
                 if isempty(well_data)
                     continue
                 end
@@ -201,7 +211,7 @@ function run_monte_carlo_hydrology(helper::TexNetWebToolLaunchHelperJulia,
             println("Well $well_id: start_year=$inj_start_year ($(typeof(inj_start_year))), end_year=$inj_end_year ($(typeof(inj_end_year)))")
         else
             # Annual or monthly format
-            well_data = injection_wells_df[injection_wells_df[!, well_id_col] .== well_id, :]
+            well_data = injection_wells_df[string.(injection_wells_df[!, well_id_col]) .== string(well_id), :]
             if isempty(well_data)
                 continue
             end
