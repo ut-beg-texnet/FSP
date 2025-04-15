@@ -1,5 +1,7 @@
 module Utilities
 
+include("../TexNetWebToolLauncherHelperJulia.jl")
+
 using DataFrames
 using Geodesy
 using LinearAlgebra
@@ -9,6 +11,8 @@ using Proj
 using Distributions
 using LibGEOS 
 using CSV
+using Interpolations
+using .TexNetWebToolLauncherHelperJulia
 
 
 
@@ -16,7 +20,32 @@ import Proj: CRS # explicitly
 
 export latlon_to_wkt, convert_easting_northing_to_latlon, convert_latlon_to_easting_northing!
 export prepare_well_data_for_pressure_scenario, create_spatial_grid_km, create_spatial_grid_latlon, create_uniform_distribution
-export reformat_pressure_grid_to_heatmap_data
+export reformat_pressure_grid_to_heatmap_data, get_date_bounds, get_injection_dataset_path, interpolate_cdf
+
+
+
+"""
+Get the injection dataset path based on available data types
+"""
+function get_injection_dataset_path(helper::TexNetWebToolLaunchHelperJulia, step_index::Int)
+    for param_name in ["injection_wells_annual", "injection_wells_monthly", "injection_tool_data"]
+        filepath = get_dataset_file_path(helper, step_index, param_name)
+        if filepath !== nothing
+            if param_name == "injection_wells_annual"
+                injection_data_type = "annual_fsp"
+                return filepath, injection_data_type
+            elseif param_name == "injection_wells_monthly"
+                injection_data_type = "monthly_fsp"
+                return filepath, injection_data_type
+            elseif param_name == "injection_tool_data"
+                injection_data_type = "injection_tool_data"
+                return filepath, injection_data_type
+            end
+        end
+    end
+    
+    return nothing, nothing
+end
 
 
 # Converts lat/lon to WKT format for polylines on the map
@@ -984,6 +1013,143 @@ function reformat_pressure_grid_to_heatmap_data(pressure_grid::DataFrame, lat_ra
     
     
     return heatmap_df
+end
+
+# New improved version of the function that correctly handles coordinate ordering
+function reformat_pressure_grid_to_heatmap_data_v2(pressure_grid::DataFrame, lat_range::AbstractVector, lon_range::AbstractVector)
+    n_lat = length(lat_range)
+    n_lon = length(lon_range)
+    
+    if nrow(pressure_grid) != n_lat * n_lon
+        error("Pressure grid size does not match the product of latitude and longitude range lengths")
+    end
+    
+    # Calculate half step sizes for latitude and longitude
+    half_lat_step = n_lat > 1 ? (lat_range[2] - lat_range[1]) / 2.0 : 0.0
+    half_lon_step = n_lon > 1 ? (lon_range[2] - lon_range[1]) / 2.0 : 0.0
+
+    # Initialize arrays for the new DataFrame
+    shapes = String[]
+    values = Float64[]
+
+    # IMPORTANT: In create_spatial_grid_latlon, we use meshgrid(lon_range, lat_range)
+    # This means in the resulting LAT_grid and LON_grid:
+    # - The 'Longitude' column actually contains longitude values (from LAT_grid) 
+    # - The 'Latitude' column actually contains latitude values (from LON_grid)
+    # Both are correctly named in the DataFrame despite the confusing variable names in deterministic_hydrology_process.jl
+    
+    for row in eachrow(pressure_grid)
+        # Get the actual lat/lon values - column names are correct
+        lat = row.Latitude
+        lon = row.Longitude
+        pressure = row.Pressure_psi
+
+        # Calculate corners of the polygon for this grid cell
+        lat_min_cell = lat - half_lat_step
+        lat_max_cell = lat + half_lat_step
+        lon_min_cell = lon - half_lon_step
+        lon_max_cell = lon + half_lon_step
+
+        # Create polygon coordinates in correct (x,y) order for WKT
+        # WKT format expects coordinates as (x,y) which corresponds to (longitude, latitude)
+        coordinates = [
+            (lon_min_cell, lat_min_cell),  # Bottom left
+            (lon_max_cell, lat_min_cell),  # Bottom right
+            (lon_max_cell, lat_max_cell),  # Top right
+            (lon_min_cell, lat_max_cell),  # Top left
+            (lon_min_cell, lat_min_cell)   # Close the polygon
+        ]
+
+        # Convert to the format LibGEOS expects: [[x1,y1], [x2,y2], ...]
+        shell_coords = [[x, y] for (x, y) in coordinates]
+        
+        # Create the polygon and convert to WKT
+        polygon = LibGEOS.Polygon([shell_coords])
+        wkt_polygon = LibGEOS.writegeom(polygon)
+        
+        push!(shapes, wkt_polygon)
+        push!(values, pressure)
+    end
+
+    return DataFrame(
+        shape = shapes,
+        value = values
+    )
+end
+
+
+
+
+# function to get the date bounds from the inejction well data 
+# supports all three FSP formats
+function get_date_bounds(well_data::DataFrame)
+    # check the format of the well data
+    # if we have 'month' column, it's FSP Monthly
+    if "Month" in names(well_data)
+        inj_start_year = minimum(well_data[!, "Year"])
+        inj_start_month = minimum(well_data[well_data[!, "Year"] .== inj_start_year, "Month"])
+        inj_start_date = Date(inj_start_year, inj_start_month, 1)
+        inj_end_year = maximum(well_data[!, "Year"])
+        inj_end_month = maximum(well_data[well_data[!, "Year"] .== inj_end_year, "Month"])
+        inj_end_date = Date(inj_end_year, inj_end_month, 1)
+        inj_end_date = lastdayofmonth(inj_end_date)
+    elseif "StartYear" in names(well_data)
+        # FSP Annual format
+        inj_start_year = first(well_data[!, "StartYear"])
+        inj_end_year = first(well_data[!, "EndYear"])
+        inj_start_date = Date(inj_start_year, 1, 1)
+        inj_end_date = Date(inj_end_year-1, 12, 31)
+    else
+        # Injection tool data format
+        dates = Date[]
+        dates = Date.(well_data[!, "Date of Injection"], dateformat"y-m-d")
+        if isempty(dates)
+            throw(ArgumentError("No dates found in the well data"))
+        end
+        inj_start_date = minimum(dates)
+        inj_end_date = maximum(dates)
+    end
+
+    return inj_start_date, inj_end_date
+    
+        
+        
+end
+
+"""
+    interpolate_cdf(x_values::Vector{Float64}, y_values::Vector{Float64}, x::Float64)
+
+Interpolate a value on a CDF using Interpolations.jl for improved accuracy and performance.
+Returns the probability corresponding to value x based on the provided CDF data points.
+
+Parameters:
+- x_values: Vector of x-coordinates (e.g., pressure values) on the CDF, must be sorted
+- y_values: Vector of y-coordinates (probabilities) on the CDF, between 0 and 1
+- x: The x value to interpolate at
+
+Returns:
+- The interpolated probability value
+"""
+function interpolate_cdf(x_values::Vector{Float64}, y_values::Vector{Float64}, x::Float64)
+    # Handle edge cases
+    if isempty(x_values) || isempty(y_values)
+        @warn "Empty vectors provided to interpolate_cdf"
+        return 0.0
+    end
+    
+    # Sort the values if they're not already sorted
+    if !issorted(x_values)
+        p = sortperm(x_values)
+        x_values = x_values[p]
+        y_values = y_values[p]
+    end
+    
+    # Create interpolation object with flat extrapolation behavior
+    # This will return the endpoint values when x is outside the domain
+    itp = LinearInterpolation(x_values, y_values, extrapolation_bc=Flat())
+    
+    # Return interpolated value
+    return itp(x)
 end
 
 end # module

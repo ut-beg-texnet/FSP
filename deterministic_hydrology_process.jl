@@ -36,20 +36,20 @@ const RESULTS_FILE_NAME = "results.json"
 # 3) Injection Tool Data
 function get_injection_dataset_path(helper::TexNetWebToolLaunchHelperJulia, step_index::Int)
     #println("DEBUG: get_injection_dataset_path called with step_index = $step_index")
-    for param_name in ["injection_wells_annual", "injection_wells_monthly", "injection_tool_data"]
+    for param_name in ["injection_wells_annual_hydrology", "injection_wells_monthly_hydrology", "injection_tool_data_hydrology"]
         #println("DEBUG: Trying to get file path for param_name = $param_name")
         filepath = get_dataset_file_path(helper, step_index, param_name)
         #println("DEBUG: filepath = $filepath, type = $(typeof(filepath))")
         if filepath !== nothing
-            if param_name == "injection_wells_annual"
+            if param_name == "injection_wells_annual_hydrology"
                 injection_data_type = "annual_fsp"
                 println("DEBUG: Returning filepath = $filepath, type = $(typeof(filepath)), injection_data_type = $injection_data_type")
                 return filepath, injection_data_type
-            elseif param_name == "injection_wells_monthly"
+            elseif param_name == "injection_wells_monthly_hydrology"
                 injection_data_type = "monthly_fsp"
                 println("DEBUG: Returning filepath = $filepath, type = $(typeof(filepath)), injection_data_type = $injection_data_type")
                 return filepath, injection_data_type
-            elseif param_name == "injection_tool_data"
+            elseif param_name == "injection_tool_data_hydrology"
                 injection_data_type = "injection_tool_data"
                 println("DEBUG: Returning filepath = $filepath, type = $(typeof(filepath)), injection_data_type = $injection_data_type")
                 return filepath, injection_data_type
@@ -177,9 +177,18 @@ function main()
         error("No injection well dataset found. Please provide injection well data.")
     end
 
-
-    # Parse injection well data
-    injection_wells_df = CSV.read(injection_wells_dataset_filepath, DataFrame)
+    # if we have injection tool data format, explicitly parse the 'API Number' column as a string
+    if injection_data_type == "injection_tool_data"
+        injection_wells_df = CSV.read(injection_wells_dataset_filepath, DataFrame, types = Dict(
+            "API Number" => String,
+            "APINumber" => String,
+            "UIC Number" => String
+        ))
+        
+    else
+        # Parse injection well data
+        injection_wells_df = CSV.read(injection_wells_dataset_filepath, DataFrame)
+    end
 
     #println("- Loaded well dataset with $(nrow(injection_wells_df)) rows and $(ncol(injection_wells_df)) columns")
 
@@ -816,6 +825,8 @@ function main()
         
         # Save to portal parameter
         save_dataframe_as_parameter!(helper, 4, "radial_curves_data", radial_df)
+        println("radial curves data:")
+        pretty_table(radial_df)
         println("- Radial curve data saved to dataset")
     else
         println("- No wells with valid data for radial curves")

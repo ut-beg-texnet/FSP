@@ -1365,7 +1365,7 @@ end
 
 
 """
-Creates a DataFrame representing the cumulative distribution function (CDF)
+Creates a DataFrame representing the probability of exceedance curve
 for probabilistic hydrology pore pressure results.
 """
 function prob_hydrology_cdf(prob_hydro_results_df::DataFrame)
@@ -1395,32 +1395,16 @@ function prob_hydrology_cdf(prob_hydro_results_df::DataFrame)
         # Use StatsBase.ecdf to create the empirical CDF function
         ecdf_func = ecdf(fault_data_float)
         
-        # Get sorted pressure values for creating the CDF points
+        # Get sorted pressure values for creating the exceedance curve
         sorted_pressure_values = sort(fault_data_float)
         
-        # Evaluate the ECDF function at each sorted pressure value
+        # Evaluate 1-CDF to create the exceedance probability curve
         # Note: StatsBase's ecdf returns probabilities in [0,1], so multiply by 100 for percentage
         for pressure in sorted_pressure_values
-            probability = ecdf_func(pressure) * 100.0
-            push!(points_df, (pressure, probability, fault_id))
+            # Convert CDF to exceedance probability (1-CDF)
+            exceedance_probability = (1.0 - ecdf_func(pressure)) * 100.0
+            push!(points_df, (pressure, exceedance_probability, fault_id))
         end
-        
-        #= Original implementation (commented out)
-        # Sort the values
-        sorted_pressure_values = sort(fault_data)
-
-        # Cumulative probabilities (0 to 100%)
-        number_of_points = length(sorted_pressure_values)
-        if number_of_points == 0
-            continue # Skip if no data for this fault
-        end
-        probability_values = range(0, stop=100, length=number_of_points)
-        
-        # Add points for this fault to the DataFrame
-        for (pressure, probability) in zip(sorted_pressure_values, probability_values)
-            push!(points_df, (pressure, probability, fault_id))
-        end
-        =#
     end
 
     return points_df

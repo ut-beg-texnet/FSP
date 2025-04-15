@@ -148,6 +148,29 @@ function main()
         elseif injection_data_type == "injection_tool_data"
             injection_rate_data = injection_rate_data_to_d3(injection_wells_df, injection_data_type)
             save_dataframe_as_parameter!(helper, 1, "injection_rate_d3_data", injection_rate_data)
+
+            println("Injection wells before filtering (first 10 rows):")
+            println(injection_wells_df[1:10, :])
+
+            # we also need to filter this so we can create a map layer
+            # keep only the first row for each unique API Number
+            injection_wells_df_filtered = unique(injection_wells_df, "API Number")
+            # only keep the columns we need
+            injection_wells_df_filtered = injection_wells_df_filtered[!, ["API Number", "Surface Latitude", "Surface Longitude"]]
+            # rename "API Number" to "UWI"
+            rename!(injection_wells_df_filtered, "API Number" => :UWI)
+            # rename "Surface Latitude" to "Latitude(WGS84)"
+            rename!(injection_wells_df_filtered, "Surface Latitude" => :"Latitude(WGS84)")
+            # rename "Surface Longitude" to "Longitude(WGS84)"
+            rename!(injection_wells_df_filtered, "Surface Longitude" => :"Longitude(WGS84)")
+            println("Injection wells after filtering (all rows):")
+            println(injection_wells_df_filtered)
+            save_dataframe_as_parameter!(helper, 1, "injection_tool_data_filtered_map_layer", injection_wells_df_filtered)
+
+
+
+
+
             println("DEBUG: Saved injection tool data for visualization")
         end
         
