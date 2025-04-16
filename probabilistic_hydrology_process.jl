@@ -836,8 +836,11 @@ function main()
         pretty_table(prob_hydro_stats)
         
         println("\nSlip Potential Results (Probabilistic Hydrology):")
+        # from the 'SlipPotential' column, round to 2 decimal places
+        slip_potential.SlipPotential = round.(slip_potential.SlipPotential, digits=2)
         pretty_table(slip_potential)
         println("size of slip_potential: $(size(slip_potential))")
+        save_dataframe_as_parameter!(helper, 5, "slip_potential_results", slip_potential)
         
         # Plot results (could call a function from julia_fsp_graphs.jl)
         # plot_prob_hydro_combined_cdf(prob_geo_cdf, prob_hydro_results)

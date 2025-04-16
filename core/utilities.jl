@@ -364,13 +364,13 @@ function prepare_well_data_for_pressure_scenario(
     
     # Select the appropriate preparation method based on data type
     if injection_data_type == "annual_fsp"
-        println("DEBUG: Calling prepare_annual_fsp_data")
+        #println("DEBUG: Calling prepare_annual_fsp_data")
         return prepare_annual_fsp_data(well_data, start_year, inj_start_date, end_year, inj_end_date, year_of_interest, year_of_interest_date)
     elseif injection_data_type == "monthly_fsp"
-        println("DEBUG: Calling prepare_monthly_fsp_data")
+        #println("DEBUG: Calling prepare_monthly_fsp_data")
         return prepare_monthly_fsp_data(well_data, start_year, inj_start_date, end_year, inj_end_date, year_of_interest, extrapolate, year_of_interest_date)
     elseif injection_data_type == "injection_tool_data"
-        println("DEBUG: Calling prepare_injection_tool_data")
+        #println("DEBUG: Calling prepare_injection_tool_data")
         return prepare_injection_tool_data(well_data, start_year, inj_start_date, end_year, inj_end_date, year_of_interest, extrapolate, year_of_interest_date)
     else
         error("Unsupported well dataset data type: $injection_data_type")
@@ -687,22 +687,27 @@ function prepare_daily_injection_tool_data(
     # Ensure dates are in Date format
     dates = Date[]
     
-    # Check the type of date values first
+    # Check if dates are already Date objects
     if eltype(well_data[!, date_col]) <: Date
-        # Already Date objects, no need to parse
-        println("DEBUG: Date column already contains Date objects")
         dates = well_data[!, date_col]
     else
         # Need to parse from strings
         try
             # Try different date formats
             dates = Date.(well_data[!, date_col], dateformat"y-m-d")
-        catch e
-            error("Could not parse dates in column $date_col: $e")
+        catch
+            try
+                dates = Date.(well_data[!, date_col], dateformat"m/d/y")
+            catch
+                try
+                    dates = Date.(well_data[!, date_col], dateformat"m/d/yyyy")
+                catch e
+                    throw(ArgumentError("Could not parse dates in 'Date of Injection' column: $e"))
+                end
+            end
         end
     end
     
-    # Find the earliest and latest dates in the data
     if isempty(dates)
         @warn "No valid dates found in injection data"
         return Float64[], Float64[]
@@ -715,7 +720,7 @@ function prepare_daily_injection_tool_data(
     global_start_date = inj_start_date
     global_end_date = min(inj_end_date, year_of_interest_date)
     
-    println("DEBUG: Using actual start date from data: $global_start_date (earliest data: $earliest_data_date)")
+    #println("DEBUG: Using actual start date from data: $global_start_date (earliest data: $earliest_data_date)")
     
     # Arrays for step changes
     step_times = Float64[]
@@ -1102,7 +1107,28 @@ function get_date_bounds(well_data::DataFrame)
     else
         # Injection tool data format
         dates = Date[]
-        dates = Date.(well_data[!, "Date of Injection"], dateformat"y-m-d")
+        
+        # Check if dates are already Date objects
+        if eltype(well_data[!, "Date of Injection"]) <: Date
+            dates = well_data[!, "Date of Injection"]
+        else
+            # Need to parse from strings
+            try
+                # Try different date formats
+                dates = Date.(well_data[!, "Date of Injection"], dateformat"y-m-d")
+            catch
+                try
+                    dates = Date.(well_data[!, "Date of Injection"], dateformat"m/d/y")
+                catch
+                    try
+                        dates = Date.(well_data[!, "Date of Injection"], dateformat"m/d/yyyy")
+                    catch e
+                        throw(ArgumentError("Could not parse dates in 'Date of Injection' column: $e"))
+                    end
+                end
+            end
+        end
+        
         if isempty(dates)
             throw(ArgumentError("No dates found in the well data"))
         end

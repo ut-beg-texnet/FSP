@@ -11,8 +11,8 @@ using PrettyTables
 using Statistics
 using Plots
 using Interpolations
-using ProgressMeter
 using Random
+using Distributions
 
 using .Utilities
 using .HydroCalculations
@@ -51,6 +51,17 @@ function run_mc_hydrology_time_series(
     injection_data_type::String,
     distribution_type::String="uniform"
 )
+    # Print key input parameter values for debugging
+    println("===== DEBUG: Input Parameters =====")
+    println("aquifer_thickness: ", params.aquifer_thickness)
+    println("porosity: ", params.porosity)
+    println("permeability: ", params.permeability)
+    println("fluid_density: ", params.fluid_density)
+    println("dynamic_viscosity: ", params.dynamic_viscosity)
+    println("fluid_compressibility: ", params.fluid_compressibility)
+    println("rock_compressibility: ", params.rock_compressibility)
+    println("===================================")
+    
     # Create distributions for MC sampling
     distributions = Dict{String, Distribution}()
     
@@ -84,7 +95,30 @@ function run_mc_hydrology_time_series(
             error("Could not identify well ID column in injection data")
         end
     end
-    well_ids = unique(injection_wells_df[!, well_id_col])
+    
+    # IMPORTANT: Always work with well IDs as strings to preserve leading zeros
+    well_ids = string.(unique(injection_wells_df[!, well_id_col]))
+    
+    # Debug - print well IDs and dataframe columns
+    println("===== DEBUG: Well Data =====")
+    println("Well ID column: ", well_id_col)
+    println("Number of wells: ", length(well_ids))
+    println("Well IDs: ", well_ids)
+    println("Injection data columns: ", names(injection_wells_df))
+    
+    # For injection tool data format, verify date column
+    if injection_data_type == "injection_tool_data"
+        if !("Date of Injection" in names(injection_wells_df))
+            println("WARNING: 'Date of Injection' column not found in injection data")
+        else
+            date_col = "Date of Injection"
+            println("Date column type: ", eltype(injection_wells_df[!, date_col]))
+            if nrow(injection_wells_df) > 0
+                println("Sample date: ", injection_wells_df[1, date_col])
+            end
+        end
+    end
+    println("==========================")
     
     # Get fault IDs
     num_faults = nrow(fault_df)
@@ -112,7 +146,6 @@ function run_mc_hydrology_time_series(
     println("Number of iterations: $(params.n_iterations)")
     
     # Main Monte Carlo loop
-    p = Progress(params.n_iterations, desc="MC Simulations: ", dt=1.0)
     for i in 1:params.n_iterations
         # Sample parameters from distributions
         sampled_params = Dict(
@@ -139,6 +172,11 @@ function run_mc_hydrology_time_series(
         
         STRho = (S, T, rho)
         
+        # Debug print only for first iteration
+        if i == 1
+            println("DEBUG: Calculated S = $S, T = $T, rho = $rho")
+        end
+        
         # Process each year
         for analysis_year in years_to_analyze
             # Set up year cutoff date (Dec 31 of the analysis year)
@@ -162,8 +200,11 @@ function run_mc_hydrology_time_series(
                 total_pressure = 0.0
                 
                 # Process each well's contribution
+                well_count = 0
                 for well_id in well_ids
-                    well_data = injection_wells_df[string.(injection_wells_df[!, well_id_col]) .== well_id, :]
+                    well_count += 1
+                    # IMPORTANT: Convert both to string for comparison to preserve leading zeros
+                    well_data = injection_wells_df[string.(injection_wells_df[!, well_id_col]) .== string(well_id), :]
                     
                     if isempty(well_data)
                         continue
@@ -191,17 +232,24 @@ function run_mc_hydrology_time_series(
                         inj_end_date = Date(inj_end_year, inj_end_month, 1)
                         inj_end_date = lastdayofmonth(inj_end_date)
                     elseif injection_data_type == "injection_tool_data"
-                        dates = try
-                            Date.(well_data[!, "Date of Injection"], dateformat"y-m-d")
-                        catch
+                        dates = []
+                        # Check if dates are already Date objects
+                        if eltype(well_data[!, "Date of Injection"]) <: Date
+                            dates = well_data[!, "Date of Injection"]
+                        else
+                            # Need to parse from strings
                             try
-                                Date.(well_data[!, "Date of Injection"], dateformat"m/d/y")
+                                dates = Date.(well_data[!, "Date of Injection"], dateformat"y-m-d")
                             catch
                                 try
-                                    Date.(well_data[!, "Date of Injection"], dateformat"m/d/yyyy")
-                                catch e
-                                    @warn "Could not parse dates for well $well_id: $e"
-                                    continue
+                                    dates = Date.(well_data[!, "Date of Injection"], dateformat"m/d/y")
+                                catch
+                                    try
+                                        dates = Date.(well_data[!, "Date of Injection"], dateformat"m/d/yyyy")
+                                    catch e
+                                        @warn "Could not parse dates for well $well_id: $e"
+                                        continue
+                                    end
                                 end
                             end
                         end
@@ -264,9 +312,6 @@ function run_mc_hydrology_time_series(
                 results[analysis_year][i][fault_id] = total_pressure
             end
         end
-        
-        # Update progress bar
-        next!(p)
     end
     
     # Convert nested dictionary to DataFrame
@@ -379,8 +424,7 @@ function generate_summary_report(fsp_results::DataFrame, prob_hydro_df::DataFram
             # Select relevant columns from fault data
             fault_metadata = select(fault_df, 
                 fault_id_col => :ID, 
-                ["Strike", "Dip", "FrictionCoefficient", "slip_pressure"], 
-                skipmissing=true
+                ["Strike", "Dip", "FrictionCoefficient", "slip_pressure"]
             )
             
             # Rename slip_pressure column to avoid confusion
@@ -403,7 +447,7 @@ end
 # 2) FSP (monthly)
 # 3) Injection Tool Data
 function get_injection_dataset_path(helper::TexNetWebToolLaunchHelperJulia, step_index::Int)
-    println("heyyyyyyyyyyyyyyy")
+    
     #println("DEBUG: get_injection_dataset_path called with step_index = $step_index")
     for param_name in ["injection_wells_annual_summary", "injection_wells_monthly_summary", "injection_tool_data_summary"]
         #println("DEBUG: Trying to get file path for param_name = $param_name")
@@ -454,8 +498,41 @@ function main()
     if injection_wells_csv_filepath === nothing
         error("No injection wells dataset provided.")
     end
-    injection_wells_df = CSV.read(injection_wells_csv_filepath, DataFrame)
-    println("Loaded injection wells data: $(nrow(injection_wells_df)) records")
+    
+    # Define types for CSV columns to ensure API numbers are read as strings
+    if injection_data_type == "injection_tool_data"
+        # Try to read the first few lines to determine column names
+        try
+            column_names = names(CSV.read(injection_wells_csv_filepath, DataFrame, limit=1))
+            api_column = "API Number" in column_names ? "API Number" : 
+                         "APINumber" in column_names ? "APINumber" :
+                         "UIC Number" in column_names ? "UIC Number" : nothing
+            
+            if api_column !== nothing
+                # Create a types dictionary to force API column to be read as String
+                # Also ensure Volume Injected is read as a Float64 to preserve all digits
+                types_dict = Dict(
+                    api_column => String,
+                    "Volume Injected (BBLs)" => Float64
+                )
+                injection_wells_df = CSV.read(injection_wells_csv_filepath, DataFrame, types=types_dict)
+                println("Loaded injection wells data with API numbers as strings: $(nrow(injection_wells_df)) records")
+            else
+                # Fall back to default reading
+                injection_wells_df = CSV.read(injection_wells_csv_filepath, DataFrame)
+                println("Loaded injection wells data: $(nrow(injection_wells_df)) records")
+            end
+        catch e
+            println("Error reading column names: $e")
+            # Fall back to default reading
+            injection_wells_df = CSV.read(injection_wells_csv_filepath, DataFrame)
+            println("Loaded injection wells data: $(nrow(injection_wells_df)) records")
+        end
+    else
+        # For other data types, read normally
+        injection_wells_df = CSV.read(injection_wells_csv_filepath, DataFrame)
+        println("Loaded injection wells data: $(nrow(injection_wells_df)) records")
+    end
 
     # 3) Read fault data
     fault_data_path = get_dataset_file_path(helper, 6, "faults")
@@ -463,7 +540,8 @@ function main()
         error("Required fault dataset not found or accessible.")
     end
     fault_df = CSV.read(fault_data_path, DataFrame)
-    println("Loaded fault data: $(nrow(fault_df)) faults")
+    println("Loaded fault data: ")
+    pretty_table(fault_df)
 
     # 4) Read probabilistic geomechanics results
     prob_geo_cdf_path = get_dataset_file_path(helper, 6, "prob_geomechanics_cdf_graph_data_summary")
@@ -529,15 +607,6 @@ function main()
     println("Injection period: $inj_start_date to $inj_end_date")
     println("Years to analyze: $years_to_analyze")
 
-    #=
-
-    # Get the injection data type directly
-    injection_wells_filepath, injection_data_type = Utilities.get_injection_dataset_path(helper, 6)
-    if injection_wells_filepath === nothing
-        error("No injection well dataset found. Please provide injection well data.")
-    end
-    =#
-
     # 7) Run Monte Carlo simulation for probabilistic hydrology for each year
     println("\nRunning probabilistic hydrology Monte Carlo simulation for multiple years...")
     prob_hydro_results = run_mc_hydrology_time_series(
@@ -548,23 +617,57 @@ function main()
         year_of_interest,
         injection_data_type
     )
+
+    println("prob_hydro_results: $(nrow(prob_hydro_results)) records")
+    # for every unique 'ID' value, print the first 10 rows of each 'Year'
+    for id in unique(prob_hydro_results.ID)
+        println("ID: $id")
+        println("minimum pressure in prob_hydro_results df: $(minimum(prob_hydro_results[prob_hydro_results.ID .== id, :Pressure]))")
+        println("maximum pressure in prob_hydro_results df: $(maximum(prob_hydro_results[prob_hydro_results.ID .== id, :Pressure]))")
+    end
     
     # Save hydrology results
-    save_dataframe_as_parameter!(helper, 6, "prob_hydrology_time_series", prob_hydro_results)
-    println("Saved probabilistic hydrology results: $(nrow(prob_hydro_results)) records")
+    #save_dataframe_as_parameter!(helper, 6, "prob_hydrology_time_series", prob_hydro_results)
+    println("prob_hydrology_time_series: ")
+    # only print the first 10 rows of the df
+    pretty_table(prob_hydro_results[1:10, :])
+
+    # Add this after running MC simulations to check injection data
+    println("\n===== DEBUG: Checking Well Data =====")
+    for (i, well_id) in enumerate(well_ids)
+        if i > 3  # Limit to first 3 wells to avoid too much output
+            break
+        end
+        well_data = injection_wells_df[string.(injection_wells_df[!, well_id_col]) .== well_id, :]
+        
+        # Print some basic stats about each well
+        if !isempty(well_data)
+            println("Well $well_id:")
+            if injection_data_type == "injection_tool_data"
+                println("  Date range: $(minimum(well_data[!, "Date of Injection"])) to $(maximum(well_data[!, "Date of Injection"]))")
+                vol_col = "Volume Injected (BBLs)"
+                if vol_col in names(well_data)
+                    println("  Injection volumes: min=$(minimum(well_data[!, vol_col])), max=$(maximum(well_data[!, vol_col])), mean=$(mean(well_data[!, vol_col]))")
+                end
+            end
+        end
+    end
+    println("==============================\n")
 
     # 8) Calculate fault slip potential by combining with geomechanics CDF
     println("\nCalculating fault slip potential...")
     fsp_results = calculate_fault_slip_potential(prob_geo_cdf, prob_hydro_results)
     
     # Save FSP results
-    save_dataframe_as_parameter!(helper, 6, "fsp_summary", fsp_results)
-    println("Saved fault slip potential summary: $(nrow(fsp_results)) records")
+    #save_dataframe_as_parameter!(helper, 6, "fsp_summary", fsp_results)
+    println("fsp_summary: ")
+    pretty_table(fsp_results[1:10, :])
 
     # 9) Generate comprehensive summary report
     summary_report = generate_summary_report(fsp_results, prob_hydro_results, fault_df)
-    save_dataframe_as_parameter!(helper, 6, "summary_report", summary_report)
-    println("Saved comprehensive summary report: $(nrow(summary_report)) records")
+    #save_dataframe_as_parameter!(helper, 6, "summary_report", summary_report)
+    println("summary_report: ")
+    pretty_table(summary_report[1:10, :])
 
     # 10) Print summary statistics
     println("\nSummary Statistics by Year:")

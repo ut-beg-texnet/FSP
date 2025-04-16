@@ -458,6 +458,7 @@ function main()
     println("Extracting fault parameters from args.json...")
     fault_inputs_filepath = get_dataset_file_path(helper, 3, "faults")
     fault_inputs = CSV.read(fault_inputs_filepath, DataFrame)
+    
 
 
     # get the number of MC simulations to run

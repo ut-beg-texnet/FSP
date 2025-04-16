@@ -852,14 +852,18 @@ function main()
     # Extract stress state parameters from args.json or previous step
     println("- Extracting stress state parameters...")
     stress_inputs = Dict(
-        "reference_depth" => get_parameter_value(helper, 4, "reference_depth"),
-        "vertical_stress" => get_parameter_value(helper, 4, "vertical_stress"),
-        "min_horizontal_stress" => get_parameter_value(helper, 4, "min_horizontal_stress"),
-        "max_horizontal_stress" => get_parameter_value(helper, 4, "max_horizontal_stress"),
-        "pore_pressure" => get_parameter_value(helper, 4, "pore_pressure"),
-        "max_stress_azimuth" => get_parameter_value(helper, 4, "max_stress_azimuth"),
-        "model_type" => get_parameter_value(helper, 2, "stress_field_mode")
+        "reference_depth" => get_parameter_value(helper, 2, "reference_depth"),
+        "vertical_stress" => get_parameter_value(helper, 2, "vertical_stress"),
+        "min_horizontal_stress" => get_parameter_value(helper, 2, "min_horizontal_stress"),
+        "max_horizontal_stress" => get_parameter_value(helper, 2, "max_horizontal_stress"),
+        "pore_pressure" => get_parameter_value(helper, 2, "pore_pressure"),
+        "max_stress_azimuth" => get_parameter_value(helper, 2, "max_stress_azimuth"),
+        "model_type" => get_parameter_value(helper, 2, "stress_field_mode"),
+        "aphi_value" => get_parameter_value(helper, 2, "aphi_value") === nothing ? nothing : get_parameter_value(helper, 2, "aphi_value")
     )
+
+    println("stress inptus from step 2:")
+    pretty_table(stress_inputs)
 
     println("stress_model_type: $(stress_inputs["model_type"])")
     
