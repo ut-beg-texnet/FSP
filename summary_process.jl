@@ -76,7 +76,6 @@ function run_mc_hydrology_time_series(
             "rock_compressibility" => Utilities.create_uniform_distribution(params.rock_compressibility, params.plus_minus["rock_compressibility"])
         )
     elseif distribution_type == "gaussian"
-        # Example for future extension
         @warn "Gaussian distribution not fully implemented, defaulting to uniform"
         return run_mc_hydrology_time_series(params, fault_df, injection_wells_df, years_to_analyze, year_of_interest, injection_data_type, "uniform")
     else
@@ -91,34 +90,41 @@ function run_mc_hydrology_time_series(
             well_id_col = "APINumber"
         elseif "UIC Number" in names(injection_wells_df)
             well_id_col = "UIC Number"
+        elseif "Well ID" in names(injection_wells_df)
+            well_id_col = "Well ID"
+        elseif "UWI" in names(injection_wells_df)
+            well_id_col = "UWI"
         else
             error("Could not identify well ID column in injection data")
         end
     end
     
-    # IMPORTANT: Always work with well IDs as strings to preserve leading zeros
+    # When we work with data from the injection reporting tool, always treat the well ID as a string
+    # They are API Number so we need to preserve leading/trailing zeros
     well_ids = string.(unique(injection_wells_df[!, well_id_col]))
     
     # Debug - print well IDs and dataframe columns
+    #=
     println("===== DEBUG: Well Data =====")
     println("Well ID column: ", well_id_col)
     println("Number of wells: ", length(well_ids))
     println("Well IDs: ", well_ids)
     println("Injection data columns: ", names(injection_wells_df))
+    =#
     
     # For injection tool data format, verify date column
+    # We should expect them to already be Date objects, but we'll check
     if injection_data_type == "injection_tool_data"
         if !("Date of Injection" in names(injection_wells_df))
-            println("WARNING: 'Date of Injection' column not found in injection data")
+            #println("WARNING: 'Date of Injection' column not found in injection data")
+            error("'Date of Injection' column not found in injection well data")
         else
             date_col = "Date of Injection"
-            println("Date column type: ", eltype(injection_wells_df[!, date_col]))
-            if nrow(injection_wells_df) > 0
-                println("Sample date: ", injection_wells_df[1, date_col])
-            end
+            #println("Date column type: ", eltype(injection_wells_df[!, date_col]))
+            
         end
     end
-    println("==========================")
+    
     
     # Get fault IDs
     num_faults = nrow(fault_df)
@@ -132,6 +138,8 @@ function run_mc_hydrology_time_series(
     
     # Pre-process well data to get date boundaries
     inj_start_date, inj_end_date = Utilities.get_date_bounds(injection_wells_df)
+
+    println("Injection rate time window for all wells: inj_start_date = $inj_start_date, inj_end_date = $inj_end_date")
     
     # Container for results
     # Structure: year -> iteration -> fault -> pressure
@@ -142,8 +150,6 @@ function run_mc_hydrology_time_series(
         years_to_analyze = year(inj_start_date):year_of_interest
     end
     
-    println("Running Monte Carlo simulations for years: $years_to_analyze")
-    println("Number of iterations: $(params.n_iterations)")
     
     # Main Monte Carlo loop
     for i in 1:params.n_iterations
@@ -174,7 +180,7 @@ function run_mc_hydrology_time_series(
         
         # Debug print only for first iteration
         if i == 1
-            println("DEBUG: Calculated S = $S, T = $T, rho = $rho")
+            println("DEBUG: Calculated Storativity = $S, Transmissivity = $T")
         end
         
         # Process each year
@@ -204,6 +210,7 @@ function run_mc_hydrology_time_series(
                 for well_id in well_ids
                     well_count += 1
                     # IMPORTANT: Convert both to string for comparison to preserve leading zeros
+                    # filter the injection wells df for the well id
                     well_data = injection_wells_df[string.(injection_wells_df[!, well_id_col]) .== string(well_id), :]
                     
                     if isempty(well_data)
@@ -211,6 +218,8 @@ function run_mc_hydrology_time_series(
                     end
                     
                     # Get well coordinates
+                    # if it's injection tool data, we need to use the 'Surface Latitude' and 'Surface Longitude' columns
+                    # otherwise, we can use the 'Latitude(WGS84)' and 'Longitude(WGS84)' columns
                     lat_col = injection_data_type == "injection_tool_data" ? "Surface Latitude" : "Latitude(WGS84)"
                     lon_col = injection_data_type == "injection_tool_data" ? "Surface Longitude" : "Longitude(WGS84)"
                     
@@ -286,7 +295,7 @@ function run_mc_hydrology_time_series(
                         injection_data_type,
                         analysis_year,
                         false,  # Don't extrapolate
-                        cutoff_date
+                        cutoff_date # December 31 of the analysis year
                     )
                     
                     if isempty(days) || isempty(rates)
@@ -295,13 +304,13 @@ function run_mc_hydrology_time_series(
                     
                     # Calculate pressure contribution from this well
                     pressure_contribution = HydroCalculations.pfieldcalc_all_rates(
-                        fault_lon,
-                        fault_lat,
-                        STRho,
-                        days,
-                        rates,
-                        well_lon,
-                        well_lat
+                        fault_lon, #fault longitude
+                        fault_lat, #fault latitude
+                        STRho, #storativity, transmissivity, fluid density
+                        days, #days of injection
+                        rates, #rates of injection
+                        well_lon, #well longitude
+                        well_lat #well latitude
                     )
                     
                     # Add to total pressure for this fault
@@ -320,7 +329,6 @@ function run_mc_hydrology_time_series(
         for iter in 1:params.n_iterations
             for (fault_id, pressure) in results[year][iter]
                 push!(result_rows, (
-                    IterationID = iter,
                     ID = fault_id,
                     Pressure = pressure,
                     Year = year
@@ -485,13 +493,13 @@ function main()
     year_of_interest = get_parameter_value(helper, 6, "year_of_interest_summary")
     if year_of_interest === nothing
         year_of_interest = Dates.year(Dates.today())
-        println("Year of interest not provided, using current year: $year_of_interest")
+        #println("Year of interest not provided, using current year: $year_of_interest")
     elseif !isa(year_of_interest, Int)
         year_of_interest = parse(Int, year_of_interest)
     end
     
     year_of_interest_date = Date(year_of_interest - 1, 12, 31)
-    println("Using year of interest: $year_of_interest, cutoff date: $year_of_interest_date")
+    #println("Using year of interest: $year_of_interest, cutoff date: $year_of_interest_date")
 
     # 2) Read injection wells data
     injection_wells_csv_filepath, injection_data_type = get_injection_dataset_path(helper, 6)
@@ -516,11 +524,11 @@ function main()
                     "Volume Injected (BBLs)" => Float64
                 )
                 injection_wells_df = CSV.read(injection_wells_csv_filepath, DataFrame, types=types_dict)
-                println("Loaded injection wells data with API numbers as strings: $(nrow(injection_wells_df)) records")
+                #println("Loaded injection wells data with API numbers as strings: $(nrow(injection_wells_df)) records")
             else
                 # Fall back to default reading
                 injection_wells_df = CSV.read(injection_wells_csv_filepath, DataFrame)
-                println("Loaded injection wells data: $(nrow(injection_wells_df)) records")
+                #println("Loaded injection wells data: $(nrow(injection_wells_df)) records")
             end
         catch e
             println("Error reading column names: $e")
@@ -531,7 +539,9 @@ function main()
     else
         # For other data types, read normally
         injection_wells_df = CSV.read(injection_wells_csv_filepath, DataFrame)
-        println("Loaded injection wells data: $(nrow(injection_wells_df)) records")
+        #println("Loaded injection wells data (first 10 rows) out of $(nrow(injection_wells_df)) rows:")
+        # print the first 10 rows of the df
+        #pretty_table(injection_wells_df[1:10, :])
     end
 
     # 3) Read fault data
@@ -540,8 +550,8 @@ function main()
         error("Required fault dataset not found or accessible.")
     end
     fault_df = CSV.read(fault_data_path, DataFrame)
-    println("Loaded fault data: ")
-    pretty_table(fault_df)
+    #println("Loaded fault data: ")
+    #pretty_table(fault_df)
 
     # 4) Read probabilistic geomechanics results
     prob_geo_cdf_path = get_dataset_file_path(helper, 6, "prob_geomechanics_cdf_graph_data_summary")
@@ -549,7 +559,9 @@ function main()
         error("Probabilistic geomechanics CDF data not found.")
     end
     prob_geo_cdf = CSV.read(prob_geo_cdf_path, DataFrame)
-    println("Loaded probabilistic geomechanics data: $(nrow(prob_geo_cdf)) rows")
+    println("Loaded probabilistic geomechanics data (first 10 rows) out of $(nrow(prob_geo_cdf)) rows:")
+    # print the first 10 rows of the df
+    pretty_table(prob_geo_cdf[1:10, :])
 
     # 5) Get hydrology parameters
     aquifer_thickness = get_parameter_value(helper, 6, "aquifer_thickness_ft_summary")
@@ -568,6 +580,27 @@ function main()
     dynamic_viscosity_uncertainty = get_parameter_value(helper, 6, "dynamic_viscosity_uncertainty_summary")
     fluid_compressibility_uncertainty = get_parameter_value(helper, 6, "fluid_compressibility_uncertainty_summary")
     rock_compressibility_uncertainty = get_parameter_value(helper, 6, "rock_compressibility_uncertainty_summary")
+
+    # print hydrology and uncertainty parameters
+    #=
+    println("Hydrology parameters:")
+    println("  Aquifer thickness: $aquifer_thickness")
+    println("  Porosity: $porosity")
+    println("  Permeability: $permeability")
+    println("  Fluid density: $fluid_density")
+    println("  Dynamic viscosity: $dynamic_viscosity")
+    println("  Fluid compressibility: $fluid_compressibility")
+    println("  Rock compressibility: $rock_compressibility")
+
+    println("Hydrology uncertainty parameters:")
+    println("  Aquifer thickness uncertainty: $aquifer_thickness_uncertainty")
+    println("  Porosity uncertainty: $porosity_uncertainty")
+    println("  Permeability uncertainty: $permeability_uncertainty")
+    println("  Fluid density uncertainty: $fluid_density_uncertainty")
+    println("  Dynamic viscosity uncertainty: $dynamic_viscosity_uncertainty")
+    println("  Fluid compressibility uncertainty: $fluid_compressibility_uncertainty")
+    println("  Rock compressibility uncertainty: $rock_compressibility_uncertainty")
+    =#
 
     # Get number of iterations
     n_iterations = get_parameter_value(helper, 6, "hydro_mc_iterations_summary")
@@ -608,8 +641,8 @@ function main()
     println("Years to analyze: $years_to_analyze")
 
     # 7) Run Monte Carlo simulation for probabilistic hydrology for each year
-    println("\nRunning probabilistic hydrology Monte Carlo simulation for multiple years...")
-    prob_hydro_results = run_mc_hydrology_time_series(
+    println("\nRunning probabilistic hydrology Monte Carlo simulation for all years...")
+    pressure_through_time_results = run_mc_hydrology_time_series(
         params, 
         fault_df, 
         injection_wells_df, 
@@ -618,41 +651,22 @@ function main()
         injection_data_type
     )
 
-    println("prob_hydro_results: $(nrow(prob_hydro_results)) records")
+    println("Pressure for each fault at each year (first 10 rows):")
+    pretty_table(pressure_through_time_results[1:10, :])
+
+    save_dataframe_as_parameter!(helper, 6, "pressure_through_time_results", pressure_through_time_results)
+
+    println("pressure_through_time_results: $(nrow(pressure_through_time_results)) records")
     # for every unique 'ID' value, print the first 10 rows of each 'Year'
-    for id in unique(prob_hydro_results.ID)
+    for id in unique(pressure_through_time_results.ID)
         println("ID: $id")
-        println("minimum pressure in prob_hydro_results df: $(minimum(prob_hydro_results[prob_hydro_results.ID .== id, :Pressure]))")
-        println("maximum pressure in prob_hydro_results df: $(maximum(prob_hydro_results[prob_hydro_results.ID .== id, :Pressure]))")
+        println("minimum pressure in pressure_through_time_results df: $(minimum(pressure_through_time_results[pressure_through_time_results.ID .== id, :Pressure]))")
+        println("maximum pressure in pressure_through_time_results df: $(maximum(pressure_through_time_results[pressure_through_time_results.ID .== id, :Pressure]))")
     end
     
-    # Save hydrology results
-    #save_dataframe_as_parameter!(helper, 6, "prob_hydrology_time_series", prob_hydro_results)
-    println("prob_hydrology_time_series: ")
-    # only print the first 10 rows of the df
-    pretty_table(prob_hydro_results[1:10, :])
+    
 
-    # Add this after running MC simulations to check injection data
-    println("\n===== DEBUG: Checking Well Data =====")
-    for (i, well_id) in enumerate(well_ids)
-        if i > 3  # Limit to first 3 wells to avoid too much output
-            break
-        end
-        well_data = injection_wells_df[string.(injection_wells_df[!, well_id_col]) .== well_id, :]
-        
-        # Print some basic stats about each well
-        if !isempty(well_data)
-            println("Well $well_id:")
-            if injection_data_type == "injection_tool_data"
-                println("  Date range: $(minimum(well_data[!, "Date of Injection"])) to $(maximum(well_data[!, "Date of Injection"]))")
-                vol_col = "Volume Injected (BBLs)"
-                if vol_col in names(well_data)
-                    println("  Injection volumes: min=$(minimum(well_data[!, vol_col])), max=$(maximum(well_data[!, vol_col])), mean=$(mean(well_data[!, vol_col]))")
-                end
-            end
-        end
-    end
-    println("==============================\n")
+    
 
     # 8) Calculate fault slip potential by combining with geomechanics CDF
     println("\nCalculating fault slip potential...")
@@ -666,17 +680,19 @@ function main()
     # 9) Generate comprehensive summary report
     summary_report = generate_summary_report(fsp_results, prob_hydro_results, fault_df)
     #save_dataframe_as_parameter!(helper, 6, "summary_report", summary_report)
-    println("summary_report: ")
-    pretty_table(summary_report[1:10, :])
+    #println("summary_report: ")
+    #pretty_table(summary_report[1:10, :])
 
     # 10) Print summary statistics
+    #=
     println("\nSummary Statistics by Year:")
     yearly_stats = combine(groupby(fsp_results, :Year), 
         :FSP => mean => :MeanFSP,
         :FSP => maximum => :MaxFSP,
         nrow => :NumFaults
     )
-    pretty_table(yearly_stats)
+        =#
+    #pretty_table(yearly_stats)
 
     # 11) Create visualizations
     year_color_map = Dict(zip(sort(collect(years_to_analyze)), 

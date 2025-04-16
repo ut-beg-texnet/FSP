@@ -22,7 +22,7 @@ export calcST, md_to_m2, pfront, generate_datenum_barrels, pfieldcalc_constant_r
 """
 Convert permeability from millidarcy (mD) to square meters (m²)
 """
-function md_to_m2(permeability_md::Float64)
+function md_to_m2(permeability_md::Union{Float64, Int64})
     return permeability_md * 10.0^(-3) * 9.9e-13 # convert from mD to m²
 end
 
@@ -390,23 +390,32 @@ end
 
 # pressure field calculation (Geomechanics version)
 # multiple dispatch: wehn called with faults, it uses vectors instead of matrices
+# find the distance from the well to the fault
+# call pressureScenario for this well
 function pfieldcalc_all_rates(
-    x_fault_km::Union{Float64, Integer}, 
-    y_fault_km::Union{Float64, Integer}, 
+    x_fault_deg::Union{Float64, Integer}, 
+    y_fault_deg::Union{Float64, Integer}, 
     STRho::Tuple{Float64, Float64, Float64}, 
     days::Vector{Float64}, 
     bpds::Vector{Float64}, 
-    xwell_km::Union{Float64, Integer}, 
-    ywell_km::Union{Float64, Integer}
+    xwell_deg::Union{Float64, Integer}, 
+    ywell_deg::Union{Float64, Integer}
     )
 
+    #println("fault coordinates: longitude = $x_fault_deg, latitude = $y_fault_deg")
+    #println("well coordinates: longitude = $xwell_deg, latitude = $ywell_deg")
+
     #get distance from each well to the faul (in km)
-    R_km = sqrt((x_fault_km - xwell_km)^2 + (y_fault_km - ywell_km)^2)
+    #R_km = sqrt((x_fault_km - xwell_km)^2 + (y_fault_km - ywell_km)^2)
+    R_km = haversine_distance(y_fault_deg, x_fault_deg, ywell_deg, xwell_deg)
+
+
+    #println("Distance from well to fault (pfieldcalc_all_rates): $R_km km")
 
     #convert to meters
     R_meters = R_km * 1e3
 
-    #call pressureScenario for this well
+    
     
     # Convert R_meters to a vector since pressureScenario_Rall expects a vector
     R_meters_vec = [R_meters]

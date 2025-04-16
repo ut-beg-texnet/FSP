@@ -46,72 +46,7 @@ const RESULTS_FILE_NAME = "results.json"
 
 
 
-"""
-Plot CDF from either DataFrame or SharedArray results
-"""
-function plot_cdf(results::Union{DataFrame, SharedArray{Float64, 2}}, output_path::String)
-    # Generate y-axis tick labels with '%' symbol
-    y_ticks = 0:10:100
-    y_labels = [string(x, "%") for x in y_ticks]
 
-    # Initialize the plot
-    p = plot(
-        xlabel="Δ Pore Pressure to Slip (Psi)", 
-        ylabel="Probability of Fault Slip (%)", 
-        title="CDF of Pore Pressure to Slip for Each Fault",
-        legend=:outerright,
-        linewidth=2,
-        yticks=(y_ticks, y_labels),
-        legendfontsize=8
-    )
-
-    if isa(results, DataFrame)
-        # Process DataFrame results
-        fault_ids = unique(results.FaultID)
-        
-        for fault_id in fault_ids
-            # Filter data for this fault
-            fault_data = results[results.FaultID .== fault_id, :SlipPressure]
-            
-            # Sort the pore pressure values
-            sorted_data = sort(fault_data)
-            
-            # Generate cumulative probabilities and convert to percentage
-            cumulative_probabilities = range(0, stop=100, length=length(sorted_data))
-            
-            # Add the fault's CDF to the plot
-            plot!(
-                sorted_data, cumulative_probabilities,
-                label="Fault $fault_id"
-            )
-        end
-    else
-        # Process SharedArray results (original behavior)
-        for fault_idx in 1:size(results, 1)
-            # Extract pore pressure data for the fault
-            fault_data = results[fault_idx, :]
-            
-            # Sort the pore pressure values
-            sorted_data = sort(fault_data)
-            
-            # Generate cumulative probabilities and convert to percentage
-            cumulative_probabilities = range(0, stop=100, length=length(sorted_data))
-            
-            # Add the fault's CDF to the plot
-            plot!(
-                sorted_data, cumulative_probabilities,
-                label="Fault $(string(fault_idx))"  # Convert to string
-            )
-        end
-    end
-
-    # Save the combined plot as a PNG
-    combined_plot_file = joinpath(output_path, "prob_geo_cdf.png")
-    savefig(p, combined_plot_file)
-    println("Prob Geomechanics CDF plot saved at: $combined_plot_file")
-    # display the figure on the screen
-    display(p)
-end
 
 
 """

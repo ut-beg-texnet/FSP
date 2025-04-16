@@ -18,7 +18,7 @@ using Printf
 using Random
 using Distributions
 using StatsBase  # Added for ecdf function
-
+using PrettyTables
 include("../TexNetWebToolLauncherHelperJulia.jl")
 include("../core/geomechanics_model.jl")
 
@@ -59,138 +59,9 @@ function plot_pressure_distance_graph(
 end
 
 
-# Hydrology: Plot pressure grid heatmap
-function plot_pressure_grid_heatmap(
-    x_km::Vector{Float64},         # 1D array of X coords
-    y_km::Vector{Float64},         # 1D array of Y coords
-    pressure_grid::Matrix{Float64},# shape (ny, nx)
-    wells_data::Vector{Dict{String,Any}}
-)
-    @assert size(pressure_grid) == (length(y_km), length(x_km)) "Mismatch in grid shape"
-
-    heatmap(
-        x_km, y_km, pressure_grid,
-        xlabel="Easting [km]", ylabel="Northing [km]",
-        title="Total Pressure Field (psi)",
-        aspect_ratio=:equal,
-        color=:viridis,
-        colorbar_title="Pressure [psi]"
-    )
-
-    # each well has a unique color
-    well_colors = distinguishable_colors(length(wells_data))
-
-    # Mark the wells (all the same style, no highlight)
-    for (i, w) in enumerate(wells_data)
-        well_x = w["x_easting_km"]
-        well_y = w["y_northing_km"]
-        well_id = w["well_id"]
-
-        scatter!([well_x], [well_y],
-            marker=:circle,
-            ms = 5,
-            mc = well_colors[i],
-            label = "Well $well_id"
-        
-        )
-
-    end 
-
-    savefig("pressure_field_heatmap.png")
-    println("Created pressure_field_heatmap.png")
-end
 
 
 
-# function to plot a Mohr Diagram with three semicircles representing the three principal stresses (sh, sH, sV) and the fault locations (tau_effective, sigma_effective)
-# Inputs:
-    # sh, sH: Float64
-    # tau_effective, sigma_effective: Float64
-    # p0: pore pressure gradient
-    # biot: Biot's coefficient 
-    # nu: Poisson's ratio
-    # dp: Float64
-    # strike: Vector{Float64}
-
-function plot_mohr_diagram_geo(
-    sh::Float64, 
-    sH::Float64, 
-    sV::Float64, 
-    tau_effective::Union{Float64, AbstractVector{Float64}}, 
-    sigma_effective::Union{Float64, AbstractVector{Float64}}, 
-    p0::Float64, 
-    biot::Float64, 
-    nu::Float64, 
-    dp::Float64, 
-    strike::Vector{Float64},
-    mu::Union{Float64, Integer}
-    )
-
-    N = length(strike)
-
-    # create the stress vector
-    Sig0sorted = sort([sh, sH, sV], rev=true)
-    
-    # find index of the vertical stress sV
-    ixSv = findall(x -> x ==sV, Sig0sorted)
-    ixSv = ixSv[1]
-
-    # change in principal stresses due to pore pressure
-    Ds = kron(biot * (1-2*nu) / (1-nu)*dp, [1.0, 1.0, 1.0])
-
-    # set vertical stress change to 0
-    Ds[ixSv] = 0.0
-
-    # initialize Sig 
-    Sig = repeat(Sig0sorted', N, 1) # Repeat the sorted stresses N times as rows
-
-    # Expand Ds to match the dimensions of Sig
-    Ds_expanded = repeat(Ds', N, 1)  # Repeat Ds as rows to match Sig
-
-    # Add stress changes to the initial stress state
-    Sig .= Sig .+ Ds_expanded
-
-    # create angular variable for plotting the semicircles
-    a = range(0, stop=pi, length=100) # use 100 points (can increase for quality)
-    c = exp.(1im .* a) # complex exponential
-
-    # C1, C2, C3 are the centers of the three semicircles
-    C1 = zeros(Complex{Float64}, N, length(a))
-    C2 = zeros(Complex{Float64}, N, length(a))
-    C3 = zeros(Complex{Float64}, N, length(a))
-
-    # radii of circles
-    R1 = 0.5 .* (Sig[:, 1] .- Sig[:, 3])
-    R2 = 0.5 .* (Sig[:, 2] .- Sig[:, 3])
-    R3 = 0.5 .* (Sig[:, 1] .- Sig[:, 2])
-
-    # compute semicircles for each fault
-    for k in 1:N
-        C1[k, :] = R1[k] .* c .+ (Sig[k, 1] + Sig[k, 3]) / 2 .- (p0 + dp)
-        C2[k, :] = R2[k] .* c .+ (Sig[k, 2] + Sig[k, 3]) / 2 .- (p0 + dp)
-        C3[k, :] = R3[k] .* c .+ (Sig[k, 1] + Sig[k, 2]) / 2 .- (p0 + dp)
-    end
-
-    # plot the Mohr circles
-    p = plot(legend=:topright, xlabel="σ (Effective Normal Stress)", ylabel="τ (Shear Stress)", title="Mohr Diagram Geomechanics")
-    for k in 1:N
-        plot!(real(C1[k, :]), imag(C1[k, :]), label="Circle 1 - Fault $k")
-        plot!(real(C2[k, :]), imag(C2[k, :]), label="Circle 2 - Fault $k")
-        plot!(real(C3[k, :]), imag(C3[k, :]), label="Circle 3 - Fault $k")
-    end
-
-    # Add fault locations
-    scatter!(p, [tau_effective], [sigma_effective], label="Fault locations", color=:red)
-
-    # frictional slip line
-    sigma_range = range(0, stop=maximum(Sig[:, 1]), length=100)
-    tau_line = mu .* sigma_range
-    plot!(p, sigma_range, tau_line, label="Frictional Slip Line", color=:black, lw=2)
-
-    savefig(p, "mohr_diagram_det_geo.png")
-    println("Mohr diagram saved as mohr_diagram_det_geo.png")
-
-end
 
 
 function plot_mohr_diagram_hydro(
@@ -1406,6 +1277,8 @@ function prob_hydrology_cdf(prob_hydro_results_df::DataFrame)
             push!(points_df, (pressure, exceedance_probability, fault_id))
         end
     end
+
+    
 
     return points_df
 end

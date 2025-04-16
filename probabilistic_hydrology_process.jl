@@ -5,6 +5,7 @@ using Distributions
 using Statistics
 using Dates
 using LinearAlgebra
+using Interpolations
 
 
 
@@ -268,8 +269,8 @@ function run_monte_carlo_hydrology(helper::TexNetWebToolLaunchHelperJulia,
     println("Pre-processing well injection data with extrapolation = $(extrapolate_injection_rates)...")
     prepared_well_data = Dict{String, Dict{String, Any}}()
     for (well_id, info) in well_info
-        println("Calling prepare_well_data_for_pressure_scenario for well $well_id")
-        println("Types: well_id=$(typeof(well_id)), inj_start_year=$(typeof(info["inj_start_year"])), inj_start_date=$(typeof(info["inj_start_date"])), inj_end_year=$(typeof(info["inj_end_year"])), actual_end_date=$(typeof(info["actual_end_date"])), injection_data_type=$(typeof(injection_data_type)), year_of_interest=$(typeof(year_of_interest)), extrapolate_injection_rates=$(typeof(extrapolate_injection_rates)), year_of_interest_date=$(typeof(year_of_interest_date))")
+        #println("Calling prepare_well_data_for_pressure_scenario for well $well_id")
+        #println("Types: well_id=$(typeof(well_id)), inj_start_year=$(typeof(info["inj_start_year"])), inj_start_date=$(typeof(info["inj_start_date"])), inj_end_year=$(typeof(info["inj_end_year"])), actual_end_date=$(typeof(info["actual_end_date"])), injection_data_type=$(typeof(injection_data_type)), year_of_interest=$(typeof(year_of_interest)), extrapolate_injection_rates=$(typeof(extrapolate_injection_rates)), year_of_interest_date=$(typeof(year_of_interest_date))")
         # Prepare injection data with extrapolation once
         days, rates = prepare_well_data_for_pressure_scenario(
             injection_wells_df,
@@ -284,7 +285,7 @@ function run_monte_carlo_hydrology(helper::TexNetWebToolLaunchHelperJulia,
             year_of_interest_date
         )
         
-        println("Returned from prepare_well_data_for_pressure_scenario for well $well_id: got $(length(days)) days and $(length(rates)) rates")
+        #println("Returned from prepare_well_data_for_pressure_scenario for well $well_id: got $(length(days)) days and $(length(rates)) rates")
         
         if !isempty(days) && !isempty(rates)
             # Store the data for pressure scenario 
@@ -336,6 +337,7 @@ function run_monte_carlo_hydrology(helper::TexNetWebToolLaunchHelperJulia,
             fault_id = fault_ids[f]
             
             # initialize pp
+            #ppOnFault = 3000.0 # REMOVE THIS and MAKE THIS 0.0
             ppOnFault = 0.0
             
             #println("  * Processing fault ID: $fault_id")
@@ -356,6 +358,8 @@ function run_monte_carlo_hydrology(helper::TexNetWebToolLaunchHelperJulia,
                 # Add to total pressure for this fault
                 ppOnFault += pressure_contribution
             end
+
+            
             
             #println("  * Total pressure on fault $fault_id: $ppOnFault psi")
             
@@ -527,7 +531,7 @@ function calculate_probabilistic_slip_potential(prob_geo_cdf::DataFrame, prob_hy
         MeanPorePressure = Float64[],
         SlipPotential = Float64[]
     )
-    
+
     # Get unique fault IDs
     fault_ids = unique(prob_geo_cdf.ID)
     
@@ -550,60 +554,189 @@ function calculate_probabilistic_slip_potential(prob_geo_cdf::DataFrame, prob_hy
             continue
         end
         
-        # Sort by pressure for integration
+        # Sort by pressure for intersection finding
         sort!(fault_hydro_exceedance, :slip_pressure)
-        
-        # Calculate the total fault slip potential by integrating over the pressure range
-        # This is the probability that a pressure will exceed a threshold times the probability
-        # that such a pressure would cause slip
-        
-        # Get all unique pressure values from both curves for integration points
-        all_pressures = unique(vcat(fault_geo_cdf[!, geo_pressure_col], fault_hydro_exceedance.slip_pressure))
-        sort!(all_pressures)
-        
-        # Initialize slip potential
-        total_slip_potential = 0.0
-        
-        # For each pressure increment, calculate contribution to slip potential
-        # The slip potential is essentially the area between the two curves where
-        # the hydrology exceedance curve is to the right of the geomechanics CDF
-        pressure_increments = diff(all_pressures)
-        
-        for i in 1:length(pressure_increments)
-            p = all_pressures[i]
-            
-            # Interpolate values on both curves at this pressure
-            hydro_exceedance = interpolate_cdf(
-                fault_hydro_exceedance.slip_pressure, 
-                fault_hydro_exceedance.probability, 
-                p
-            ) / 100.0  # Convert from percentage to probability
-            
-            geo_slip_prob = interpolate_cdf(
-                fault_geo_cdf[!, geo_pressure_col], 
-                fault_geo_cdf[!, geo_prob_col], 
-                p
-            ) / 100.0  # Convert from percentage to probability
-            
-            # Calculate incremental slip potential
-            # At each pressure, multiply exceedance probability by slip probability
-            incremental_slip = hydro_exceedance * geo_slip_prob * pressure_increments[i]
-            total_slip_potential += incremental_slip
-        end
-        
-        # Convert to percentage and normalize
-        total_slip_potential = min(total_slip_potential * 100.0, 100.0)
         
         # Get mean pore pressure for reporting
         fault_pressures = prob_hydro_results[prob_hydro_results.ID .== fault_id, :Pressure]
         mean_pressure = mean(fault_pressures)
         
-        # Add to results
-        push!(slip_potential_df, (fault_id, mean_pressure, total_slip_potential))
+        # Check for curve overlap - only calculate non-zero FSP if curves intersect
+        hydro_max_pressure = maximum(fault_hydro_exceedance.slip_pressure)
+        hydro_min_pressure = minimum(fault_hydro_exceedance.slip_pressure)
+        geo_max_pressure = maximum(fault_geo_cdf[!, geo_pressure_col])
+        geo_min_pressure = minimum(fault_geo_cdf[!, geo_pressure_col])
+        
+        # Check if hydrology is entirely to the left of geomechanics
+        if hydro_max_pressure < geo_min_pressure
+            #println("Fault $fault_id: Hydrology curve entirely to left of geomechanics curve - FSP = 0")
+            push!(slip_potential_df, (fault_id, mean_pressure, 0.0))
+            continue
+        end
+        
+        # Check if hydrology is entirely to the right of geomechanics
+        if hydro_min_pressure > geo_max_pressure
+            #println("Fault $fault_id: Hydrology curve entirely to right of geomechanics curve - FSP = 100")
+            push!(slip_potential_df, (fault_id, mean_pressure, 100.0))
+            continue
+        end
+        
+        # Find the intersection point between the curves
+        # Combine all pressure points for evaluation
+        all_pressures = unique(vcat(fault_geo_cdf[!, geo_pressure_col], fault_hydro_exceedance.slip_pressure))
+        sort!(all_pressures)
+        
+        # Filter to pressures where both curves are defined
+        valid_pressures = filter(p -> 
+            p >= max(geo_min_pressure, hydro_min_pressure) && 
+            p <= min(geo_max_pressure, hydro_max_pressure), 
+            all_pressures)
+        
+        # Check each pressure point to find where curves cross
+        intersection_found = false
+        intersection_pressure = 0.0
+        intersection_probability = 0.0
+        
+        for i in 1:(length(valid_pressures)-1)
+            p1 = valid_pressures[i]
+            p2 = valid_pressures[i+1]
+            
+            # Evaluate both curves at p1
+            hydro_prob1 = interpolate_cdf_new(
+                fault_hydro_exceedance.slip_pressure, 
+                fault_hydro_exceedance.probability, 
+                p1)
+            
+            geo_prob1 = interpolate_cdf_new(
+                fault_geo_cdf[!, geo_pressure_col], 
+                fault_geo_cdf[!, geo_prob_col], 
+                p1)
+            
+            # Evaluate both curves at p2
+            hydro_prob2 = interpolate_cdf_new(
+                fault_hydro_exceedance.slip_pressure, 
+                fault_hydro_exceedance.probability, 
+                p2)
+            
+            geo_prob2 = interpolate_cdf_new(
+                fault_geo_cdf[!, geo_pressure_col], 
+                fault_geo_cdf[!, geo_prob_col], 
+                p2)
+            
+            # Check if curves cross between p1 and p2
+            if (hydro_prob1 - geo_prob1) * (hydro_prob2 - geo_prob2) <= 0
+                # Found a crossing point
+                # Use linear interpolation to find exact intersection
+                if hydro_prob1 == geo_prob1
+                    # Exact intersection at p1
+                    intersection_pressure = p1
+                    intersection_probability = hydro_prob1
+                elseif hydro_prob2 == geo_prob2
+                    # Exact intersection at p2
+                    intersection_pressure = p2
+                    intersection_probability = hydro_prob2
+                else
+                    # Interpolate to find crossing point
+                    t = (geo_prob1 - hydro_prob1) / ((hydro_prob2 - hydro_prob1) - (geo_prob2 - geo_prob1))
+                    intersection_pressure = p1 + t * (p2 - p1)
+                    
+                    # Calculate probability at intersection point - using geomechanics curve
+                    intersection_probability = geo_prob1 + t * (geo_prob2 - geo_prob1)
+                end
+                
+                intersection_found = true
+                println("Fault $fault_id: Intersection found at pressure = $intersection_pressure psi, probability = $intersection_probability%")
+                break
+            end
+        end
+        
+        # If no intersection found, use the higher of the two curves where they're closest
+        if !intersection_found
+            # Find the point where the curves are closest
+            min_diff = Inf
+            closest_pressure = 0.0
+            closest_probability = 0.0
+            
+            for p in valid_pressures
+                hydro_prob = interpolate_cdf_new(
+                    fault_hydro_exceedance.slip_pressure, 
+                    fault_hydro_exceedance.probability, 
+                    p)
+                
+                geo_prob = interpolate_cdf_new(
+                    fault_geo_cdf[!, geo_pressure_col], 
+                    fault_geo_cdf[!, geo_prob_col], 
+                    p)
+                
+                diff = abs(hydro_prob - geo_prob)
+                
+                if diff < min_diff
+                    min_diff = diff
+                    closest_pressure = p
+                    closest_probability = max(hydro_prob, geo_prob)
+                end
+            end
+            
+            intersection_pressure = closest_pressure
+            intersection_probability = closest_probability
+            println("Fault $fault_id: No exact intersection found. Using closest point at pressure = $intersection_pressure psi, probability = $intersection_probability%")
+        end
+        
+        # Add to results - use the intersection probability as the FSP
+        push!(slip_potential_df, (fault_id, mean_pressure, intersection_probability))
     end
     
     return slip_potential_df
 end
+
+
+
+# function to get FSP from two CDFs
+function get_fsp_from_two_cdfs(prob_geo_cdf::DataFrame, prob_hydro_results::DataFrame)
+    
+end
+
+
+
+function interpolate_cdf_new(x_values::Vector{Float64}, y_values::Vector{Float64}, x::Float64)
+    # handle edge cases
+    if isempty(x_values) || isempty(y_values)
+        @warn "Empty vectors provided to interpolate_cdf"
+        return 0.0
+    end
+
+    # sort x-values and reorder y-values accordingly
+    p = sortperm(x_values)
+    x_sorted = x_values[p]
+    y_sorted = y_values[p]
+
+    # Explicitly deduplicate knots to avoid warning
+    x_deduplicated = copy(x_sorted)
+    y_deduplicated = copy(y_sorted)
+    indices = Interpolations.deduplicate_knots!(x_deduplicated)
+    # Only keep corresponding y values
+    if length(indices) < length(y_deduplicated)
+        y_deduplicated = y_deduplicated[indices]
+    end
+
+    # create interpolation object
+    # we use Flat() which returns the end
+    itp = LinearInterpolation(x_deduplicated, y_deduplicated, extrapolation_bc=Flat())
+
+    # return the interpolated value at x
+    return itp(x)
+end
+
+function interpolate_cdf_new(x_values::Any, y_values::Any, x::Float64)
+    # Convert inputs to Vector{Float64} and use the new function
+    x_vec = convert(Vector{Float64}, x_values)
+    y_vec = convert(Vector{Float64}, y_values)
+    return interpolate_cdf_new(x_vec, y_vec, x)
+end
+
+
+
+
 
 """
 Interpolate a value on a CDF
@@ -702,8 +835,8 @@ function main()
     # CONTINUE FROM HERE: configure 'prob_geomechanics_cdf_graph_data' in the portal
     prob_geo_results = get_dataset_file_path(helper, 5, "prob_geomechanics_cdf_graph_data")
     prob_geo_cdf = CSV.read(prob_geo_results, DataFrame)
-    #println("Loaded probabilistic geomechanics CDF data:")
-    #pretty_table(prob_geo_cdf)
+    println("Loaded original probabilistic geomechanics CDF data: (last 10 rows)")
+    pretty_table(prob_geo_cdf[end-10:end, :])
 
     if hydro_model_type == "deterministic"
         # deterministic hydrology
@@ -811,18 +944,37 @@ function main()
         
         # Run Monte Carlo simulation
         prob_hydro_results, prob_hydro_stats = run_monte_carlo_hydrology(helper, params, "uniform", extrapolate_injection_rates, year_of_interest_date, year_of_interest)
+        #println("prob_hydro_resultssssssss (last 10 rows):")
+        #pretty_table(prob_hydro_results[end-10:end, :])
+
         
         # Save the results
         #save_dataframe_as_parameter!(helper, 5, "prob_hydrology_results", prob_hydro_results)
         #save_dataframe_as_parameter!(helper, 5, "prob_hydrology_stats", prob_hydro_stats)
 
+        #println("prob_hydro_results (before prob_hydrology_cdf) (last 10 rows):")
+        #pretty_table(prob_hydro_results[end-10:end, :])
+
+        
+
         # Generate probabilistic hydrology CDF data
         prob_hydro_cdf_data = prob_hydrology_cdf(prob_hydro_results)
         save_dataframe_as_parameter!(helper, 5, "prob_hydrology_cdf_graph_data", prob_hydro_cdf_data)
-        println("prob_hydrology_cdf_graph_data:")
-        pretty_table(prob_hydro_cdf_data)
+        println("prob_hydrology_cdf_graph_data (after prob_hydrology_cdf) (last 10 rows):")
+        pretty_table(prob_hydro_cdf_data[end-10:end, :])
+
+        
+        
+        # get the maximum pressure from the 'A1' fault from the prob_hydro_results
+        max_pressure = maximum(prob_hydro_results[prob_hydro_results.ID .== "A1", :Pressure])
+        println("max_pressure for A1: $max_pressure")
+
+        # print the first 10 rows of fault A1 from prob_hydro_results
+        pretty_table(prob_hydro_results[prob_hydro_results.ID .== "A1", :])
+        
         
         # Calculate slip potential by combining with probabilistic geomechanics CDF
+        println("calculating slip potential by combining with probabilistic geomechanics CDF...")
         slip_potential = calculate_probabilistic_slip_potential(prob_geo_cdf, prob_hydro_results)
 
         println("slip_potential:")
@@ -831,9 +983,7 @@ function main()
         # Save the slip potential results
         #save_dataframe_as_parameter!(helper, 5, "hydro_slip_potential_results", slip_potential)
         
-        # Pretty print the statistics
-        println("\nProbabilistic Hydrology Statistics:")
-        pretty_table(prob_hydro_stats)
+        
         
         println("\nSlip Potential Results (Probabilistic Hydrology):")
         # from the 'SlipPotential' column, round to 2 decimal places
