@@ -260,6 +260,31 @@ function mohr_diagram_data_to_d3_portal(
     slip_pressure::Union{Float64, AbstractVector{Float64}},
     fault_ids::Union{Vector{String}, Vector{Int}, Vector{Any}}=["fault"]
 )
+
+    # check if tau_effective or sigma_effective is a vector 
+    # if they are, make sure we set all negative values to 0
+    if isa(tau_effective, AbstractVector)
+        tau_effective = max.(tau_effective, 0.0)
+    end
+    if isa(sigma_effective, AbstractVector)
+        sigma_effective = max.(sigma_effective, 0.0)
+    end
+
+    # chekc if tau_effective or shear_stress is a float, and if it's negative, set it to 0
+    if isa(tau_effective, Float64)
+        if tau_effective < 0.0
+            tau_effective = 0.0
+        end
+    end
+
+    if isa(sigma_effective, Float64)
+        if sigma_effective < 0.0
+            sigma_effective = 0.0
+        end
+    end
+    
+
+
     N = length(strike)
 
     # Assign principal stresses based on the regime.
@@ -2088,9 +2113,9 @@ function calculate_with_direct_parameter(
     param_change::Float64,
     stress_model_type::String = "gradients"
 )
-    println("\n---- DEBUG: calculate_with_direct_parameter ----")
-    println("Parameter: $uncertainty_param with change: $param_change")
-    println("Stress model type: $stress_model_type")
+    #println("\n---- DEBUG: calculate_with_direct_parameter ----")
+    #println("Parameter: $uncertainty_param with change: $param_change")
+    #println("Stress model type: $stress_model_type")
     
     # Create a copy of the inputs
     modified_stress = copy(base_stress_inputs)
@@ -2098,30 +2123,30 @@ function calculate_with_direct_parameter(
     
     # Get reference depth for calculations
     reference_depth = modified_stress["reference_depth"]
-    println("Reference depth: $reference_depth")
+    #println("Reference depth: $reference_depth")
     
     # Apply changes to the gradient values (not absolute values)
     # We're working with gradient inputs from probabilistic_geomechanics_process.jl
     if uncertainty_param == "vertical_stress_gradient_uncertainty"
         modified_stress["vertical_stress"] += param_change
-        println("Changed vertical_stress gradient to: $(modified_stress["vertical_stress"])")
+        #println("Changed vertical_stress gradient to: $(modified_stress["vertical_stress"])")
     elseif uncertainty_param == "initial_pore_pressure_gradient_uncertainty"
         modified_stress["pore_pressure"] += param_change
-        println("Changed pore_pressure gradient to: $(modified_stress["pore_pressure"])")
+        #println("Changed pore_pressure gradient to: $(modified_stress["pore_pressure"])")
     elseif uncertainty_param == "max_stress_azimuth_uncertainty"
         modified_stress["max_stress_azimuth"] += param_change
-        println("Changed max_stress_azimuth to: $(modified_stress["max_stress_azimuth"])")
+        #println("Changed max_stress_azimuth to: $(modified_stress["max_stress_azimuth"])")
     elseif uncertainty_param == "max_horizontal_stress_uncertainty"
         modified_stress["max_horizontal_stress"] += param_change
-        println("Changed max_horizontal_stress gradient to: $(modified_stress["max_horizontal_stress"])")
+        #println("Changed max_horizontal_stress gradient to: $(modified_stress["max_horizontal_stress"])")
     elseif uncertainty_param == "min_horizontal_stress_uncertainty"
         modified_stress["min_horizontal_stress"] += param_change
-        println("Changed min_horizontal_stress gradient to: $(modified_stress["min_horizontal_stress"])")
+        #println("Changed min_horizontal_stress gradient to: $(modified_stress["min_horizontal_stress"])")
     elseif uncertainty_param == "aphi_value_uncertainty"
         # If we're varying aphi, we need to check if it's available in the inputs
         if haskey(modified_stress, "aphi_value")
             modified_stress["aphi_value"] += param_change
-            println("Changed aphi_value to: $(modified_stress["aphi_value"])")
+            #println("Changed aphi_value to: $(modified_stress["aphi_value"])")
         else
             println("WARNING: aphi_value not found in inputs, no change applied")
         end
@@ -2131,11 +2156,11 @@ function calculate_with_direct_parameter(
 
     # Get the friction coefficient from the fault
     friction_coefficient = fault_dict["FrictionCoefficient"]
-    println("Friction coefficient: $friction_coefficient")
+    #println("Friction coefficient: $friction_coefficient")
     
     # Calculate absolute stress values based on the changed parameters
     # This ensures we properly convert from gradients to absolute values
-    println("Calculating absolute stresses with calculate_absolute_stresses")
+    #println("Calculating absolute stresses with calculate_absolute_stresses")
     stress_state_obj, initial_pressure = calculate_absolute_stresses(modified_stress, friction_coefficient, stress_model_type)
     
     # Extract the calculated absolute stresses
@@ -2144,11 +2169,11 @@ function calculate_with_direct_parameter(
     max_horizontal_stress = stress_state_obj.principal_stresses[3]
     pore_pressure = initial_pressure
     
-    println("Final absolute stresses calculated from gradients:")
-    println("  vertical_stress: $vertical_stress")
-    println("  min_horizontal_stress: $min_horizontal_stress")
-    println("  max_horizontal_stress: $max_horizontal_stress")
-    println("  pore_pressure: $pore_pressure")
+    #println("Final absolute stresses calculated from gradients:")
+    #println("  vertical_stress: $vertical_stress")
+    #println("  min_horizontal_stress: $min_horizontal_stress")
+    #println("  max_horizontal_stress: $max_horizontal_stress")
+    #println("  pore_pressure: $pore_pressure")
     
     # Create StressState object with calculated values
     stress_state_obj = StressState(
@@ -2178,7 +2203,7 @@ function calculate_with_direct_parameter(
         1.0   # dp
     )
     
-    println("Calculated pp_to_slip: $pp_to_slip")
+    #println("Calculated pp_to_slip: $pp_to_slip")
     return pp_to_slip
 end
 

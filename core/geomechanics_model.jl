@@ -120,8 +120,8 @@ function calculate_absolute_stresses(stress_data::Dict, friction_coefficient::Re
     stress_data["max_horizontal_stress"] = get(stress_data, "max_horizontal_stress", 0.0)
     stress_data["aphi_value"] = get(stress_data, "aphi_value", 0.0)
 
-    println("stress_data:")
-    println(stress_data)
+    #println("stress_data:")
+    #println(stress_data)
 
     # Calculate absolute stresses at reference depth
     sV = round(vertical_gradient * reference_depth, digits=4)

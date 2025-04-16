@@ -413,7 +413,7 @@ function main()
     #println(first(mc_pp_results, 10))
 
 
-    # before we create the CDF graph data, we need to read the deterministic colors from the previous step 
+    # before we create the CDF graph data, we need to read the  colors from the previous step 
     # read the dataframe with the deterministic results
     deterministic_results_filepath = get_dataset_file_path(helper, 2, "det_geomechanics_results")
     deterministic_results_df = CSV.read(deterministic_results_filepath, DataFrame)
@@ -609,10 +609,83 @@ function main()
     # Concatenate all DataFrames
     combined_tornado_df = vcat(dfs_with_fault_id...)
     
-    # Remove the redundant fault_id column
+    
+    
+    # Add deterministic slip pressure to the combined dataframe
+    # Create a mapping of fault IDs to deterministic slip pressures
+    det_slip_pressures = Dict{String, Float64}()
+    for row in eachrow(deterministic_results_df)
+        # Extract fault ID - handle different column names
+        fault_id = ""
+        if "FaultID" in names(deterministic_results_df)
+            fault_id = string(row.FaultID)
+        elseif "ID" in names(deterministic_results_df)
+            fault_id = string(row.ID)
+        else
+            # If no ID column, use index
+            fault_id = string(findfirst(r -> r === row, eachrow(deterministic_results_df)))
+        end
+        
+        # Extract slip pressure - assume column is named SlipPressure
+        if "slip_pressure" in names(deterministic_results_df)
+            det_slip_pressures[fault_id] = row.slip_pressure
+        elseif "Slip_Pressure" in names(deterministic_results_df)
+            det_slip_pressures[fault_id] = row.Slip_Pressure
+        end
+
+        
+    end
+    
+    # Add the deterministic slip pressures to the combined dataframe
+    # Don't remove fault_id column yet - use it to match with deterministic results
+    combined_tornado_df.det_slip_pressure = map(row -> 
+        haskey(det_slip_pressures, string(row.id)) ? 
+        det_slip_pressures[string(row.id)] : NaN, 
+        eachrow(combined_tornado_df))
+    
+    # Count how many non-NaN values were added
+    non_nan_count = count(!isnan, combined_tornado_df.det_slip_pressure)
+    #println("Added $(non_nan_count) non-NaN deterministic slip pressure values out of $(nrow(combined_tornado_df)) rows")
+    
+    # Look at some sample matches
+    if nrow(combined_tornado_df) > 0
+        for i in 1:min(10, nrow(combined_tornado_df))
+            row = combined_tornado_df[i, :]
+            println("Row $i: id=$(row.id), det_slip_pressure=$(row.det_slip_pressure)")
+        end
+    end
+    
+    # If no matches were found (or very few), try a different approach
+    if non_nan_count < nrow(combined_tornado_df) / 8 # Less than 1/8th of rows have matches
+        println("Few matches found. Trying alternative approach...")
+        
+        # Initialize column with NaN
+        combined_tornado_df.det_slip_pressure .= NaN
+        
+        # Get unique fault IDs in combined dataframe
+        unique_ids = unique(combined_tornado_df.id)
+        
+        # Directly set values for each fault ID
+        for fault_id in unique_ids
+            if haskey(det_slip_pressures, string(fault_id))
+                combined_tornado_df[combined_tornado_df.id .== fault_id, :det_slip_pressure] .= det_slip_pressures[string(fault_id)]
+                println("Set slip pressure $(det_slip_pressures[string(fault_id)]) for fault $fault_id")
+            end
+        end
+        
+        # Count how many non-NaN values after alternative approach
+        non_nan_count_after = count(!isnan, combined_tornado_df.det_slip_pressure)
+        println("After alternative approach: $(non_nan_count_after) non-NaN values")
+    end
+    
+    # Now remove the redundant fault_id column
     select!(combined_tornado_df, Not(:fault_id))
 
     println("combined_tornado_df: $combined_tornado_df")
+    
+    # Debug: Print deterministic results dataframe
+    println("deterministic_results_df: $deterministic_results_df")
+    pretty_table(deterministic_results_df)
     
     # Save the combined DataFrame as the only tornado chart parameter
     save_dataframe_as_parameter!(helper, 3, "prob_geomechanics_fault_sensitivity_tornado_chart_data", combined_tornado_df)
