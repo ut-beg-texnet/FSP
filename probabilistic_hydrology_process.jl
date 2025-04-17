@@ -28,15 +28,15 @@ const RESULTS_FILE_NAME = "results.json"
 
 
 struct HydrologyParams
-    aquifer_thickness::Float64
-    porosity::Float64
-    permeability::Float64
-    fluid_density::Float64
-    dynamic_viscosity::Float64
-    fluid_compressibility::Float64
-    rock_compressibility::Float64
-    plus_minus::Dict{String, Float64}
-    n_iterations::Int64
+    aquifer_thickness::Union{Float64, Int64}
+    porosity::Union{Float64, Int64}
+    permeability::Union{Float64, Int64}
+    fluid_density::Union{Float64, Int64}
+    dynamic_viscosity::Union{Float64, Int64}
+    fluid_compressibility::Union{Float64, Int64, Nothing}
+    rock_compressibility::Union{Float64, Int64, Nothing}
+    plus_minus::Dict{String, Union{Float64, Int64, Nothing}}
+    n_iterations::Union{Int64, Nothing, Float64}
 end
 
 
@@ -102,10 +102,23 @@ function run_monte_carlo_hydrology(helper::TexNetWebToolLaunchHelperJulia,
 
     # Get fault data
     fault_data_path = get_dataset_file_path(helper, 5, "faults_model_inputs_output")
+    #fault_data_path = get_dataset_file_path(helper, 2, "det_geomechanics_results")
     if fault_data_path === nothing
         error("Required fault dataset not found or accessible.")
     end
+
     fault_df = CSV.read(fault_data_path, DataFrame)
+
+    # REMOVE THIS: 
+    # for the 'FaulID' column with ID A1, make the Latitude(WGS84) column 30.052 and the Longitude(WGS84) column -99.75
+    
+    fault_df[!, "Latitude(WGS84)"] = ifelse.(fault_df[!, "FaultID"] .== "A1", 30.052, fault_df[!, "Latitude(WGS84)"])
+    fault_df[!, "Longitude(WGS84)"] = ifelse.(fault_df[!, "FaultID"] .== "A1", -99.75, fault_df[!, "Longitude(WGS84)"])
+    
+    
+    
+
+    
     num_faults = nrow(fault_df)
     println("Read faults_model_inputs_output.csv: $fault_df")
     
@@ -898,13 +911,13 @@ function main()
         println("Running probabilistic hydrology model...")
         
         # Get hydrology parameters from the portal
-        aquifer_thickness = get_parameter_value(helper, 5, "aquifer_thickness_ft")
-        porosity = get_parameter_value(helper, 5, "porosity")
-        permeability = get_parameter_value(helper, 5, "permeability_md")
-        fluid_density = get_parameter_value(helper, 5, "fluid_density")
-        dynamic_viscosity = get_parameter_value(helper, 5, "dynamic_viscosity")
-        fluid_compressibility = get_parameter_value(helper, 5, "fluid_compressibility")
-        rock_compressibility = get_parameter_value(helper, 5, "rock_compressibility")
+        aquifer_thickness = get_parameter_value(helper, 4, "aquifer_thickness_ft")
+        porosity = get_parameter_value(helper, 4, "porosity")
+        permeability = get_parameter_value(helper, 4, "permeability_md")
+        fluid_density = get_parameter_value(helper, 4, "fluid_density")
+        dynamic_viscosity = get_parameter_value(helper, 4, "dynamic_viscosity")
+        fluid_compressibility = get_parameter_value(helper, 4, "fluid_compressibility")
+        rock_compressibility = get_parameter_value(helper, 4, "rock_compressibility")
         
         # Get uncertainty parameters
         aquifer_thickness_uncertainty = get_parameter_value(helper, 5, "aquifer_thickness_uncertainty")
@@ -914,6 +927,14 @@ function main()
         dynamic_viscosity_uncertainty = get_parameter_value(helper, 5, "dynamic_viscosity_uncertainty")
         fluid_compressibility_uncertainty = get_parameter_value(helper, 5, "fluid_compressibility_uncertainty")
         rock_compressibility_uncertainty = get_parameter_value(helper, 5, "rock_compressibility_uncertainty")
+
+        println("input parameters:")
+        println("aquifer_thickness: $aquifer_thickness")
+        println("porosity: $porosity")
+        println("permeability: $permeability")
+        println("fluid_density: $fluid_density")
+        println("dynamic_viscosity: $dynamic_viscosity")
+        println("fluid_compressibility: $fluid_compressibility")
         
         # Get number of iterations
         n_iterations = get_parameter_value(helper, 5, "hydro_mc_iterations")

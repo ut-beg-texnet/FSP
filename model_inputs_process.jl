@@ -139,12 +139,15 @@ function main()
             injection_rate_data = injection_rate_data_to_d3(injection_wells_df, injection_data_type)
             save_dataframe_as_parameter!(helper, 1, "injection_rate_d3_data", injection_rate_data)
             println("DEBUG: Saved annual injection rate data for visualization")
+            save_dataframe_as_parameter!(helper, 1, "injection_wells_annual_output", injection_wells_df)
         elseif injection_data_type == "monthly_fsp"
             println("fsp monthly injection df:")
             println(injection_wells_df)
             injection_rate_data = injection_rate_data_to_d3(injection_wells_df, injection_data_type)
             save_dataframe_as_parameter!(helper, 1, "injection_rate_d3_data", injection_rate_data)
             println("DEBUG: Saved monthly injection rate data for visualization")
+
+            save_dataframe_as_parameter!(helper, 1, "injection_wells_monthly_output", injection_wells_df)
         elseif injection_data_type == "injection_tool_data"
             injection_rate_data = injection_rate_data_to_d3(injection_wells_df, injection_data_type)
             save_dataframe_as_parameter!(helper, 1, "injection_rate_d3_data", injection_rate_data)
@@ -167,7 +170,7 @@ function main()
             println(injection_wells_df_filtered)
             save_dataframe_as_parameter!(helper, 1, "injection_tool_data_filtered_map_layer", injection_wells_df_filtered)
 
-
+            save_dataframe_as_parameter!(helper, 1, "injection_tool_data_output", injection_wells_df)
 
 
 

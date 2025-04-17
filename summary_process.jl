@@ -183,7 +183,7 @@ function run_mc_hydrology_time_series(
             println("DEBUG: Calculated Storativity = $S, Transmissivity = $T")
         end
         
-        # Process each year
+        
         for analysis_year in years_to_analyze
             # Set up year cutoff date (Dec 31 of the analysis year)
             cutoff_date = Date(analysis_year, 12, 31)
@@ -454,6 +454,7 @@ end
 # 1) FSP (annual)
 # 2) FSP (monthly)
 # 3) Injection Tool Data
+#=
 function get_injection_dataset_path(helper::TexNetWebToolLaunchHelperJulia, step_index::Int)
     
     #println("DEBUG: get_injection_dataset_path called with step_index = $step_index")
@@ -481,6 +482,31 @@ function get_injection_dataset_path(helper::TexNetWebToolLaunchHelperJulia, step
     println("DEBUG: No injection dataset found, returning nothing")
     return nothing, nothing
 end
+=#
+
+function get_injection_dataset_path_summary_step(helper::TexNetWebToolLaunchHelperJulia, step_index::Int)
+    for param_name in ["injection_wells_annual_output", "injection_wells_monthly_output", "injection_tool_data_output"]
+        filepath = get_dataset_file_path(helper, step_index, param_name)
+        if filepath !== nothing
+            if param_name == "injection_wells_annual_output"
+                injection_data_type = "annual_fsp"
+                return filepath, injection_data_type
+            elseif param_name == "injection_wells_monthly_output"
+                injection_data_type = "monthly_fsp"
+                return filepath, injection_data_type
+            elseif param_name == "injection_tool_data_output"
+                injection_data_type = "injection_tool_data"
+                return filepath, injection_data_type
+            end
+        else
+            error("No injection dataset found, returning nothing")
+            
+            return nothing, nothing
+        end
+    end
+    
+    return nothing, nothing
+end
 
 function main()
     println("\n=== Starting FSP Summary Process ===")
@@ -502,13 +528,29 @@ function main()
     #println("Using year of interest: $year_of_interest, cutoff date: $year_of_interest_date")
 
     # 2) Read injection wells data
+    #=
     injection_wells_csv_filepath, injection_data_type = get_injection_dataset_path(helper, 6)
     if injection_wells_csv_filepath === nothing
         error("No injection wells dataset provided.")
     end
+    =#
+
+    #injection_wells_csv_filepath, injection_data_type = get_injection_dataset_path_summary_step(helper, 6)
+    # REMOVE THIS: uncomment the line above
+    injection_wells_csv_filepath = "C:\\Users\\bakirtzisn\\Desktop\\FSP_dev_test\\FSP_3\\tests\\inejction_tool_data_2_final_v2.csv"
+    injection_data_type = "injection_tool_data"
+
+    #injection_wells_csv_filepath = "FSP_3/tests/inejction_tool_data_2_final_v2.csv"
+    #injection_data_type = "injection_tool_data"
+    if injection_wells_csv_filepath === nothing
+        error("No injection wells dataset provided.")
+    end
+
+    
     
     # Define types for CSV columns to ensure API numbers are read as strings
     if injection_data_type == "injection_tool_data"
+        
         # Try to read the first few lines to determine column names
         try
             column_names = names(CSV.read(injection_wells_csv_filepath, DataFrame, limit=1))
@@ -530,18 +572,21 @@ function main()
                 injection_wells_df = CSV.read(injection_wells_csv_filepath, DataFrame)
                 #println("Loaded injection wells data: $(nrow(injection_wells_df)) records")
             end
+            
         catch e
             println("Error reading column names: $e")
             # Fall back to default reading
             injection_wells_df = CSV.read(injection_wells_csv_filepath, DataFrame)
-            println("Loaded injection wells data: $(nrow(injection_wells_df)) records")
+            #println("Loaded injection wells data: $(nrow(injection_wells_df)) records")
         end
     else
+        
         # For other data types, read normally
         injection_wells_df = CSV.read(injection_wells_csv_filepath, DataFrame)
         #println("Loaded injection wells data (first 10 rows) out of $(nrow(injection_wells_df)) rows:")
         # print the first 10 rows of the df
         #pretty_table(injection_wells_df[1:10, :])
+
     end
 
     # 3) Read fault data
@@ -550,8 +595,7 @@ function main()
         error("Required fault dataset not found or accessible.")
     end
     fault_df = CSV.read(fault_data_path, DataFrame)
-    #println("Loaded fault data: ")
-    #pretty_table(fault_df)
+    
 
     # 4) Read probabilistic geomechanics results
     prob_geo_cdf_path = get_dataset_file_path(helper, 6, "prob_geomechanics_cdf_graph_data_summary")
@@ -560,26 +604,34 @@ function main()
     end
     prob_geo_cdf = CSV.read(prob_geo_cdf_path, DataFrame)
     println("Loaded probabilistic geomechanics data (first 10 rows) out of $(nrow(prob_geo_cdf)) rows:")
-    # print the first 10 rows of the df
+    
     pretty_table(prob_geo_cdf[1:10, :])
 
     # 5) Get hydrology parameters
-    aquifer_thickness = get_parameter_value(helper, 6, "aquifer_thickness_ft_summary")
-    porosity = get_parameter_value(helper, 6, "porosity_summary")
-    permeability = get_parameter_value(helper, 6, "permeability_md_summary")
-    fluid_density = get_parameter_value(helper, 6, "fluid_density_summary")
-    dynamic_viscosity = get_parameter_value(helper, 6, "dynamic_viscosity_summary")
-    fluid_compressibility = get_parameter_value(helper, 6, "fluid_compressibility_summary")
-    rock_compressibility = get_parameter_value(helper, 6, "rock_compressibility_summary")
+    aquifer_thickness = get_parameter_value(helper, 4, "aquifer_thickness_ft")
+    porosity = get_parameter_value(helper, 4, "porosity")
+    permeability = get_parameter_value(helper, 4, "permeability_md")
+    fluid_density = get_parameter_value(helper, 4, "fluid_density")
+    dynamic_viscosity = get_parameter_value(helper, 4, "dynamic_viscosity")
+    fluid_compressibility = get_parameter_value(helper, 4, "fluid_compressibility")
+    rock_compressibility = get_parameter_value(helper, 4, "rock_compressibility")
+
+    for param in [aquifer_thickness, porosity, permeability, fluid_density, dynamic_viscosity, fluid_compressibility, rock_compressibility]
+        if param === nothing
+            error("Parameter $param is not found.")
+        end
+    end
+
+    println("aquifer_thickness: $aquifer_thickness")
     
     # Get uncertainty parameters
-    aquifer_thickness_uncertainty = get_parameter_value(helper, 6, "aquifer_thickness_uncertainty_summary")
-    porosity_uncertainty = get_parameter_value(helper, 6, "porosity_uncertainty_summary")
-    permeability_uncertainty = get_parameter_value(helper, 6, "permeability_uncertainty_summary")
-    fluid_density_uncertainty = get_parameter_value(helper, 6, "fluid_density_uncertainty_summary")
-    dynamic_viscosity_uncertainty = get_parameter_value(helper, 6, "dynamic_viscosity_uncertainty_summary")
-    fluid_compressibility_uncertainty = get_parameter_value(helper, 6, "fluid_compressibility_uncertainty_summary")
-    rock_compressibility_uncertainty = get_parameter_value(helper, 6, "rock_compressibility_uncertainty_summary")
+    aquifer_thickness_uncertainty = get_parameter_value(helper, 5, "aquifer_thickness_uncertainty")
+    porosity_uncertainty = get_parameter_value(helper, 5, "porosity_uncertainty")
+    permeability_uncertainty = get_parameter_value(helper, 5, "permeability_uncertainty")
+    fluid_density_uncertainty = get_parameter_value(helper, 5, "fluid_density_uncertainty")
+    dynamic_viscosity_uncertainty = get_parameter_value(helper, 5, "dynamic_viscosity_uncertainty")
+    fluid_compressibility_uncertainty = get_parameter_value(helper, 5, "fluid_compressibility_uncertainty")
+    rock_compressibility_uncertainty = get_parameter_value(helper, 5, "rock_compressibility_uncertainty")
 
     # print hydrology and uncertainty parameters
     #=
@@ -602,13 +654,21 @@ function main()
     println("  Rock compressibility uncertainty: $rock_compressibility_uncertainty")
     =#
 
+    println("helooooo")
+    
+
     # Get number of iterations
-    n_iterations = get_parameter_value(helper, 6, "hydro_mc_iterations_summary")
+    n_iterations = get_parameter_value(helper, 5, "hydro_mc_iterations")
     if n_iterations === nothing
-        n_iterations = 500  # default
+        n_iterations = 750  # default
     elseif !isa(n_iterations, Int)
         n_iterations = parse(Int, n_iterations)
     end
+
+    # REMOVE THIS:
+    #n_iterations = 10
+
+    
     
     # Create the parameters structure
     params = HydrologyParams(
@@ -631,13 +691,17 @@ function main()
         n_iterations
     )
 
+    println("peter")
+    
+
     # 6) Get injection date bounds and determine years to analyze
     inj_start_date, inj_end_date = Utilities.get_date_bounds(injection_wells_df)
     start_year = year(inj_start_date)
-    end_year = min(year(inj_end_date), year_of_interest)
+    #end_year = min(year(inj_end_date), year_of_interest)
+    end_year = year(inj_end_date)
     years_to_analyze = start_year:end_year
     
-    println("Injection period: $inj_start_date to $inj_end_date")
+    println("Injection period (for all wells): $inj_start_date to $inj_end_date")
     println("Years to analyze: $years_to_analyze")
 
     # 7) Run Monte Carlo simulation for probabilistic hydrology for each year
@@ -651,22 +715,83 @@ function main()
         injection_data_type
     )
 
-    println("Pressure for each fault at each year (first 10 rows):")
-    pretty_table(pressure_through_time_results[1:10, :])
 
-    save_dataframe_as_parameter!(helper, 6, "pressure_through_time_results", pressure_through_time_results)
+
+    
+    #pretty_table(pressure_through_time_results[1:10, :])
+
+    # we need to aggregate the data, for each unique ID, get the average Pressure for each Year
+    # and then save the results as a new dataframe
+    pressure_through_time_results_aggregated = combine(
+    groupby(pressure_through_time_results, [:ID, :Year]),
+    :Pressure => mean => :Pressure
+    )
+
+    pressure_though_time_graph_data = DataFrame(
+        ID = String[],
+        Year = Int[],
+        Pressure = Float64[]
+    )
+
+    println("graph data (before reformatting): ")
+    # sort them by ID and then by Year
+    sort!(pressure_through_time_results_aggregated, [:ID, :Year])
+
+    # make each Year epoch timestamp of January 1st {Year}
+    pressure_through_time_results_aggregated[!, :epoch_time] = Int64.(
+        datetime2unix.(DateTime.(Date.(pressure_through_time_results_aggregated.Year, 1, 1)))
+    )
+
+    # round the Pressure to 2 decimal places
+    pressure_through_time_results_aggregated[!, :Pressure] = round.(pressure_through_time_results_aggregated.Pressure, digits=2)
+
+    # 
+    pretty_table(pressure_through_time_results_aggregated)
+    
+    #=
+    # now we need to add two points for each ID so we can connect the points as line segments
+    for fault_group in groupby(pressure_through_time_results_aggregated, :ID)
+        # sort by Year
+        sort!(fault_group, :Year)
+        # iterate over all years except the last one
+        for year in 1:(nrow(fault_group) - 1)
+            current_row = fault_group[year, :]
+            next_row = fault_group[year + 1, :]
+
+            # convert the year to Jnauary 1st {Year} epoch timestamp
+            current_row.Year = Date(current_row.Year, 1, 1)
+            next_row.Year = Date(next_row.Year, 1, 1)
+            
+            
+            # create the line segment points from the current year to the next year
+            push!(pressure_though_time_graph_data, (ID = current_row.ID, Year = current_row.Year, Pressure = current_row.Pressure))
+            push!(pressure_though_time_graph_data, (ID = next_row.ID, Year = next_row.Year, Pressure = next_row.Pressure))
+        end
+    end
+
+    println("pressure_though_time_graph_data (after reformatting for d3):")
+    pretty_table(pressure_though_time_graph_data)
+    =#
+
+
+
+    #pretty_table(pressure_through_time_results_aggregated)
+
+    save_dataframe_as_parameter!(helper, 6, "pressure_through_time_results", pressure_through_time_results_aggregated)
 
     println("pressure_through_time_results: $(nrow(pressure_through_time_results)) records")
     # for every unique 'ID' value, print the first 10 rows of each 'Year'
+    #=
     for id in unique(pressure_through_time_results.ID)
         println("ID: $id")
         println("minimum pressure in pressure_through_time_results df: $(minimum(pressure_through_time_results[pressure_through_time_results.ID .== id, :Pressure]))")
         println("maximum pressure in pressure_through_time_results df: $(maximum(pressure_through_time_results[pressure_through_time_results.ID .== id, :Pressure]))")
     end
+    =#
     
     
-
     
+    #=
 
     # 8) Calculate fault slip potential by combining with geomechanics CDF
     println("\nCalculating fault slip potential...")
@@ -712,6 +837,7 @@ function main()
     # Save the plots
     savefig(p1, "fsp_time_series.png")
     println("\nVisualization saved as fsp_time_series.png")
+    =#
 
     # Finalize
     write_final_args_file(helper, joinpath(helper.scratch_path, ARGS_FILE_NAME))

@@ -329,7 +329,7 @@ Main function
 """
 function main()
     
-    # set up helper object
+    
     scratchPath = ARGS[1]
 
     println("Scratch path: $scratchPath")

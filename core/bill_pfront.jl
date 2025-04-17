@@ -191,6 +191,12 @@ function pressureScenario_Rall(
         dp_psi = reshape(dp_psi, original_size)
     end
 
+    # if any of the vallues is less than 1e-1, set it to 0
+    dp_psi[dp_psi .< 1e-1] .= 0.0
+
+    # also, round to 2 decimal places
+    dp_psi = round.(dp_psi, digits=2)
+
 
     return dp_psi
 end

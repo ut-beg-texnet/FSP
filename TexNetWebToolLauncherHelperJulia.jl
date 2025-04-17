@@ -116,6 +116,7 @@ function get_parameter_value(helper::TexNetWebToolLaunchHelperJulia, step_index:
 
         # if the value is an empty string or explicitly nothing, return nothing
         if isa(value, AbstractString) && isempty(strip(value)) || value === nothing
+            println("parameter $param_name not found in step $step_index")
             return nothing
         end
 
@@ -129,7 +130,9 @@ function get_parameter_value(helper::TexNetWebToolLaunchHelperJulia, step_index:
         else
             return value
         end
+        
     end
+    println("parameter $param_name not found in step $step_index")
     return nothing
 end
 

@@ -328,9 +328,13 @@ function pfieldcalc_all_rates(
     pfrontResult_2d = reshape(pfrontResult_flat, size(xGrid_km))
 
     # Output pressure statistics (min/max values)
-    min_pressure = minimum(pfrontResult_2d)
-    max_pressure = maximum(pfrontResult_2d)
-    println("  * Pressure change range: $min_pressure psi to $max_pressure psi")
+    #min_pressure = minimum(pfrontResult_2d)
+    #max_pressure = maximum(pfrontResult_2d)
+
+    
+    
+
+    #println("  * Pressure change range: $min_pressure psi to $max_pressure psi")
 
     return pfrontResult_2d
 end
@@ -420,6 +424,8 @@ function pfieldcalc_all_rates(
     # Convert R_meters to a vector since pressureScenario_Rall expects a vector
     R_meters_vec = [R_meters]
     pfrontResult = pressureScenario_Rall(bpds, days, R_meters_vec, STRho)
+
+    
     
     # Return the single value result
     return pfrontResult[1]
