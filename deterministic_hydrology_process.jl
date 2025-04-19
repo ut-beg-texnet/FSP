@@ -857,7 +857,11 @@ function main()
         "aphi_value" => get_parameter_value(helper, 2, "aphi_value") === nothing ? nothing : get_parameter_value(helper, 2, "aphi_value")
     )
 
-    
+    # REMOVE THIS
+    if stress_inputs["max_horizontal_stress"] === nothing
+        add_message_with_step_index!(helper, 2, "Max Horizontal Stress Gradient is not provided, using default value of 1.22", 2)
+        stress_inputs["max_horizontal_stress"] = 1.22
+    end
 
     
     

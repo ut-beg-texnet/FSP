@@ -206,8 +206,9 @@ function run_monte_carlo(stress_inputs::Dict, fault_inputs::DataFrame, uncertain
         
         # Update stress state with absolute values
         sim_stress["vertical_stress"] = stress_state_obj.principal_stresses[1]
-        sim_stress["max_horizontal_stress"] = stress_state_obj.principal_stresses[3]
         sim_stress["min_horizontal_stress"] = stress_state_obj.principal_stresses[2]
+        sim_stress["max_horizontal_stress"] = stress_state_obj.principal_stresses[3]
+        
         sim_stress["pore_pressure"] = initial_pressure
         
         # Create StressState object for slip calculations
@@ -219,6 +220,7 @@ function run_monte_carlo(stress_inputs::Dict, fault_inputs::DataFrame, uncertain
         )
         
         # Calculate slip pressure for each fault
+        # sim_faults is a vector of dictionaries, each representing a fault
         for (fault_idx, fault) in enumerate(sim_faults)
             sig_normal, tau_normal, s11, s22, s33, s12, n1, n2 = calculate_fault_effective_stresses(
                 fault["Strike"], 
@@ -245,6 +247,7 @@ function run_monte_carlo(stress_inputs::Dict, fault_inputs::DataFrame, uncertain
             catch e
                 
                 println("Warning: Error calculating slip pressure for fault $(fault_idx) in simulation $(i): $(e)")
+                error("Error calculating slip pressure for fault $(fault_idx) within MC simulation $(i): $(e)")
                 
             end
         end
@@ -386,6 +389,14 @@ function main()
             "dip_angles_uncertainty" => get_parameter_value(helper, 3, "dip_angles_uncertainty"),
             "friction_coefficient_uncertainty" => get_parameter_value(helper, 3, "friction_coefficient_uncertainty")
         )
+    end
+
+
+
+    # REMOVE THIS
+    if stress_inputs["max_horizontal_stress"] === nothing
+        add_message_with_step_index!(helper, 2, "Max Horizontal Stress Gradient is not provided, using default value of 1.22", 2)
+        stress_inputs["max_horizontal_stress"] = 1.22
     end
 
     #println("uncertainties from the portal: $uncertainties")

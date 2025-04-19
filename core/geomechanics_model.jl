@@ -57,6 +57,7 @@ function calculate_modified_aphi_stresses(n::Int, phi::Float64, sv::Float64, sh:
         error("Invalid n value for Modified A-Phi model: $n")
     end
     
+    
     return sH, sh
 end
 
@@ -64,6 +65,8 @@ function calculate_standard_aphi_stresses(n::Int, phi::Float64, sv::Float64, p0:
     if mu <= 0
         return sv, sv  # Both horizontal stresses equal vertical
     end
+
+    
     
     k = (mu + sqrt(1 + mu^2))^2
     
@@ -72,15 +75,20 @@ function calculate_standard_aphi_stresses(n::Int, phi::Float64, sv::Float64, p0:
         sH = phi * (sv - sh) + sh
 
     elseif n == 1
+        
         A = [1.0 -k; phi (1-phi)]
         b = [p0 - k*p0; sv]
         x = A \ b
         sH, sh = x[1], x[2]
+        
+
 
     elseif n == 2
         sH = k * (sv - p0) + p0
         sh = phi * (sH - sv) + sv
     end
+    
+    
     
     return sH, sh
 end
@@ -102,6 +110,7 @@ function calculate_n_phi(aphi::Float64)
     end
     
     phi = (aphi - (n + 0.5))/(-1)^n + 0.5
+    
     return n, phi
 end
 
@@ -114,14 +123,15 @@ function calculate_absolute_stresses(stress_data::Dict, friction_coefficient::Re
     vertical_gradient = stress_data["vertical_stress"]
     pore_pressure_gradient = stress_data["pore_pressure"]
     max_stress_azimuth = stress_data["max_stress_azimuth"]
+
+    
     
     # Ensure optional values are set
-    stress_data["min_horizontal_stress"] = get(stress_data, "min_horizontal_stress", 0.0)
-    stress_data["max_horizontal_stress"] = get(stress_data, "max_horizontal_stress", 0.0)
-    stress_data["aphi_value"] = get(stress_data, "aphi_value", 0.0)
+    stress_data["min_horizontal_stress"] = get(stress_data, "min_horizontal_stress", nothing)
+    stress_data["max_horizontal_stress"] = get(stress_data, "max_horizontal_stress", nothing)
+    stress_data["aphi_value"] = get(stress_data, "aphi_value", nothing)
 
-    #println("stress_data:")
-    #println(stress_data)
+    
 
     # Calculate absolute stresses at reference depth
     sV = round(vertical_gradient * reference_depth, digits=4)
@@ -139,11 +149,12 @@ function calculate_absolute_stresses(stress_data::Dict, friction_coefficient::Re
         aphi = stress_data["aphi_value"]
         n, phi = calculate_n_phi(aphi)
         
-        if stress_model_type == "aphi_model"
+        if stress_data["min_horizontal_stress"] !== nothing
             println("Stress model type: A-phi with min horizontal stress")
             sh = stress_data["min_horizontal_stress"] * reference_depth
             sH, _ = calculate_modified_aphi_stresses(n, phi, sV, sh, p0)
         else
+            
             println("Stress model type: A-phi without min horizontal stress")
             sH, sh = calculate_standard_aphi_stresses(n, phi, sV, p0, μ)
         end

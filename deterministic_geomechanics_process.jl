@@ -539,16 +539,17 @@ function main()
 
      
     helper = TexNetWebToolLaunchHelperJulia(scratchPath)
-    println("Helper object initialized.")
-    #println("args.json: ", JSON.json(helper.args_data))
+    
 
     
     println("Extracting stress state values from args.json...")
     stress_inputs = Dict(
         "reference_depth" => get_parameter_value(helper, 2, "reference_depth"),
         "vertical_stress" => get_parameter_value(helper, 2, "vertical_stress"),
-        "min_horizontal_stress" => get_parameter_value(helper, 2, "min_horizontal_stress") === nothing ? nothing : get_parameter_value(helper, 2, "min_horizontal_stress"),
-        "max_horizontal_stress" => get_parameter_value(helper, 2, "max_horizontal_stress") === nothing ? nothing : get_parameter_value(helper, 2, "max_horizontal_stress"),
+        #"min_horizontal_stress" => get_parameter_value(helper, 2, "min_horizontal_stress") === nothing ? nothing : get_parameter_value(helper, 2, "min_horizontal_stress"),
+        "min_horizontal_stress" => get_parameter_value(helper, 2, "min_horizontal_stress"),
+        #"max_horizontal_stress" => get_parameter_value(helper, 2, "max_horizontal_stress") === nothing ? nothing : get_parameter_value(helper, 2, "max_horizontal_stress"),
+        "max_horizontal_stress" => get_parameter_value(helper, 2, "max_horizontal_stress"),
         "pore_pressure" => get_parameter_value(helper, 2, "pore_pressure"),
         "max_stress_azimuth" => get_parameter_value(helper, 2, "max_stress_azimuth"),
         "aphi_value" => get_parameter_value(helper, 2, "aphi_value") === nothing ? nothing : get_parameter_value(helper, 2, "aphi_value"),
@@ -556,10 +557,22 @@ function main()
         
     )
 
+    
+    # REMOVE THIS
+    if stress_inputs["max_horizontal_stress"] === nothing
+        add_message_with_step_index!(helper, 2, "Max Horizontal Stress Gradient is not provided, using default value of 1.22", 2)
+        stress_inputs["max_horizontal_stress"] = 1.22
+    end
+
+   
+
     # if both aphi_value and max_horizontal_stress are not nothing, then we need to throw an error
     if stress_inputs["aphi_value"] !== nothing && stress_inputs["max_horizontal_stress"] !== nothing
+        add_message_with_step_index!(helper, 2, "Aphi value and Max Horizontal Stress Gradient cannot both be provided", 2)
         throw(ErrorException("Error: Aphi value and Max Horizontal Stress Gradient cannot both be provided"))
     end
+
+
     
 
     # make the 'stress_model_type' of the stress_inputs get the value from the 'get_stress_model_type' function
@@ -570,7 +583,7 @@ function main()
     
     #stress_model_type = get_stress_model_type(stress_inputs)
 
-    println("Using stress model type: $(stress_inputs["stress_field_mode"])")
+    #println("Using stress model type: $(stress_inputs["stress_field_mode"])")
     # this is the output parameter from the portal
     set_parameter_value!(helper, 2, "stress_model_type", stress_inputs["stress_field_mode"])
 
@@ -591,38 +604,40 @@ function main()
     if stress_inputs["aphi_value"] !== nothing
         @assert stress_inputs["aphi_value"] >= 0 && stress_inputs["aphi_value"] <= 3 "Aphi value must be between 0 and 3"
     end
-    
-    # get stress regime
-    stress_regime = get_stress_regime(stress_inputs["vertical_stress"], stress_inputs["min_horizontal_stress"], stress_inputs["max_horizontal_stress"])
 
-    println("stress data read: $(stress_inputs)")
-    
-    
-    
 
-    println("Extracting fault data from the CSV at the scratch path...")
+
+    # get friction coefficient from the first fault and apply it to all faults
+    #println("Extracting fault data from the CSV at the scratch path...")
     faults_csv_filepath = get_dataset_file_path(helper, 2, "faults_model_inputs_output")
-    println("Read fault CSV: $faults_csv_filepath")
+    #println("Read fault CSV: $faults_csv_filepath")
     if faults_csv_filepath !== nothing
         faults_inputs = CSV.read(faults_csv_filepath, DataFrame)
 
-        # extract friction coefficient from the first fault
-        mu = faults_inputs[1, "FrictionCoefficient"]
-
-        # Apply the same friction coefficient to all faults
+        mu = faults_inputs[1, "FrictionCoefficient"]        
         faults_inputs[!, "FrictionCoefficient"] .= mu
 
     else
         println("Error: No faults dataset provided.")
     end
 
-
     # Calculate absolute stresses at reference depth
-    
     stress_state, initial_pressure = GeomechanicsModel.calculate_absolute_stresses(stress_inputs, mu, stress_inputs["stress_field_mode"])
+    
+    # get stress regime
+    #stress_regime = get_stress_regime(stress_inputs["vertical_stress"], stress_inputs["min_horizontal_stress"], stress_inputs["max_horizontal_stress"])
 
-    # print the stress_state = StressState([sV, sh, sH], max_stress_azimuth)
-    #add_message_with_step_index!(helper, 2, "stress_state: $(stress_state)", 0)
+    #println("stress_state.principal_stresses[1]: $(stress_state.principal_stresses[1])")
+    #add_message_with_step_index!(helper, 2, "stress_state.principal_stresses[1]: $(stress_state.principal_stresses[1])", 0)
+    #println("stress_state.principal_stresses[2]: $(stress_state.principal_stresses[2])")
+    #add_message_with_step_index!(helper, 2, "stress_state.principal_stresses[2]: $(stress_state.principal_stresses[2])", 0)
+    #println("stress_state.principal_stresses[3]: $(stress_state.principal_stresses[3])")
+    #add_message_with_step_index!(helper, 2, "stress_state.principal_stresses[3]: $(stress_state.principal_stresses[3])", 0)
+
+
+    stress_regime = get_stress_regime(stress_state.principal_stresses[1], stress_state.principal_stresses[2], stress_state.principal_stresses[3])
+
+   
 
     # convert faults df to a vector so we can use it in the process_faults function
     fault_data = collect(eachrow(faults_inputs))
@@ -647,7 +662,7 @@ function main()
     step1_faults_output_filepath = get_dataset_file_path(helper, 2, "faults_model_inputs_output")
     step1_faults_output = CSV.read(step1_faults_output_filepath, DataFrame)
 
-    println("step1_faults_output: $(step1_faults_output)")
+    
 
     # Add the results columns to the existing dataframe from step 1
     step1_faults_output.slip_pressure = [round(result["slip_pressure"], digits=3) for result in results]
@@ -659,7 +674,7 @@ function main()
     # Save the updated dataframe for the next step
     step2_faults_output = step1_faults_output
 
-    println("step2_faults_output: $(step2_faults_output)")
+    
     save_dataframe_as_parameter!(helper, 2, "det_geomechanics_results", step2_faults_output)
 
     #add_message_with_step_index!(helper, 2, "step2_faults_output: $(step2_faults_output)", 0)
@@ -708,7 +723,7 @@ function main()
     # write the results to the results.json file
     write_results_file(helper)
     
-    println("\n=== Deterministic Geomechanics Analysis Complete ===\n")
+    #println("\n=== Deterministic Geomechanics Analysis Complete ===\n")
 
 end
 
