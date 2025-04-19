@@ -323,6 +323,9 @@ function pfieldcalc_all_rates(
     S, T, rho = STRho
     
     pfrontResult_flat = pressureScenario_Rall(bpds, days, R_meters_flattened, STRho)
+    
+    # Ensure no negative pressure values exist
+    pfrontResult_flat = max.(0.0, pfrontResult_flat)
 
     # 5) Reshape back to original grid shape
     pfrontResult_2d = reshape(pfrontResult_flat, size(xGrid_km))
@@ -424,8 +427,9 @@ function pfieldcalc_all_rates(
     # Convert R_meters to a vector since pressureScenario_Rall expects a vector
     R_meters_vec = [R_meters]
     pfrontResult = pressureScenario_Rall(bpds, days, R_meters_vec, STRho)
-
     
+    # Ensure no negative pressure values
+    pfrontResult = max.(0.0, pfrontResult)
     
     # Return the single value result
     return pfrontResult[1]

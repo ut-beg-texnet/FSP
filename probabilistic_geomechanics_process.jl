@@ -294,11 +294,11 @@ function calculate_statistics(results::Union{DataFrame, SharedArray{Float64, 2}}
             # Calculate statistics
             push!(stats_df, (
                 fault_id,
-                round(mean(fault_data), digits=3),
-                round(std(fault_data), digits=3),
-                round(quantile(fault_data, 0.50), digits=3),
-                round(minimum(fault_data), digits=3),
-                round(maximum(fault_data), digits=3)
+                round(mean(fault_data), digits=2),
+                round(std(fault_data), digits=2),
+                round(quantile(fault_data, 0.50), digits=2),
+                round(minimum(fault_data), digits=2),
+                round(maximum(fault_data), digits=2)
             ))
         end
     else
@@ -417,17 +417,25 @@ function main()
     # read the dataframe with the deterministic results
     deterministic_results_filepath = get_dataset_file_path(helper, 2, "det_geomechanics_results")
     deterministic_results_df = CSV.read(deterministic_results_filepath, DataFrame)
-    
+
+    println("mc_pp_results (first 10 rows):")
+    pretty_table(first(mc_pp_results, 10))
+
+    # save it as a csv file
+    CSV.write("mc_pp_results.csv", mc_pp_results)
     
     
     # prepare the data for the d3.js CDF plot
     d3_cdf_data = prob_geomechanics_cdf(mc_pp_results, deterministic_results_df)
 
+    println("d3_cdf_data (first 10 rows):")
+    pretty_table(first(d3_cdf_data, 10))
+
     # save the d3.js CDF data as a dataset to the portal
     save_dataframe_as_parameter!(helper, 3, "prob_geomechanics_cdf_graph_data", d3_cdf_data)
 
     # Generate input parameter distributions for histograms
-    println("Generating input parameter distributions for histograms...")
+    #println("Generating input parameter distributions for histograms...")
     #=
     input_histograms_data = input_distribution_histograms_to_d3(
         mc_pp_results,
@@ -451,7 +459,7 @@ function main()
     save_dataframe_as_parameter!(helper, 3, "prob_geomechanics_stats", stats)
     
     # Generate sensitivity analysis (tornado chart) data for each fault
-    println("Generating sensitivity analysis data for tornado charts...")
+    #println("Generating sensitivity analysis data for tornado charts...")
     
     # Add the fault parameters to the uncertainties dictionary if they're not already there
     if !haskey(uncertainties, "strike_angles_uncertainty")
@@ -502,7 +510,7 @@ function main()
     tornado_charts_data = Dict{String, DataFrame}()
     for (idx, row) in enumerate(eachrow(fault_inputs))
         fault_id = string(idx)
-        println("Generating tornado chart data for Fault #$fault_id...")
+        #println("Generating tornado chart data for Fault #$fault_id...")
         
         # Calculate absolute stresses first to ensure we have the right values for the tornado chart
         friction_coefficient = row.FrictionCoefficient
@@ -530,11 +538,13 @@ function main()
         # Make sure all stress uncertainties are defined according to stress_model_type
         local_uncertainties = copy(uncertainties)
  
+        #=
         println("local_uncertainties: ")
         for (key, value) in local_uncertainties
             println("  - $key: $value")
         end
-        
+        =#
+
         # Initialize the array for stress uncertainty parameters
         stress_uncertainty_params = String[]
         
@@ -681,11 +691,11 @@ function main()
     # Now remove the redundant fault_id column
     select!(combined_tornado_df, Not(:fault_id))
 
-    println("combined_tornado_df: $combined_tornado_df")
+    #println("combined_tornado_df: $combined_tornado_df")
     
     # Debug: Print deterministic results dataframe
-    println("deterministic_results_df: $deterministic_results_df")
-    pretty_table(deterministic_results_df)
+    #println("deterministic_results_df: $deterministic_results_df")
+    #pretty_table(deterministic_results_df)
     
     # Save the combined DataFrame as the only tornado chart parameter
     save_dataframe_as_parameter!(helper, 3, "prob_geomechanics_fault_sensitivity_tornado_chart_data", combined_tornado_df)
@@ -693,8 +703,8 @@ function main()
     #error("Stop hereeeeeeeeeeeeee")
     
     # Also save as CSV file in the current directory for easy access
-    CSV.write("tornado_chart_all_faults.csv", combined_tornado_df)
-    println("Combined tornado chart data saved as parameter and CSV file")
+    #CSV.write("tornado_chart_all_faults.csv", combined_tornado_df)
+    #println("Combined tornado chart data saved as parameter and CSV file")
 
     #output_plot_path = dirname(args["output-json"])
     #println("\nGenerating CDF plots for each fault...")

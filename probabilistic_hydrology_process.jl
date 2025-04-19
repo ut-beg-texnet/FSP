@@ -109,12 +109,7 @@ function run_monte_carlo_hydrology(helper::TexNetWebToolLaunchHelperJulia,
 
     fault_df = CSV.read(fault_data_path, DataFrame)
 
-    # REMOVE THIS: 
-    # for the 'FaulID' column with ID A1, make the Latitude(WGS84) column 30.052 and the Longitude(WGS84) column -99.75
-    #=
-    fault_df[!, "Latitude(WGS84)"] = ifelse.(fault_df[!, "FaultID"] .== "A1", 30.052, fault_df[!, "Latitude(WGS84)"])
-    fault_df[!, "Longitude(WGS84)"] = ifelse.(fault_df[!, "FaultID"] .== "A1", -99.75, fault_df[!, "Longitude(WGS84)"])
-    =#
+    
     
     
 
@@ -149,6 +144,8 @@ function run_monte_carlo_hydrology(helper::TexNetWebToolLaunchHelperJulia,
     if injection_wells_filepath === nothing
         error("No injection well dataset found. Please provide injection well data.")
     end
+
+    
     
     # Explicitly read API Number as String to preserve leading zeros
     if injection_data_type == "injection_tool_data"
@@ -160,6 +157,8 @@ function run_monte_carlo_hydrology(helper::TexNetWebToolLaunchHelperJulia,
     else
         injection_wells_df = CSV.read(injection_wells_filepath, DataFrame)
     end
+
+    
     
     # Get unique well IDs based on data format - moved outside the loops for efficiency
     well_id_col = injection_data_type == "injection_tool_data" ? "API Number" : "WellID"
@@ -350,7 +349,7 @@ function run_monte_carlo_hydrology(helper::TexNetWebToolLaunchHelperJulia,
             fault_id = fault_ids[f]
             
             # initialize pp
-            #ppOnFault = 3000.0 # REMOVE THIS and MAKE THIS 0.0
+            
             ppOnFault = 0.0
             
             #println("  * Processing fault ID: $fault_id")
@@ -367,15 +366,19 @@ function run_monte_carlo_hydrology(helper::TexNetWebToolLaunchHelperJulia,
                     data["lon"],
                     data["lat"],
                 )
+
+                
                 
                 # Add to total pressure for this fault
                 ppOnFault += pressure_contribution
             end
 
-            
+            # Ensure pressure is not negative
+            ppOnFault = max(0.0, ppOnFault)
             
             #println("  * Total pressure on fault $fault_id: $ppOnFault psi")
-            
+            # REMOVE THIS hardocded adittional pressure
+            #ppOnFault += 400.0
             # Store the result for this fault and iteration
             ppOnFaultMC[i, f] = ppOnFault
         end
@@ -395,46 +398,23 @@ function run_monte_carlo_hydrology(helper::TexNetWebToolLaunchHelperJulia,
     
     results_df = DataFrame(result_rows)
     
-    # Calculate statistics
-    stats_df = DataFrame(
-        ID = String[],
-        Mean = Float64[],
-        StdDev = Float64[],
-        Median = Float64[],
-        Min = Float64[],
-        Max = Float64[]
-    )
-    
-    for f in 1:num_faults
-        fault_id = fault_ids[f]
-        fault_data = results_df[results_df.ID .== fault_id, :Pressure]
-        push!(stats_df, (
-            fault_id,
-            mean(fault_data),
-            std(fault_data),
-            median(fault_data),
-            minimum(fault_data),
-            maximum(fault_data)
-        ))
-    end
-    
-    return results_df, stats_df
+    return results_df
 end
 
 """
 Get the injection dataset path based on available data types
 """
 function get_injection_dataset_path(helper::TexNetWebToolLaunchHelperJulia, step_index::Int)
-    for param_name in ["injection_wells_annual", "injection_wells_monthly", "injection_tool_data"]
+    for param_name in ["injection_wells_annual_prob_hydro", "injection_wells_monthly_prob_hydro", "injection_tool_data_prob_hydro"]
         filepath = get_dataset_file_path(helper, step_index, param_name)
         if filepath !== nothing
-            if param_name == "injection_wells_annual"
+            if param_name == "injection_wells_annual_prob_hydro"
                 injection_data_type = "annual_fsp"
                 return filepath, injection_data_type
-            elseif param_name == "injection_wells_monthly"
+            elseif param_name == "injection_wells_monthly_prob_hydro"
                 injection_data_type = "monthly_fsp"
                 return filepath, injection_data_type
-            elseif param_name == "injection_tool_data"
+            elseif param_name == "injection_tool_data_prob_hydro"
                 injection_data_type = "injection_tool_data"
                 return filepath, injection_data_type
             end
@@ -511,8 +491,11 @@ function calculate_deterministic_slip_potential(prob_geo_cdf::DataFrame, det_hyd
             # Find slip potential by interpolating the CDF
             slip_potential = 0.0
             
+            # Ensure pressure is not negative
+            if pressure < 0.0
+                slip_potential = 0.0
             # If pressure is less than minimum in CDF, slip potential is 0
-            if pressure < minimum(fault_cdf[!, slipPressureCol])
+            elseif pressure < minimum(fault_cdf[!, slipPressureCol])
                 slip_potential = 0.0
             # If pressure is greater than maximum in CDF, slip potential is 100%
             elseif pressure > maximum(fault_cdf[!, slipPressureCol])
@@ -535,10 +518,10 @@ end
 
 """
 Calculate slip potential by combining probabilistic geomechanics CDF with probabilistic hydrology exceedance curve.
-This integration calculates the overall fault slip potential as shown in the image reference.
+This integration calculates the overall fault slip potential.
 """
 function calculate_probabilistic_slip_potential(prob_geo_cdf::DataFrame, prob_hydro_results::DataFrame)
-    # Create result dataframe
+    # this dataframe will store the results
     slip_potential_df = DataFrame(
         ID = String[],
         MeanPorePressure = Float64[],
@@ -548,10 +531,19 @@ function calculate_probabilistic_slip_potential(prob_geo_cdf::DataFrame, prob_hy
     # Get unique fault IDs
     fault_ids = unique(prob_geo_cdf.ID)
     
-    # Process the hydrology results to create exceedance probability data
+    # prob_hydro_results are the raw monte carlo results, so we need to convert them to an exceedance curve
     prob_hydro_cdf_data = prob_hydrology_cdf(prob_hydro_results)
+
+    println("inside calculate_probabilistic_slip_potential, prob_hydro_results:")
+    pretty_table(prob_hydro_results)
+
+    println("inside calculate_probabilistic_slip_potential, prob_hydro_cdf_data:")
+    pretty_table(prob_hydro_cdf_data)
+
+    println("inside calculate_probabilistic_slip_potential, prob_geo_cdf:")
+    pretty_table(prob_geo_cdf)
     
-    # Check column names in both dataframes
+    # verify column names
     geo_pressure_col = "slip_pressure" in names(prob_geo_cdf) ? "slip_pressure" : "pressure"
     geo_prob_col = "probability" in names(prob_geo_cdf) ? "probability" : "cumulative_probability"
     
@@ -573,6 +565,10 @@ function calculate_probabilistic_slip_potential(prob_geo_cdf::DataFrame, prob_hy
         # Get mean pore pressure for reporting
         fault_pressures = prob_hydro_results[prob_hydro_results.ID .== fault_id, :Pressure]
         mean_pressure = mean(fault_pressures)
+        # round this to 2 decimal places
+        mean_pressure = round(mean_pressure, digits=2)
+        println("fault_pressures max for fault $fault_id: $(maximum(fault_pressures))")
+        println("fault_pressures min for fault $fault_id: $(minimum(fault_pressures))")
         
         # Check for curve overlap - only calculate non-zero FSP if curves intersect
         hydro_max_pressure = maximum(fault_hydro_exceedance.slip_pressure)
@@ -582,15 +578,15 @@ function calculate_probabilistic_slip_potential(prob_geo_cdf::DataFrame, prob_hy
         
         # Check if hydrology is entirely to the left of geomechanics
         if hydro_max_pressure < geo_min_pressure
-            #println("Fault $fault_id: Hydrology curve entirely to left of geomechanics curve - FSP = 0")
+            #println("Fault $fault_id: Hydrology curve entirely to left of geomechanics curve - FSP = 0.0")
             push!(slip_potential_df, (fault_id, mean_pressure, 0.0))
             continue
         end
         
         # Check if hydrology is entirely to the right of geomechanics
         if hydro_min_pressure > geo_max_pressure
-            #println("Fault $fault_id: Hydrology curve entirely to right of geomechanics curve - FSP = 100")
-            push!(slip_potential_df, (fault_id, mean_pressure, 100.0))
+            #println("Fault $fault_id: Hydrology curve entirely to right of geomechanics curve - FSP = 1.0")
+            push!(slip_potential_df, (fault_id, mean_pressure, 1.0))
             continue
         end
         
@@ -692,6 +688,8 @@ function calculate_probabilistic_slip_potential(prob_geo_cdf::DataFrame, prob_hy
             
             intersection_pressure = closest_pressure
             intersection_probability = closest_probability
+            # round this to 2 decimal places
+            intersection_probability = round(intersection_probability, digits=2)
             println("Fault $fault_id: No exact intersection found. Using closest point at pressure = $intersection_pressure psi, probability = $intersection_probability%")
         end
         
@@ -846,7 +844,7 @@ function main()
 
     # Read probabilistic geomechanics CDF data
     # CONTINUE FROM HERE: configure 'prob_geomechanics_cdf_graph_data' in the portal
-    prob_geo_results = get_dataset_file_path(helper, 5, "prob_geomechanics_cdf_graph_data")
+    prob_geo_results = get_dataset_file_path(helper, 5, "prob_geomechanics_cdf_graph_data_prob_hydro")
     prob_geo_cdf = CSV.read(prob_geo_results, DataFrame)
     println("Loaded original probabilistic geomechanics CDF data: (last 10 rows)")
     pretty_table(prob_geo_cdf[end-10:end, :])
@@ -894,19 +892,19 @@ function main()
 
 
         
-        # Save the slip potential results
-        #save_dataframe_as_parameter!(helper, 5, "slip_potential_results", slip_potential)
         
         
-        println("\nTotal Slip Potential Results (Deterministic Hydrology) - All Years:")
+        
+        # set the model run parameter (read by the summare step)
+        set_parameter_value!(helper, 5, "model_run", 0)
        
         
         
-        
-        # Plot results (could call a function from julia_fsp_graphs.jl)
-        # plot_det_hydro_combined_cdf(prob_geo_cdf, det_hydro_df)
-        
     elseif hydro_model_type == "probabilistic"
+
+        # set the model run parameter (read by the summary step)
+        set_parameter_value!(helper, 5, "model_run", 1)
+
         # probabilistic hydrology
         println("Running probabilistic hydrology model...")
         
@@ -935,6 +933,8 @@ function main()
         println("fluid_density: $fluid_density")
         println("dynamic_viscosity: $dynamic_viscosity")
         println("fluid_compressibility: $fluid_compressibility")
+        println("rock_compressibility: $rock_compressibility")
+
         
         # Get number of iterations
         n_iterations = get_parameter_value(helper, 5, "hydro_mc_iterations")
@@ -963,19 +963,12 @@ function main()
             n_iterations
         )
         
-        # Run Monte Carlo simulation
-        prob_hydro_results, prob_hydro_stats = run_monte_carlo_hydrology(helper, params, "uniform", extrapolate_injection_rates, year_of_interest_date, year_of_interest)
-        #println("prob_hydro_resultssssssss (last 10 rows):")
-        #pretty_table(prob_hydro_results[end-10:end, :])
-
+        # Run Monte Carlo simulation - updated to only receive one return value
+        prob_hydro_results = run_monte_carlo_hydrology(helper, params, "uniform", extrapolate_injection_rates, year_of_interest_date, year_of_interest)
         
-        # Save the results
-        #save_dataframe_as_parameter!(helper, 5, "prob_hydrology_results", prob_hydro_results)
-        #save_dataframe_as_parameter!(helper, 5, "prob_hydrology_stats", prob_hydro_stats)
 
-        #println("prob_hydro_results (before prob_hydrology_cdf) (last 10 rows):")
-        #pretty_table(prob_hydro_results[end-10:end, :])
-
+        # save the prob_hydro_results as a CSV in the current directory
+        CSV.write("prob_hydro_results.csv", prob_hydro_results)
         
 
         # Generate probabilistic hydrology CDF data
@@ -984,14 +977,12 @@ function main()
         println("prob_hydrology_cdf_graph_data (after prob_hydrology_cdf) (last 10 rows):")
         pretty_table(prob_hydro_cdf_data[end-10:end, :])
 
-        
-        
-        # get the maximum pressure from the 'A1' fault from the prob_hydro_results
-        max_pressure = maximum(prob_hydro_results[prob_hydro_results.ID .== "A1", :Pressure])
-        println("max_pressure for A1: $max_pressure")
+        # save the prob_hydro_cdf_data as a CSV in the current directory
+        CSV.write("prob_hydro_cdf_data.csv", prob_hydro_cdf_data)
 
-        # print the first 10 rows of fault A1 from prob_hydro_results
-        pretty_table(prob_hydro_results[prob_hydro_results.ID .== "A1", :])
+        
+        
+        
         
         
         # Calculate slip potential by combining with probabilistic geomechanics CDF

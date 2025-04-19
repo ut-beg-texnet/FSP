@@ -116,7 +116,7 @@ function main()
 
     
     year_of_interest_str = get_parameter_value(helper, 4, "year_of_interest")
-    #year_of_interest_str = 2025 # TO DO: remove this hardcoding for testing
+    
     if year_of_interest_str === nothing
         year_of_interest = Dates.year(Dates.today())
         #println("- Year of interest: $year_of_interest (default value)")
@@ -139,6 +139,8 @@ function main()
     if h_feet === nothing
         h_feet = 100.0
     end
+
+    
     
     # Porosity
     phi = get_parameter_value(helper, 4, "porosity")
@@ -485,6 +487,8 @@ function main()
             LON_grid, LAT_grid, STRho, days, rates,
             well_lon, well_lat, "latlon"
         )
+
+        
         
         # Add to total pressure field (superposition)
         total_pressure_2d .+= pfield_this_well
@@ -734,8 +738,7 @@ function main()
     end
     
     
-    println("\nFault Pressure Results:")
-    pretty_table(fault_pressure_by_year)
+    
     
     # Save the fault pressure DataFrame as a parameter
     save_dataframe_as_parameter!(helper, 4, "deterministic_hydrology_results", fault_pressure_by_year)
@@ -753,15 +756,9 @@ function main()
                 S, T]
     )
     
-    println("\nGrid Information:")
-    pretty_table(grid_info)
     
-    # Save results to CSV files
-    results_dir = joinpath(@__DIR__, "output")
-    mkpath(results_dir)
     
-    CSV.write(joinpath(results_dir, "pressure_statistics.csv"), pressure_stats)
-    CSV.write(joinpath(results_dir, "grid_information.csv"), grid_info)
+    
     
     
     
@@ -819,14 +816,12 @@ function main()
             println("- Added radial data for well $well_id (max pressure: $(maximum(pressures)) psi)")
         end
         
-        # Save to a single CSV file
-        csv_output_path = joinpath(results_dir, "radial_curves.csv")
-        CSV.write(csv_output_path, radial_df)
+       
         
         # Save to portal parameter
         save_dataframe_as_parameter!(helper, 4, "radial_curves_data", radial_df)
-        println("radial curves data:")
-        pretty_table(radial_df)
+        #println("radial curves data:")
+        #pretty_table(radial_df)
         println("- Radial curve data saved to dataset")
     else
         println("- No wells with valid data for radial curves")
@@ -862,17 +857,16 @@ function main()
         "aphi_value" => get_parameter_value(helper, 2, "aphi_value") === nothing ? nothing : get_parameter_value(helper, 2, "aphi_value")
     )
 
-    println("stress inptus from step 2:")
-    pretty_table(stress_inputs)
+    
 
-    println("stress_model_type: $(stress_inputs["model_type"])")
+    
     
     # Use friction coefficient from fault data
     # TO DO: we'll make the portal accepts this as a single scalar float value and not as part of the faults dataframe
     friction_coefficient = first(fault_df.FrictionCoefficient)
-    println("- Using friction coefficient: $friction_coefficient")
+    
 
-    println("stress_inputs: $stress_inputs")
+    
     
     # Calculate stress state for the Mohr diagram
     
@@ -892,8 +886,8 @@ function main()
         :
     ]
 
-    println("pressure added to faults:")
-    pretty_table(year_specific_data)
+    #println("pressure added to faults:")
+    #pretty_table(year_specific_data)
     
     # Extract pore pressure changes for each fault
     pressure_changes_vec = zeros(nrow(fault_df))
@@ -944,14 +938,14 @@ function main()
         ))
     end
 
-    println("faultdf inputs:")
-    pretty_table(fault_df)
+    #println("faultdf inputs:")
+    #pretty_table(fault_df)
 
-    println("- Pressure changes for year $year_of_interest:")
-    pretty_table(pressure_changes)
+    #println("- Pressure changes for year $year_of_interest:")
+    #pretty_table(pressure_changes)
 
-    println("faults_with_pressure:")
-    pretty_table(faults_with_pressure)
+    #println("faults_with_pressure:")
+    #pretty_table(faults_with_pressure)
     
     hydro_results = GeomechanicsDriver.process_faults(
         faults_with_pressure, 
@@ -997,15 +991,13 @@ function main()
     geo_slip_df = CSV.read(geo_slip_df, DataFrame)
     geo_arcs_df = CSV.read(geo_arcs_df, DataFrame)
 
-    println("geo_faults_df from geomechanics results: $(geo_faults_df)")
-    println("geo_slip_df from geomechanics results: $(geo_slip_df)")
-    println("geo_arcs_df from geomechanics results: $(geo_arcs_df)")
+    
 
 
     fault_inputs_filepath = get_dataset_file_path(helper, 4, "faults")
     fault_inputs_df = CSV.read(fault_inputs_filepath, DataFrame)
 
-    println("fault_inputs_df: $(fault_inputs_df)")
+    #println("fault_inputs_df: $(fault_inputs_df)")
 
 
 

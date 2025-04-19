@@ -1232,9 +1232,9 @@ function prob_geomechanics_cdf(mc_results_df::DataFrame, det_geomechanics_result
         sorted_pressure_values = sort(fault_data_float)
         
         # Evaluate the ECDF function at each sorted pressure value
-        # Note: StatsBase's ecdf returns probabilities in [0,1], so multiply by 100 for percentage
+        # Note: StatsBase's ecdf returns probabilities in [0,1]
         for pressure in sorted_pressure_values
-            probability = ecdf_func(pressure) * 100.0
+            probability = ecdf_func(pressure)
             push!(points_df, (pressure, probability, fault_id, det_slip_pressure))
         end
         
@@ -1263,6 +1263,8 @@ end
 """
 Creates a DataFrame representing the probability of exceedance curve
 for probabilistic hydrology pore pressure results.
+Takes raw Monte‑Carlo hydrology results (a DataFrame with one row per iteration per fault, 
+and turns it into an exceedance‑probability curve for each fault.
 """
 function prob_hydrology_cdf(prob_hydro_results_df::DataFrame)
 
@@ -1285,20 +1287,20 @@ function prob_hydrology_cdf(prob_hydro_results_df::DataFrame)
             continue 
         end
 
-        # Convert to vector of Float64 if needed (to handle Any type arrays)
+        # Convert to vector of Float64 if needed 
         fault_data_float = convert(Vector{Float64}, fault_data)
         
-        # Use StatsBase.ecdf to create the empirical CDF function
+        # create the empirical CDF function
         ecdf_func = ecdf(fault_data_float)
         
-        # Get sorted pressure values for creating the exceedance curve
+        # sort the values so we can create the exceedance curve
         sorted_pressure_values = sort(fault_data_float)
         
         # Evaluate 1-CDF to create the exceedance probability curve
-        # Note: StatsBase's ecdf returns probabilities in [0,1], so multiply by 100 for percentage
+        # Note: StatsBase's ecdf returns probabilities in [0,1]
         for pressure in sorted_pressure_values
             # Convert CDF to exceedance probability (1-CDF)
-            exceedance_probability = (1.0 - ecdf_func(pressure)) * 100.0
+            exceedance_probability = (1.0 - ecdf_func(pressure)) 
             push!(points_df, (pressure, exceedance_probability, fault_id))
         end
     end
@@ -1628,8 +1630,8 @@ function uncertainty_variability_inputs_to_d3(
     stress_inputs::Dict,
     fault_inputs::DataFrame
 )
-    println("\n====== DEBUG: Starting uncertainty_variability_inputs_to_d3 ======")
-    println("Stress Model Type: $stress_model_type")
+    #println("\n====== DEBUG: Starting uncertainty_variability_inputs_to_d3 ======")
+    #println("Stress Model Type: $stress_model_type")
     
     # Create mapping for display names
     stress_param_mapping = Dict()
@@ -1670,7 +1672,7 @@ function uncertainty_variability_inputs_to_d3(
     # Combine all parameters
     parameter_mapping = merge(stress_param_mapping, fault_param_mapping)
     
-    println("Combined Parameter Mapping Keys: $(sort(collect(keys(parameter_mapping))))")
+    #println("Combined Parameter Mapping Keys: $(sort(collect(keys(parameter_mapping))))")
     
     # Create DataFrame to store results with consistent column order
     uncertainty_df = DataFrame(
@@ -1684,7 +1686,7 @@ function uncertainty_variability_inputs_to_d3(
     id_counter = 1
     
     for (uncertainty_param, display_name) in parameter_mapping
-        println("Processing parameter: $uncertainty_param => $display_name")
+        #println("Processing parameter: $uncertainty_param => $display_name")
         
         # Skip if uncertainty is not defined or is 0
         if !haskey(uncertainties, uncertainty_param) || isnothing(uncertainties[uncertainty_param]) || uncertainties[uncertainty_param] == 0
@@ -1738,7 +1740,7 @@ function uncertainty_variability_inputs_to_d3(
             end
         end
         
-        println("  Base value: $base_value, Uncertainty: $uncertainty_value")
+        #println("  Base value: $base_value, Uncertainty: $uncertainty_value")
         
         # Skip if base value is 0 to avoid division by zero
         if base_value == 0.0
@@ -1752,7 +1754,7 @@ function uncertainty_variability_inputs_to_d3(
         # Round to 2 decimal places
         percent_deviation = round(percent_deviation, digits=2)
         
-        println("  Calculated percentage deviation: $percent_deviation%")
+        #println("  Calculated percentage deviation: $percent_deviation%")
         
         # Add to DataFrame with negative and positive percentage deviations
         push!(uncertainty_df, (
@@ -1765,8 +1767,8 @@ function uncertainty_variability_inputs_to_d3(
         id_counter += 1
     end
     
-    println("Created uncertainty variability data with $(nrow(uncertainty_df)) parameters")
-    println("====== DEBUG: Ending uncertainty_variability_inputs_to_d3 ======\n")
+    #println("Created uncertainty variability data with $(nrow(uncertainty_df)) parameters")
+    #println("====== DEBUG: Ending uncertainty_variability_inputs_to_d3 ======\n")
     
     return uncertainty_df
 end
@@ -1800,17 +1802,17 @@ function fault_sensitivity_tornado_chart_to_d3(
     # Setup the parameters to test
     stress_param_mapping = Dict()
 
-    println("\n====== DEBUG: Starting fault_sensitivity_tornado_chart_to_d3 ======")
-    println("Stress Model Type: $stress_model_type")
-    println("Input Uncertainties: ")
-    for (key, value) in uncertainties
-        println("  - $key: $value")
-    end
-    println("Input Stress Values: ")
-    for (key, value) in base_stress_inputs
-        println("  - $key: $value")
-    end
-    println("Fault Index: $fault_idx")
+    #println("\n====== DEBUG: Starting fault_sensitivity_tornado_chart_to_d3 ======")
+    #println("Stress Model Type: $stress_model_type")
+    #println("Input Uncertainties: ")
+    #for (key, value) in uncertainties
+        #println("  - $key: $value")
+    #end
+    #println("Input Stress Values: ")
+    #for (key, value) in base_stress_inputs
+        #println("  - $key: $value")
+    #end
+    #println("Fault Index: $fault_idx")
     
     # Set the parameter mapping based on the stress model type
     if stress_model_type == "gradients" || stress_model_type == "all_gradients"
@@ -1838,7 +1840,7 @@ function fault_sensitivity_tornado_chart_to_d3(
         )
     end
     
-    println("Stress Parameter Mapping Keys: $(sort(collect(keys(stress_param_mapping))))")
+    #println("Stress Parameter Mapping Keys: $(sort(collect(keys(stress_param_mapping))))")
     
     # Map uncertainty parameters to fault parameters
     fault_param_mapping = Dict(
@@ -1850,7 +1852,7 @@ function fault_sensitivity_tornado_chart_to_d3(
     # Combine all parameters
     parameter_mapping = merge(stress_param_mapping, fault_param_mapping)
     
-    println("Combined Parameter Mapping Keys: $(sort(collect(keys(parameter_mapping))))")
+    #println("Combined Parameter Mapping Keys: $(sort(collect(keys(parameter_mapping))))")
     
     # Convert the specific fault to a dictionary for easier manipulation
     fault_dict = Dict(name => base_fault_inputs[fault_idx, name] for name in names(base_fault_inputs))
@@ -1877,15 +1879,15 @@ function fault_sensitivity_tornado_chart_to_d3(
         # Initial pore pressure from inputs (absolute value)
         initial_pressure = base_stress_inputs["absolute_pore_pressure"]
         
-        println("Using provided absolute stresses for baseline calculations:")
-        println("  vertical_stress: $(base_stress_inputs["absolute_vertical_stress"])")
-        println("  min_horizontal_stress: $(base_stress_inputs["absolute_min_horizontal_stress"])")
-        println("  max_horizontal_stress: $(base_stress_inputs["absolute_max_horizontal_stress"])")
-        println("  pore_pressure: $(base_stress_inputs["absolute_pore_pressure"])")
+        #println("Using provided absolute stresses for baseline calculations:")
+        #println("  vertical_stress: $(base_stress_inputs["absolute_vertical_stress"])")
+        #println("  min_horizontal_stress: $(base_stress_inputs["absolute_min_horizontal_stress"])")
+        #println("  max_horizontal_stress: $(base_stress_inputs["absolute_max_horizontal_stress"])")
+        #println("  pore_pressure: $(base_stress_inputs["absolute_pore_pressure"])")
     else
         # Fallback to calculating absolute stresses from gradients
         # This is the original behavior
-        println("Absolute stresses not provided, calculating from gradients")
+        #println("Absolute stresses not provided, calculating from gradients")
         
         # Calculate absolute stresses from gradients for baseline
         reference_depth = base_stress_inputs["reference_depth"]
@@ -1915,7 +1917,7 @@ function fault_sensitivity_tornado_chart_to_d3(
         1.0   # dp
     )
     
-    println("Baseline PP to Slip: $baseline_pp_to_slip")
+    #println("Baseline PP to Slip: $baseline_pp_to_slip")
     
     # Create DataFrame to store results
     fault_sensitivity_df = DataFrame(
@@ -1930,22 +1932,22 @@ function fault_sensitivity_tornado_chart_to_d3(
     
     # For each parameter, calculate slip pressure at lower and upper bounds
     for (uncertainty_param, display_name) in parameter_mapping
-        println("\nProcessing parameter: $uncertainty_param => $display_name")
+        #println("\nProcessing parameter: $uncertainty_param => $display_name")
         
         if !haskey(uncertainties, uncertainty_param) || isnothing(uncertainties[uncertainty_param]) || uncertainties[uncertainty_param] == 0
-            println("  SKIPPING: Uncertainty not defined or is 0")
+            #println("  SKIPPING: Uncertainty not defined or is 0")
             continue  # Skip if uncertainty is not defined or is 0
         end
         
         uncertainty_value = uncertainties[uncertainty_param]
-        println("  Uncertainty value: $uncertainty_value")
+        #println("  Uncertainty value: $uncertainty_value")
         
         # Process separately for stress and fault parameters
         if haskey(stress_param_mapping, uncertainty_param)
-            println("  This is a STRESS parameter")
+            #println("  This is a STRESS parameter")
             # Modify the affected parameters directly without using calculate_absolute_stresses
             try
-                println("  Calculating with negative change (-$uncertainty_value)")
+                #println("  Calculating with negative change (-$uncertainty_value)")
             lower_pp_to_slip = calculate_with_direct_parameter(
                 base_stress_inputs, 
                 fault_dict, 
@@ -1954,7 +1956,7 @@ function fault_sensitivity_tornado_chart_to_d3(
                     stress_model_type
             )
             
-                println("  Calculating with positive change (+$uncertainty_value)")
+                #println("  Calculating with positive change (+$uncertainty_value)")
             upper_pp_to_slip = calculate_with_direct_parameter(
                 base_stress_inputs, 
                 fault_dict, 
@@ -1963,13 +1965,13 @@ function fault_sensitivity_tornado_chart_to_d3(
                     stress_model_type
                 )
                 
-                println("  Results: Lower PP: $lower_pp_to_slip, Upper PP: $upper_pp_to_slip")
+                #println("  Results: Lower PP: $lower_pp_to_slip, Upper PP: $upper_pp_to_slip")
             catch e
-                println("  ERROR calculating slip pressure: $e")
+                #println("  ERROR calculating slip pressure: $e")
                 continue
             end
         else
-            println("  This is a FAULT parameter")
+            #println("  This is a FAULT parameter")
             # Fault parameter
             fault_param = fault_param_mapping[uncertainty_param]
             if fault_param == "Strike of fault"
@@ -1987,7 +1989,7 @@ function fault_sensitivity_tornado_chart_to_d3(
             upper_fault_dict = copy(fault_dict)
             upper_fault_dict[param_key] = fault_dict[param_key] + uncertainty_value
             
-            println("  Original value: $(fault_dict[param_key]), Lower: $(lower_fault_dict[param_key]), Upper: $(upper_fault_dict[param_key])")
+            #println("  Original value: $(fault_dict[param_key]), Lower: $(lower_fault_dict[param_key]), Upper: $(upper_fault_dict[param_key])")
             
             # Calculate slip pressure with lower bound
             sig_normal_lower, tau_normal_lower, _, _, _, _, _, _ = calculate_fault_effective_stresses(
@@ -2027,7 +2029,7 @@ function fault_sensitivity_tornado_chart_to_d3(
                 1.0
             )
             
-            println("  Results: Lower PP: $lower_pp_to_slip, Upper PP: $upper_pp_to_slip")
+            #println("  Results: Lower PP: $lower_pp_to_slip, Upper PP: $upper_pp_to_slip")
         end
         
         # Calculate percent deviation
@@ -2042,8 +2044,8 @@ function fault_sensitivity_tornado_chart_to_d3(
         # Calculate absolute pressure change
         delta_pressure = max(abs(lower_pp_to_slip - baseline_pp_to_slip), abs(upper_pp_to_slip - baseline_pp_to_slip))
         
-        println("  Deviations: Lower: $lower_deviation%, Upper: $upper_deviation%, Max: $max_deviation%")
-        println("  Delta pressure: $delta_pressure")
+        #println("  Deviations: Lower: $lower_deviation%, Upper: $upper_deviation%, Max: $max_deviation%")
+        #println("  Delta pressure: $delta_pressure")
         
         # Add to results
         push!(fault_sensitivity_df, (
@@ -2060,10 +2062,10 @@ function fault_sensitivity_tornado_chart_to_d3(
     # Sort by absolute pressure change (delta_pressure) in descending order
     sort!(fault_sensitivity_df, :delta_pressure, rev=true)
     
-    println("\nFinal fault_sensitivity_df ($(nrow(fault_sensitivity_df)) rows):")
-    for row in eachrow(fault_sensitivity_df)
-        println("  $(row.display_name): delta_pressure=$(row.delta_pressure)")
-    end
+    #println("\nFinal fault_sensitivity_df ($(nrow(fault_sensitivity_df)) rows):")
+    #for row in eachrow(fault_sensitivity_df)
+        #println("  $(row.display_name): delta_pressure=$(row.delta_pressure)")
+    #end
     
     # Create the final DataFrame format suitable for D3.js visualization
     tornado_df = DataFrame(
@@ -2091,13 +2093,13 @@ function fault_sensitivity_tornado_chart_to_d3(
         ))
     end
     
-    println("\nFinal tornado_df ($(nrow(tornado_df)) rows):")
-    for row in eachrow(tornado_df)
-        println("  $(row.label): min=$(row.min), max=$(row.max), id=$(row.id)")
-    end
+    #println("\nFinal tornado_df ($(nrow(tornado_df)) rows):")
+    #for row in eachrow(tornado_df)
+        #println("  $(row.label): min=$(row.min), max=$(row.max), id=$(row.id)")
+    #end
     
-    println("Created tornado chart data for fault ID: $fault_id with $(nrow(tornado_df)) parameters")
-    println("====== DEBUG: Ending fault_sensitivity_tornado_chart_to_d3 ======\n")
+    #println("Created tornado chart data for fault ID: $fault_id with $(nrow(tornado_df)) parameters")
+    #println("====== DEBUG: Ending fault_sensitivity_tornado_chart_to_d3 ======\n")
     
     return tornado_df
 end
@@ -2246,13 +2248,15 @@ function mohr_diagram_hydro_data_to_d3_portal(
     
     # Check if we have valid geomechanics dataframes to use
     has_geo_data = !isempty(geo_arcs_df) && !isempty(geo_faults_df) && !isempty(geo_slip_df)
+
+    println("geo_faults_df: $(geo_faults_df)")
     
     if has_geo_data
-        println("Using geomechanics dataframes as base with mean dp = $(dp_mean) psi")
+        
         
         # --- Modify Arcs DataFrame with pressure shift ---
         arcsDF = copy(geo_arcs_df)
-        println("Arc dataframe column names: ", names(arcsDF))
+        
         
         # Shift the circles to the left by dp_mean using string indexing
         arcsDF[!, "centerX"] .-= dp_mean
@@ -2274,10 +2278,10 @@ function mohr_diagram_hydro_data_to_d3_portal(
             # Get fault properties from geomechanics dataframe
             fault_id = fault_inputs[i, "FaultID"]
             fault_strike = fault_inputs[i, "Strike"]
-            println("fault_strike: $(fault_strike)")
+            
             # Get the dip value from the fault data
             fault_dip = fault_inputs[i, "Dip"]
-            println("fault_dip: $(fault_dip)")
+            
 
             println("recalculating stresses for fault: $(fault_id)")
             
@@ -2286,6 +2290,8 @@ function mohr_diagram_hydro_data_to_d3_portal(
                 GeomechanicsModel.calculate_fault_effective_stresses(
                     fault_strike, fault_dip, stress_state, p0, dp[i]
                 )
+            println("new sig_fault for fault $(fault_id): $(sig_fault)")
+            println("new tau_fault for fault $(fault_id): $(tau_fault)")
             
             # Recalculate pore pressure to slip
             # this function doesn't actually use dp (we account for it in the effective stresses function)
@@ -2301,6 +2307,8 @@ function mohr_diagram_hydro_data_to_d3_portal(
             # Update the x and y coordinates with recalculated values
             new_row["x"] = sig_fault
             new_row["y"] = tau_fault
+            # for the shear stress, we keep the original value
+            #new_row["y"] = geo_faults_df[i, "y"]
             new_row["pore_pressure_slip"] = slip_pressure
 
             # Add the row to the output dataframe
@@ -2309,9 +2317,10 @@ function mohr_diagram_hydro_data_to_d3_portal(
         
         # Return dataframes with consistent structure
         println("MODIFIED DATAFRAMES FOR SHIFTED MOHR DIAGRAM:")
-        println("arcsDF: ", size(arcsDF))
-        println("slipDF: ", size(slipDF))
-        println("faultsDF: ", size(faultsDF))
+        println("arcsDF: ")
+        pretty_table(arcsDF)
+        println("faultsDF: ")
+        pretty_table(faultsDF)
         
         return (arcsDF, slipDF, faultsDF)
     else

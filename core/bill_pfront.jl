@@ -185,6 +185,9 @@ function pressureScenario_Rall(
 
     # Clean up NaN/Inf
     dp_psi[.!isfinite.(dp_psi)] .= 0.0
+    
+    # Ensure no negative pressure values
+    dp_psi = max.(0.0, dp_psi)
 
     # Reshape back if needed
     if reshaped

@@ -202,7 +202,7 @@ function calculate_absolute_stresses(stress_data::Dict, fault_data::Vector)
 end
 
 
-
+#=
 # PORTAL VERSION (accepts df for faults instead of vector)
 function calculate_absolute_stresses(stress_data::Dict, friction_coefficient::Real, stress_model_type::String)
     # Extract common parameters
@@ -247,6 +247,7 @@ function calculate_absolute_stresses(stress_data::Dict, friction_coefficient::Re
     stress_state = StressState([sV, sh, sH], max_stress_azimuth)
     return stress_state, p0
 end
+=#
 
 
 # This can replace calculate_absolute_stresses (not used yet)
@@ -546,13 +547,13 @@ function main()
     stress_inputs = Dict(
         "reference_depth" => get_parameter_value(helper, 2, "reference_depth"),
         "vertical_stress" => get_parameter_value(helper, 2, "vertical_stress"),
-        "min_horizontal_stress" => get_parameter_value(helper, 2, "min_horizontal_stress"),
-        "max_horizontal_stress" => get_parameter_value(helper, 2, "max_horizontal_stress"),
+        "min_horizontal_stress" => get_parameter_value(helper, 2, "min_horizontal_stress") === nothing ? nothing : get_parameter_value(helper, 2, "min_horizontal_stress"),
+        "max_horizontal_stress" => get_parameter_value(helper, 2, "max_horizontal_stress") === nothing ? nothing : get_parameter_value(helper, 2, "max_horizontal_stress"),
         "pore_pressure" => get_parameter_value(helper, 2, "pore_pressure"),
         "max_stress_azimuth" => get_parameter_value(helper, 2, "max_stress_azimuth"),
         "aphi_value" => get_parameter_value(helper, 2, "aphi_value") === nothing ? nothing : get_parameter_value(helper, 2, "aphi_value"),
         "stress_field_mode" => get_parameter_value(helper, 2, "stress_field_mode")
-        #"aphi_value" => get_parameter_value(helper, 2, "aphi_value")
+        
     )
 
     # if both aphi_value and max_horizontal_stress are not nothing, then we need to throw an error
@@ -575,10 +576,15 @@ function main()
 
 
     # input validation
+    
     @assert stress_inputs["reference_depth"] > 0 "Reference depth must be positive"
     @assert stress_inputs["vertical_stress"] > 0 "Vertical stress must be positive"
-    @assert stress_inputs["min_horizontal_stress"] > 0 "Minimum horizontal stress must be positive"
-    @assert stress_inputs["max_horizontal_stress"] > 0 "Maximum horizontal stress must be positive"
+    if stress_inputs["min_horizontal_stress"] !== nothing
+        @assert stress_inputs["min_horizontal_stress"] > 0 "Minimum horizontal stress must be positive"
+    end
+    if stress_inputs["max_horizontal_stress"] !== nothing
+        @assert stress_inputs["max_horizontal_stress"] > 0 "Maximum horizontal stress must be positive"
+    end
     @assert stress_inputs["pore_pressure"] > 0 "Pore pressure must be positive"
     @assert stress_inputs["max_stress_azimuth"] >= 0 && stress_inputs["max_stress_azimuth"] <= 360 "Max stress azimuth must be between 0 and 360"
     
@@ -613,7 +619,7 @@ function main()
 
     # Calculate absolute stresses at reference depth
     
-    stress_state, initial_pressure = calculate_absolute_stresses(stress_inputs, mu, stress_inputs["stress_field_mode"])
+    stress_state, initial_pressure = GeomechanicsModel.calculate_absolute_stresses(stress_inputs, mu, stress_inputs["stress_field_mode"])
 
     # print the stress_state = StressState([sV, sh, sH], max_stress_azimuth)
     #add_message_with_step_index!(helper, 2, "stress_state: $(stress_state)", 0)

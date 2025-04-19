@@ -80,13 +80,23 @@ function main()
     if faults_csv_filepath !== nothing
         faults_df = CSV.read(faults_csv_filepath, DataFrame)
 
+        #get all the unique faults from the FaultID column
+        unique_faults_num = unique(faults_df[!, "FaultID"])
+        if length(unique_faults_num) > 500
+            add_message_with_step_index!(helper, 1, "Number of faults provided is greater than 500. Please provide a smaller number of faults.", 2)
+
+            error("Number of faults provided is greater than 500. Please provide a smaller number of faults.")
+            
+        end
+
         # TO DO: make this a single input parameter from the portal
         # get friction coefficient from the first fault
         mu = faults_df[1, "FrictionCoefficient"]
         # assign this friction coefficient to all faults
         faults_df[!, "FrictionCoefficient"] .= mu
 
-        #save_dataframe_as_parameter!(helper, 1, "faults", faults_df)
+        
+        
 
         # convert lat/lon to wkt format and add to the dataframe
         latlon_to_wkt(faults_df)
@@ -94,12 +104,9 @@ function main()
         # append the new columns with no data (will be filled in later processes)
         faults_df[!, :slip_pressure] = Vector{Union{Missing, Float64}}(missing, nrow(faults_df))
         faults_df[!, :coulomb_failure_function] = Vector{Union{Missing, Float64}}(missing, nrow(faults_df))
-        faults_df[!, :shear_capacity_utilization] = Vector{Union{Missing, Float64}}(missing, nrow(faults_df))
-
-        println("DEBUG: Faults dataframe after appending new columns:")
-        println(faults_df)
-
-        
+        faults_df[!, :summary_end_year] = Vector{Union{Missing, Int64}}(missing, nrow(faults_df))
+        faults_df[!, :summary_fsp] = Vector{Union{Missing, Float64}}(missing, nrow(faults_df))
+        faults_df[!, :summary_pressure] = Vector{Union{Missing, Float64}}(missing, nrow(faults_df))
 
 
 
@@ -129,18 +136,36 @@ function main()
         else
             injection_wells_df = CSV.read(injection_wells_csv_filepath, DataFrame)
         end
-        #println("DEBUG: Successfully read CSV file: $injection_wells_csv_filepath")
-        #println("type of 'API Number' column: $(typeof(injection_wells_df[!, "API Number"]))")
 
-
-        #println("DEBUG: Processing $injection_data_type data for visualization")
+        
+        
+        
         # Prepare standardized dataframe for d3 visualization of injection rate over time
         if injection_data_type == "annual_fsp"
+
+            # get unique values from the 'WellID' column
+            unique_well_ids = unique(injection_wells_df[!, "WellID"])
+            if length(unique_well_ids) > 200
+                add_message_with_step_index!(helper, 1, "Number of wells provided is greater than 200. Please provide a smaller number of wells.", 2)
+
+                error("Number of wells provided is greater than 500. Please provide a smaller number of wells.")
+            end
+
+
             injection_rate_data = injection_rate_data_to_d3(injection_wells_df, injection_data_type)
             save_dataframe_as_parameter!(helper, 1, "injection_rate_d3_data", injection_rate_data)
             println("DEBUG: Saved annual injection rate data for visualization")
             save_dataframe_as_parameter!(helper, 1, "injection_wells_annual_output", injection_wells_df)
         elseif injection_data_type == "monthly_fsp"
+
+            # get unique values from the 'WellID' column
+            unique_well_ids = unique(injection_wells_df[!, "WellID"])
+            if length(unique_well_ids) > 200
+                add_message_with_step_index!(helper, 1, "Number of wells provided is greater than 200. Please provide a smaller number of wells.", 2)
+
+                error("Number of wells provided is greater than 500. Please provide a smaller number of wells.")
+            end
+
             println("fsp monthly injection df:")
             println(injection_wells_df)
             injection_rate_data = injection_rate_data_to_d3(injection_wells_df, injection_data_type)
@@ -149,11 +174,20 @@ function main()
 
             save_dataframe_as_parameter!(helper, 1, "injection_wells_monthly_output", injection_wells_df)
         elseif injection_data_type == "injection_tool_data"
+
+
+            # get unique values from the 'WellID' column
+            unique_well_ids = unique(injection_wells_df[!, "API Number"])
+            if length(unique_well_ids) > 200
+                add_message_with_step_index!(helper, 1, "Number of wells provided is greater than 200. Please provide a smaller number of wells.", 2)
+
+                error("Number of wells provided is greater than 500. Please provide a smaller number of wells.")
+            end
             injection_rate_data = injection_rate_data_to_d3(injection_wells_df, injection_data_type)
+            
             save_dataframe_as_parameter!(helper, 1, "injection_rate_d3_data", injection_rate_data)
 
-            println("Injection wells before filtering (first 10 rows):")
-            println(injection_wells_df[1:10, :])
+            
 
             # we also need to filter this so we can create a map layer
             # keep only the first row for each unique API Number
@@ -166,8 +200,7 @@ function main()
             rename!(injection_wells_df_filtered, "Surface Latitude" => :"Latitude(WGS84)")
             # rename "Surface Longitude" to "Longitude(WGS84)"
             rename!(injection_wells_df_filtered, "Surface Longitude" => :"Longitude(WGS84)")
-            println("Injection wells after filtering (all rows):")
-            println(injection_wells_df_filtered)
+            
             save_dataframe_as_parameter!(helper, 1, "injection_tool_data_filtered_map_layer", injection_wells_df_filtered)
 
             save_dataframe_as_parameter!(helper, 1, "injection_tool_data_output", injection_wells_df)

@@ -228,7 +228,7 @@ function calculate_fault_effective_stresses(strike::Union{Float64, Integer}, dip
     # Components of the unit normal vector to fault planes
     n1 = sd .* cs
     n2 = -sd .* ss
-    n3 = cd  # n3 is not explicitly used below
+    n3 = cd  # not used below
     
 
     # Precompute repeated terms

@@ -110,6 +110,7 @@ end
 
 # gets the value of the parameter with the given name from the step at the given index
 function get_parameter_value(helper::TexNetWebToolLaunchHelperJulia, step_index::Int, param_name::String)
+    
     param = get_parameter_state(helper, step_index, param_name)
     if param !== nothing && haskey(param, "Value")
         value = param["Value"]
@@ -139,6 +140,8 @@ end
 
 function get_dataset_file_path(helper::TexNetWebToolLaunchHelperJulia, step_index::Int, param_name::String)
     param_value = get_parameter_value(helper, step_index, param_name)
+    
+    
     if param_value !== nothing
         key_str = string(param_value)
         dataset_paths = helper.args_data["DatasetPaths"]
@@ -156,7 +159,7 @@ function get_dataset_file_path(helper::TexNetWebToolLaunchHelperJulia, step_inde
             error("DatasetPaths does not contain key '$key_str'. Available keys: $(keys(dataset_paths))")
         end
     end
-    #println("DEBUG: No path found for param_name = $param_name")
+    
     return nothing
 end
 
