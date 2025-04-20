@@ -151,7 +151,7 @@ function run_monte_carlo_hydrology(helper::TexNetWebToolLaunchHelperJulia,
     if injection_data_type == "injection_tool_data"
         injection_wells_df = CSV.read(injection_wells_filepath, DataFrame, types = Dict(
             "API Number" => String,
-            "APINumber" => String,
+            #"APINumber" => String,
             "UIC Number" => String
         ), validate = false)
     else
