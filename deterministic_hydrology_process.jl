@@ -286,8 +286,8 @@ function main()
             # for dynamic bounds, get the (lat_max - lat_min) and (lon_max - lon_min), and add 10% to each
             lat_range = maximum(injection_wells_df[!, lat_column]) - minimum(injection_wells_df[!, lat_column])
             lon_range = maximum(injection_wells_df[!, lon_column]) - minimum(injection_wells_df[!, lon_column])
-            lat_range_buffer = lat_range * 0.1
-            lon_range_buffer = lon_range * 0.1
+            lat_range_buffer = lat_range * 0.3
+            lon_range_buffer = lon_range * 0.3
             lat_min = minimum(injection_wells_df[!, lat_column]) - lat_range_buffer
             lat_max = maximum(injection_wells_df[!, lat_column]) + lat_range_buffer
             lon_min = minimum(injection_wells_df[!, lon_column]) - lon_range_buffer

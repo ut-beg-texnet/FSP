@@ -1163,16 +1163,29 @@ function interpolate_cdf(x_values::Vector{Float64}, y_values::Vector{Float64}, x
         return 0.0
     end
     
+    # Make copies to avoid modifying the original data
+    x_values_copy = copy(x_values)
+    y_values_copy = copy(y_values)
+    
     # Sort the values if they're not already sorted
-    if !issorted(x_values)
-        p = sortperm(x_values)
-        x_values = x_values[p]
-        y_values = y_values[p]
+    if !issorted(x_values_copy)
+        p = sortperm(x_values_copy)
+        x_values_copy = x_values_copy[p]
+        y_values_copy = y_values_copy[p]
+    end
+    
+    # Deduplicate knots explicitly to suppress warnings
+    # This returns the indices of unique elements
+    unique_indices = Interpolations.deduplicate_knots!(x_values_copy; move_knots=false)
+    
+    # Use only the unique x values and their corresponding y values
+    if length(unique_indices) < length(y_values_copy)
+        y_values_copy = y_values_copy[unique_indices]
     end
     
     # Create interpolation object with flat extrapolation behavior
     # This will return the endpoint values when x is outside the domain
-    itp = LinearInterpolation(x_values, y_values, extrapolation_bc=Flat())
+    itp = LinearInterpolation(x_values_copy, y_values_copy, extrapolation_bc=Flat())
     
     # Return interpolated value
     return itp(x)

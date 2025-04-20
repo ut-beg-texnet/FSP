@@ -346,22 +346,10 @@ function run_mc_hydrology_time_series(
 end
 
 """
-Calculate fault slip potential by combining probabilistic geomechanics CDF with hydrology results
+Calculate fault slip potential for each year using probabilistic hydrology results
 """
 function calculate_fault_slip_potential(prob_geo_cdf::DataFrame, prob_hydro_df::DataFrame)
-
-    #println("inside calculate_fault_slip_potential, prob_geo_cdf (first 10 rows of fault with ID 'F4'):")
-    #pretty_table(prob_geo_cdf[prob_geo_cdf.ID .== "F4", :])
-
-    #println("inside calculate_fault_slip_potential, prob_hydro_df (first 10 rows of fault with ID 'F4'):")
-    # sort the dataframe by ID and then by Year
-    sort!(prob_hydro_df, [:ID, :Year])
-    #pretty_table(prob_hydro_df[prob_hydro_df.ID .== "F4", :])
-
-    # Group data by year and fault ID
-    grouped_hydro = groupby(prob_hydro_df, [:Year, :ID])
-    
-    # dataframe that will be used by D3 to plot the time series
+    # Container for the time series results
     fsp_through_time = DataFrame(
         ID = String[],
         Year = Int[],
@@ -369,63 +357,167 @@ function calculate_fault_slip_potential(prob_geo_cdf::DataFrame, prob_hydro_df::
         epoch_time = Float64[]
     )
     
-    # Process each group (year-fault combination)
-    for group in grouped_hydro
-        if isempty(group)
-            continue
-        end
+    # Group data by year
+    years = unique(prob_hydro_df.Year)
+    
+    for year in years
+        # Filter data for this year
+        year_data = filter(row -> row.Year == year, prob_hydro_df)
         
-        year = first(group.Year)
-        fault_id = first(group.ID)
+        # Get unique fault IDs for this year
+        fault_ids = unique(year_data.ID)
         
+        for fault_id in fault_ids
         # Get fault's geomechanics CDF
-        fault_cdf = prob_geo_cdf[string.(prob_geo_cdf.ID) .== fault_id, :]
+            fault_geo_cdf = prob_geo_cdf[prob_geo_cdf.ID .== fault_id, :]
 
+            if isempty(fault_geo_cdf)
+                @warn "No geomechanics CDF data found for fault ID $fault_id"
+                continue
+            end
         
+            # Get hydrology data for this fault and year
+            fault_hydro_data = year_data[year_data.ID .== fault_id, :]
         
-        if isempty(fault_cdf)
-            @warn "No geomechanics CDF data found for fault ID $fault_id"
+            if isempty(fault_hydro_data)
+                @warn "No hydrology data found for fault ID $fault_id in year $year"
             continue
         end
         
-        # Sort by slip pressure
-        sort!(fault_cdf, :slip_pressure)
-        
-        # Calculate slip probabilities for each hydrology pressure value
-        slip_probs = Float64[]
-        
-        for pressure in group.Pressure
-            # check that pressure is not negative
-            if pressure < 0.0
-                push!(slip_probs, 0.0)
-            # If pressure is less than minimum in CDF, slip potential is 0
-            elseif pressure < minimum(fault_cdf.slip_pressure)
-                push!(slip_probs, 0.0)
-            # If pressure is greater than maximum in CDF, slip potential is 1.0 (100%)
-            elseif pressure > maximum(fault_cdf.slip_pressure)
-                push!(slip_probs, 1.0)
-            else
-
-                # deduplicate values
-                slip_p = fault_cdf.slip_pressure
-                Interpolations.deduplicate_knots!(slip_p; move_knots=false) #this will suppress the warning
-
-                # Interpolate to find slip potential
-                slip_prob = Utilities.interpolate_cdf(
-                    fault_cdf.slip_pressure, 
-                    fault_cdf.probability,  
-                    pressure
-                )
-                push!(slip_probs, slip_prob)
+            # Convert Monte Carlo results to an exceedance curve
+            fault_hydro_exceedance = JuliaFSPGraphs.prob_hydrology_cdf(fault_hydro_data)
+            
+            if isempty(fault_hydro_exceedance)
+                @warn "Failed to generate exceedance curve for fault ID $fault_id in year $year"
+                continue
             end
-        end
-        
-        # Calculate mean slip probability for this fault and year
-        mean_slip_prob = mean(slip_probs)
+            
+            # Calculate mean pore pressure for this fault and year
+            fault_pressures = fault_hydro_data.Pressure
+            mean_pressure = mean(fault_pressures)
+            
+            # Verify column names
+            geo_pressure_col = "slip_pressure" in names(fault_geo_cdf) ? "slip_pressure" : "pressure"
+            geo_prob_col = "probability" in names(fault_geo_cdf) ? "probability" : "cumulative_probability"
+            
+            # Sort both datasets for intersection finding
+            sort!(fault_geo_cdf, geo_pressure_col)
+            sort!(fault_hydro_exceedance, :slip_pressure)
+            
+            # Check for curve overlap
+            hydro_max_pressure = maximum(fault_hydro_exceedance.slip_pressure)
+            hydro_min_pressure = minimum(fault_hydro_exceedance.slip_pressure)
+            geo_max_pressure = maximum(fault_geo_cdf[!, geo_pressure_col])
+            geo_min_pressure = minimum(fault_geo_cdf[!, geo_pressure_col])
+            
+            # Default FSP value
+            slip_potential = 0.0
+            
+            # Check if hydrology is entirely to the left of geomechanics
+            if hydro_max_pressure < geo_min_pressure
+                slip_potential = 0.0
+            # Check if hydrology is entirely to the right of geomechanics
+            elseif hydro_min_pressure > geo_max_pressure
+                slip_potential = 1.0
+            else
+                # Find the intersection point between the curves
+                # Combine all pressure points for evaluation
+                all_pressures = unique(vcat(fault_geo_cdf[!, geo_pressure_col], fault_hydro_exceedance.slip_pressure))
+                sort!(all_pressures)
+                
+                # Filter to pressures where both curves are defined
+                valid_pressures = filter(p -> 
+                    p >= max(geo_min_pressure, hydro_min_pressure) && 
+                    p <= min(geo_max_pressure, hydro_max_pressure), 
+                    all_pressures)
+                
+                # Check each pressure point to find where curves cross
+                intersection_found = false
+                intersection_probability = 0.0
+                
+                for i in 1:(length(valid_pressures)-1)
+                    p1 = valid_pressures[i]
+                    p2 = valid_pressures[i+1]
+                    
+                    # Evaluate both curves at p1 and p2
+                    # Use interpolate_cdf which now handles deduplication internally
+                    hydro_prob1 = Utilities.interpolate_cdf(
+                        fault_hydro_exceedance.slip_pressure, 
+                        fault_hydro_exceedance.probability, 
+                        p1)
+                    
+                    geo_prob1 = Utilities.interpolate_cdf(
+                        fault_geo_cdf[!, geo_pressure_col], 
+                        fault_geo_cdf[!, geo_prob_col], 
+                        p1)
+                    
+                    hydro_prob2 = Utilities.interpolate_cdf(
+                        fault_hydro_exceedance.slip_pressure, 
+                        fault_hydro_exceedance.probability, 
+                        p2)
+                    
+                    geo_prob2 = Utilities.interpolate_cdf(
+                        fault_geo_cdf[!, geo_pressure_col], 
+                        fault_geo_cdf[!, geo_prob_col], 
+                        p2)
+                    
+                    # Check if curves cross between p1 and p2
+                    if (hydro_prob1 - geo_prob1) * (hydro_prob2 - geo_prob2) <= 0
+                        # Found a crossing point - use linear interpolation
+                        if hydro_prob1 == geo_prob1
+                            # Exact intersection at p1
+                            intersection_probability = hydro_prob1
+                        elseif hydro_prob2 == geo_prob2
+                            # Exact intersection at p2
+                            intersection_probability = hydro_prob2
+                        else
+                            # Interpolate to find crossing point
+                            t = (geo_prob1 - hydro_prob1) / ((hydro_prob2 - hydro_prob1) - (geo_prob2 - geo_prob1))
+                            # Calculate probability at intersection point
+                            intersection_probability = geo_prob1 + t * (geo_prob2 - geo_prob1)
+                        end
+                        
+                        intersection_found = true
+                        break
+                    end
+                end
+                
+                # If no intersection found, use the higher of the two curves where they're closest
+                if !intersection_found
+                    # Find the point where the curves are closest
+                    min_diff = Inf
+                    closest_probability = 0.0
+                    
+                    for p in valid_pressures
+                        # Use interpolate_cdf which now handles deduplication internally
+                        hydro_prob = Utilities.interpolate_cdf(
+                            fault_hydro_exceedance.slip_pressure, 
+                            fault_hydro_exceedance.probability, 
+                            p)
+                        
+                        geo_prob = Utilities.interpolate_cdf(
+                            fault_geo_cdf[!, geo_pressure_col], 
+                            fault_geo_cdf[!, geo_prob_col], 
+                            p)
+                        
+                        diff = abs(hydro_prob - geo_prob)
+                        
+                        if diff < min_diff
+                            min_diff = diff
+                            closest_probability = max(hydro_prob, geo_prob)
+                        end
+                    end
+                    
+                    intersection_probability = closest_probability
+                end
+                
+                slip_potential = intersection_probability
+            end
         
         # Add to time series results with epoch timestamp
         epoch_timestamp = JuliaFSPGraphs.date_to_js_timestamp(Date(year, 1, 1))
-        push!(fsp_through_time, (fault_id, year, mean_slip_prob, epoch_timestamp))
+            push!(fsp_through_time, (fault_id, year, slip_potential, epoch_timestamp))
+        end
     end
     
     # Sort results by ID and Year
@@ -1005,6 +1097,10 @@ function main()
         # Calculate fault slip potential using probabilistic approach
         println("\nCalculating fault slip potential...")
         fsp_through_time = calculate_fault_slip_potential(prob_geo_cdf, pressure_through_time_results)
+        
+        # Round FSP values to 2 decimal places
+        fsp_through_time[!, :FSP] = round.(fsp_through_time.FSP, digits=2)
+        
         println("fsp_through_time:")
         pretty_table(fsp_through_time)
     end
@@ -1014,55 +1110,6 @@ function main()
     pretty_table(pressure_through_time_results_aggregated)
 
     save_dataframe_as_parameter!(helper, 6, "pressure_through_time_results", pressure_through_time_results_aggregated)
-
-    # Round FSP values to 2 decimal places
-    fsp_through_time[!, :FSP] = round.(fsp_through_time.FSP, digits=2)
-    
-    #=
-    
-    # Get the FSP and pressure values for the year of interest
-    year_of_interest_fsp = filter(row -> row.Year == year_of_interest, fsp_through_time)
-    year_of_interest_pressure = filter(row -> row.Year == year_of_interest, pressure_through_time_results_aggregated)
-    
-    println("\nFSP values for year of interest ($year_of_interest):")
-    pretty_table(year_of_interest_fsp)
-    
-    println("\nPressure values for year of interest ($year_of_interest):")
-    pretty_table(year_of_interest_pressure)
-    
-    
-    # Add FSP and pressure columns to fault_df
-    # First, ensure fault_df has "ID" column (matches the column name in fsp_through_time)
-    fault_id_col = "FaultID" in names(fault_df) ? "FaultID" : "ID"
-    if fault_id_col != "ID"
-        rename!(fault_df, fault_id_col => "ID")
-    end
-    
-    # Initialize summary columns with default values
-    fault_df[!, :summary_fsp] .= 0.0
-    fault_df[!, :summary_pressure] .= 0.0
-    
-    # Update the values for each fault that has data
-    for row in eachrow(year_of_interest_fsp)
-        fault_idx = findfirst(x -> x == row.ID, fault_df.ID)
-        if fault_idx !== nothing
-            fault_df[fault_idx, :summary_fsp] = row.FSP
-        end
-    end
-    
-    for row in eachrow(year_of_interest_pressure)
-        fault_idx = findfirst(x -> x == row.ID, fault_df.ID)
-        if fault_idx !== nothing
-            fault_df[fault_idx, :summary_pressure] = row.Pressure
-        end
-    end
-    
-    println("\nFault dataframe with summary values:")
-    pretty_table(fault_df[!, [:ID, :summary_fsp, :summary_pressure]])
-    
-    # this is the table that the user can select faults and change the graph views
-    save_dataframe_as_parameter!(helper, 6, "faults_fsp_summary", fault_df)
-    =#
     
     # Save FSP results
     save_dataframe_as_parameter!(helper, 6, "fsp_through_time_results", fsp_through_time)
