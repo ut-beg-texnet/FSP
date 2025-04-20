@@ -107,6 +107,7 @@ function main()
         faults_df[!, :summary_end_year] = Vector{Union{Missing, Int64}}(missing, nrow(faults_df))
         faults_df[!, :summary_fsp] = Vector{Union{Missing, Float64}}(missing, nrow(faults_df))
         faults_df[!, :summary_pressure] = Vector{Union{Missing, Float64}}(missing, nrow(faults_df))
+        faults_df[!, :prob_hydro_fsp] = Vector{Union{Missing, Float64}}(missing, nrow(faults_df))
 
 
 

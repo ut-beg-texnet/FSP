@@ -1032,6 +1032,7 @@ function main()
     for (i, fault_id) in enumerate(fault_ids)
         idx = findfirst(id -> string(id) == fault_id, fault_inputs_df.FaultID)
         if !isnothing(idx)
+            round(slip_pressures[i], digits=2)
             fault_inputs_df[idx, "pore_pressure_slip_det_hydro"] = slip_pressures[i]
         end
     end

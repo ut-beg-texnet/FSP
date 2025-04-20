@@ -534,6 +534,7 @@ function calculate_probabilistic_slip_potential(prob_geo_cdf::DataFrame, prob_hy
     # prob_hydro_results are the raw monte carlo results, so we need to convert them to an exceedance curve
     prob_hydro_cdf_data = prob_hydrology_cdf(prob_hydro_results)
 
+    #=
     println("inside calculate_probabilistic_slip_potential, prob_hydro_results:")
     pretty_table(prob_hydro_results)
 
@@ -542,6 +543,7 @@ function calculate_probabilistic_slip_potential(prob_geo_cdf::DataFrame, prob_hy
 
     println("inside calculate_probabilistic_slip_potential, prob_geo_cdf:")
     pretty_table(prob_geo_cdf)
+    =#
     
     # verify column names
     geo_pressure_col = "slip_pressure" in names(prob_geo_cdf) ? "slip_pressure" : "pressure"
@@ -556,19 +558,20 @@ function calculate_probabilistic_slip_potential(prob_geo_cdf::DataFrame, prob_hy
         fault_hydro_exceedance = prob_hydro_cdf_data[prob_hydro_cdf_data.ID .== fault_id, :]
         
         if isempty(fault_hydro_exceedance)
+            println("No hydrology exceedance data for fault $fault_id")
             continue
         end
         
         # Sort by pressure for intersection finding
         sort!(fault_hydro_exceedance, :slip_pressure)
         
-        # Get mean pore pressure for reporting
+        # Get mean pore pressure
         fault_pressures = prob_hydro_results[prob_hydro_results.ID .== fault_id, :Pressure]
         mean_pressure = mean(fault_pressures)
         # round this to 2 decimal places
         mean_pressure = round(mean_pressure, digits=2)
-        println("fault_pressures max for fault $fault_id: $(maximum(fault_pressures))")
-        println("fault_pressures min for fault $fault_id: $(minimum(fault_pressures))")
+        #println("fault_pressures max for fault $fault_id: $(maximum(fault_pressures))")
+        #println("fault_pressures min for fault $fault_id: $(minimum(fault_pressures))")
         
         # Check for curve overlap - only calculate non-zero FSP if curves intersect
         hydro_max_pressure = maximum(fault_hydro_exceedance.slip_pressure)
@@ -654,7 +657,7 @@ function calculate_probabilistic_slip_potential(prob_geo_cdf::DataFrame, prob_hy
                 end
                 
                 intersection_found = true
-                println("Fault $fault_id: Intersection found at pressure = $intersection_pressure psi, probability = $intersection_probability%")
+                #println("Fault $fault_id: Intersection found at pressure = $intersection_pressure psi, probability = $intersection_probability%")
                 break
             end
         end
@@ -688,9 +691,12 @@ function calculate_probabilistic_slip_potential(prob_geo_cdf::DataFrame, prob_hy
             
             intersection_pressure = closest_pressure
             intersection_probability = closest_probability
+
+
+            
             # round this to 2 decimal places
-            intersection_probability = round(intersection_probability, digits=2)
-            println("Fault $fault_id: No exact intersection found. Using closest point at pressure = $intersection_pressure psi, probability = $intersection_probability%")
+            #intersection_probability = round(intersection_probability, digits=2)
+            #println("Fault $fault_id: No exact intersection found. Using closest point at pressure = $intersection_pressure psi, probability = $intersection_probability%")
         end
         
         # Add to results - use the intersection probability as the FSP
@@ -702,10 +708,7 @@ end
 
 
 
-# function to get FSP from two CDFs
-function get_fsp_from_two_cdfs(prob_geo_cdf::DataFrame, prob_hydro_results::DataFrame)
-    
-end
+
 
 
 
@@ -859,7 +862,7 @@ function main()
         det_hydro_df = CSV.read(det_hydro_results, DataFrame)
         println("Using existing deterministic hydrology results:")
         # for all the row in the 'probability' column, replace 1.0 with 100.0
-        det_hydro_df.probability = replace(det_hydro_df.probability, 1.0 => 100.0)
+        
 
         # rename the 'FaultID' column to 'ID'
         rename!(det_hydro_df, :FaultID => :ID)
@@ -988,6 +991,30 @@ function main()
         # Calculate slip potential by combining with probabilistic geomechanics CDF
         println("calculating slip potential by combining with probabilistic geomechanics CDF...")
         slip_potential = calculate_probabilistic_slip_potential(prob_geo_cdf, prob_hydro_results)
+
+        # add the fsp to the faults dataframe
+        fault_dataset_path = get_dataset_file_path(helper, 1, "faults_model_inputs_output")
+        faults_df = CSV.read(fault_dataset_path, DataFrame)
+
+        # Always recreate the column to ensure it's mutable (it's initialized in the model inputs process with missing values)
+        faults_df[!, :prob_hydro_fsp] = zeros(nrow(faults_df))
+        
+        # update 'prob_hydro_fsp' column with the fsp values
+        for row in eachrow(slip_potential)
+            fault_id = row.ID
+            fsp = row.SlipPotential
+            
+            # find the matching row in the faults_df
+            idx = findfirst(id -> string(id) == string(fault_id), faults_df.FaultID)
+            if !isnothing(idx)
+                faults_df[idx, :prob_hydro_fsp] = fsp
+            end
+
+        end
+
+        save_dataframe_as_parameter!(helper, 5, "faults_with_prob_hydro_fsp", faults_df)
+        
+        
 
         println("slip_potential:")
         pretty_table(slip_potential)

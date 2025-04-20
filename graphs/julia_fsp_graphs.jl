@@ -1296,7 +1296,7 @@ function prob_hydrology_cdf(prob_hydro_results_df::DataFrame)
         # sort the values so we can create the exceedance curve
         sorted_pressure_values = sort(fault_data_float)
         
-        # Evaluate 1-CDF to create the exceedance probability curve
+        
         # Note: StatsBase's ecdf returns probabilities in [0,1]
         for pressure in sorted_pressure_values
             # Convert CDF to exceedance probability (1-CDF)
