@@ -701,12 +701,18 @@ function main()
 
 
 
-    # print only the wkt column
-    #add_message_with_step_index!(helper, 2, "faults_wkt: $(faults_wkt[:, "wkt"])", 0)
-    
-
-    # plot Mohr diagram for Testing
-    #plot_mohr_diagram_geo(stress_state.principal_stresses[2], stress_state.principal_stresses[3], stress_state.principal_stresses[1], tau_effective_faults, sigma_effective_faults, initial_pressure, 1.0, 0.5, 0.0, strikes, mu)
+    # print the moh diagram function arguments
+    println("stress_state.principal_stresses[2]: $(stress_state.principal_stresses[2])")
+    println("stress_state.principal_stresses[3]: $(stress_state.principal_stresses[3])")
+    println("stress_state.principal_stresses[1]: $(stress_state.principal_stresses[1])")
+    println("tau_effective_faults: $(tau_effective_faults)")
+    println("sigma_effective_faults: $(sigma_effective_faults)")
+    println("initial_pressure: $(initial_pressure)")
+    println("mu: $(mu)")
+    println("stress_regime: $(stress_regime)")
+    println("slip_pressure_faults: $(slip_pressure_faults)")
+    println("fault_ids: $(fault_ids)")
+   
     
     # get data for mohr diagram plot 
     arcsDF, slipDF, faultDF = mohr_diagram_data_to_d3_portal(stress_state.principal_stresses[2], stress_state.principal_stresses[3], stress_state.principal_stresses[1], tau_effective_faults, sigma_effective_faults, initial_pressure, 1.0, 0.5, 0.0, strikes, mu, stress_regime, slip_pressure_faults, fault_ids)
