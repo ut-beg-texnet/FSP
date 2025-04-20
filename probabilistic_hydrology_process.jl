@@ -376,9 +376,7 @@ function run_monte_carlo_hydrology(helper::TexNetWebToolLaunchHelperJulia,
             # Ensure pressure is not negative
             ppOnFault = max(0.0, ppOnFault)
             
-            #println("  * Total pressure on fault $fault_id: $ppOnFault psi")
-            # REMOVE THIS hardocded adittional pressure
-            #ppOnFault += 400.0
+            
             # Store the result for this fault and iteration
             ppOnFaultMC[i, f] = ppOnFault
         end
