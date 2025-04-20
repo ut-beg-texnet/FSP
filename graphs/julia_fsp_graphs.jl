@@ -2213,7 +2213,7 @@ end
 
 
 """
-Generates the data fro the shifter Mohr diagram
+Generates the data for the shifted Mohr diagram
 For the arcs, it shifts the circles to the left by the mean dp value
 For the slip line, it doesn't need to be shifted
 For the faults, it adds the dp value to the existing pore pressure
@@ -2248,15 +2248,10 @@ function mohr_diagram_hydro_data_to_d3_portal(
     
     # Check if we have valid geomechanics dataframes to use
     has_geo_data = !isempty(geo_arcs_df) && !isempty(geo_faults_df) && !isempty(geo_slip_df)
-
-    println("geo_faults_df: $(geo_faults_df)")
     
     if has_geo_data
-        
-        
         # --- Modify Arcs DataFrame with pressure shift ---
         arcsDF = copy(geo_arcs_df)
-        
         
         # Shift the circles to the left by dp_mean using string indexing
         arcsDF[!, "centerX"] .-= dp_mean
@@ -2270,46 +2265,26 @@ function mohr_diagram_hydro_data_to_d3_portal(
             [name => similar(geo_faults_df[!, name], 0) for name in names(geo_faults_df)]
         )
         
-        # Create the stress state object for recalculating stresses
-        stress_state = GeomechanicsModel.StressState([sV, sh, sH], stress_regime == "Normal" ? 90.0 : 0.0)
-        
-        # For each fault, recalculate normal and shear stresses with its specific dp
+        # For each fault, use the pre-calculated effective stresses
         for i in 1:min(size(fault_inputs, 1), length(dp))
-            # Get fault properties from geomechanics dataframe
+            # Get fault properties
             fault_id = fault_inputs[i, "FaultID"]
-            fault_strike = fault_inputs[i, "Strike"]
             
-            # Get the dip value from the fault data
-            fault_dip = fault_inputs[i, "Dip"]
+            # Use the precalculated effective stresses passed to the function
+            sig_fault = sigma_effective[i]
+            tau_fault = tau_effective[i]
+            fault_slip_pressure = slip_pressure[i]
             
-
-            println("recalculating stresses for fault: $(fault_id)")
+            println("Using calculated stresses for fault: $(fault_id)")
+            println("  sig_fault: $(sig_fault), tau_fault: $(tau_fault)")
             
-            # Recalculate effective stresses (now with dp)
-            sig_fault, tau_fault, s11, s22, s33, s12, n1, n2 = 
-                GeomechanicsModel.calculate_fault_effective_stresses(
-                    fault_strike, fault_dip, stress_state, p0, dp[i]
-                )
-            println("new sig_fault for fault $(fault_id): $(sig_fault)")
-            println("new tau_fault for fault $(fault_id): $(tau_fault)")
-            
-            # Recalculate pore pressure to slip
-            # this function doesn't actually use dp (we account for it in the effective stresses function)
-            slip_pressure = ComputeCriticalPorePressureForFailure(
-                sig_fault, tau_fault, mu, p0, 1.0, 0.5, 0.0
-            )
-
-            
-
             # Create a new row for this fault with updated coordinates
             new_row = Dict(name => geo_faults_df[i, name] for name in names(geo_faults_df))
             
-            # Update the x and y coordinates with recalculated values
+            # Update the x and y coordinates with the stresses
             new_row["x"] = sig_fault
             new_row["y"] = tau_fault
-            # for the shear stress, we keep the original value
-            #new_row["y"] = geo_faults_df[i, "y"]
-            new_row["pore_pressure_slip"] = slip_pressure
+            new_row["pore_pressure_slip"] = fault_slip_pressure
 
             # Add the row to the output dataframe
             push!(faultsDF, new_row)

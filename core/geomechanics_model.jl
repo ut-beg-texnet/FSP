@@ -214,6 +214,8 @@ function calculate_fault_effective_stresses(strike::Union{Float64, Integer}, dip
     ss = sin.(str_rad)
     cd = cos.(dip_rad)
     sd = sin.(dip_rad)
+
+    
     
 
     # Total stresses from input data
@@ -226,14 +228,25 @@ function calculate_fault_effective_stresses(strike::Union{Float64, Integer}, dip
     nu = 0.5
 
     # Factor based on nu for horizontal stress change
+    # Biot is currently hardcoded to 1.0, and is probably good for fault stress analysis,
+    # similar to Abaqus where effective stress is always total-pp even when Biot effect is included via porous bulk moduli option
+
     f = biot * nu / (1 - nu)
 
 
     # Effective stresses at current pressure
+    """
+    Note that factor f is used for dp because dp is pressure change due to
+    injection upto present time - horizontal stresses will have Poisson's
+    ratio effect (and Biot coeff, if other than 1; but see comments above)
+    However, p0 is initial pressure before injection, so factor f is not needed
+    """
     s11 = shmin .* cos_az.^2 + sHmax .* sin_az.^2 - p0 - f .* dp #VERIFIED
     s22 = shmin .* sin_az.^2 + sHmax .* cos_az.^2 - p0 - f .* dp #VERIFIED
     s33 = Svert - p0 - dp #VERIFIED
     s12 = (sHmax - shmin) .* cos_az .* sin_az #VERIFIED
+
+    
 
 
     # Components of the unit normal vector to fault planes
@@ -252,6 +265,13 @@ function calculate_fault_effective_stresses(strike::Union{Float64, Integer}, dip
     n2_cubed = n2.^3
     n1_sq_n2_sq = n1_sq .* n2_sq
 
+    
+    """
+    Note that tau_fault is absolute magnitude, but sig_fault is signed
+    value (which should be positive for most cases, but, with high pore
+    pressure, resolved normal stress on fault can become negative any of 
+    the principal stresses is negative)
+    """
     # shear stress on fault plane
     tau_normal = sqrt.(
         n2_sq .* (s12.^2 .- (-1 .+ n2_sq) .* s22_s33.^2) .-
@@ -265,10 +285,10 @@ function calculate_fault_effective_stresses(strike::Union{Float64, Integer}, dip
         )
     )
 
-    # normal stress on fault plane
+    # normal stress on fault plane (signed)
     sig_normal = 2 .* n1_n2 .* s12 .+ n1_sq .* s11_s33 .+ n2_sq .* s22_s33 .+ s33
 
-    # if sig_normal and tau_normal are negative, set them to 0
+    # if sig_normal or tau_normal are negative, set them to 0.0
     sig_normal = max.(sig_normal, 0.0)
     tau_normal = max.(tau_normal, 0.0)
 
@@ -494,6 +514,16 @@ function analyze_fault(strike::Float64, dip::Float64, friction::Float64,
     
     # Calculate Shear Capacity Utilization using total stress
     scu = calculate_scu(sig_fault, tau_fault, friction)
+
+    # REMOVE THIS
+    if strike == 30.0 && dip == 75.0
+        println("Fault1 sig_fault: ", sig_fault)
+        println("Fault1 tau_fault: ", tau_fault)
+        println("Fault1 slip_pressure: ", slip_pressure)
+        println("Fault1 slip_tendency: ", slip_tendency)
+        println("Fault1 cff: ", cff)
+        println("Fault1 scu: ", scu)
+    end
 
     # print the slip pressure, slip tendency, cff, and scu for each fault
     #println("slip pressure: ", slip_pressure)

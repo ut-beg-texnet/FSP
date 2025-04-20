@@ -1019,7 +1019,7 @@ function main()
         strikes, 
         friction_coefficient, 
         stress_regime, 
-        pressure_changes, 
+        slip_pressures, 
         fault_ids,
         geo_arcs_df,
         geo_faults_df,
