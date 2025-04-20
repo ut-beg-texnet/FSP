@@ -688,6 +688,9 @@ function main()
     
     # Extract fault IDs for the Mohr diagram
     fault_ids = [string(result["FaultID"]) for result in results]
+    # the line above creates a vector of type Vector{InlineStrings.String7}
+    # we need to convert it to a vector of type Vector{String}
+    fault_ids = String.(fault_ids)
 
     # extract strikes from each fault and store in a vector
     strikes = Float64[fault["Strike"] for fault in fault_data]
@@ -712,6 +715,8 @@ function main()
     println("stress_regime: $(stress_regime)")
     println("slip_pressure_faults: $(slip_pressure_faults)")
     println("fault_ids: $(fault_ids)")
+
+    
    
     
     # get data for mohr diagram plot 
