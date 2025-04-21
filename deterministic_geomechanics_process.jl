@@ -7,6 +7,7 @@ using Base.Threads
 using DataFrames
 using Geodesy
 using CSV
+using InlineStrings
 
 include("graphs/julia_fsp_graphs.jl")
 include("core/geomechanics_model.jl")
@@ -684,7 +685,7 @@ function main()
     fault_ids = [string(result["FaultID"]) for result in results]
     # the line above creates a vector of type Vector{InlineStrings.String7}
     # we need to convert it to a vector of type Vector{String}
-    if typeof(fault_ids[1]) == InlineStrings.String7
+    if typeof(fault_ids[1]) == String7
         fault_ids = String.(fault_ids)
     end
 
