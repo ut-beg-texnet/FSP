@@ -4,9 +4,9 @@ export plot_pressure_distance_graph, plot_pressure_grid_heatmap, plot_mohr_diagr
 plot_cdf_det_hydro, plot_prob_hydro_combined_cdf, fault_surface_map_data_to_d3, mohr_diagram_data_to_d3_portal, injection_rate_data_to_d3, prob_geomechanics_cdf, fault_sensitivity_tornado_chart_to_d3,
 uncertainty_variability_inputs_to_d3, prob_hydrology_cdf, input_distribution_histograms_to_d3, mohr_diagram_hydro_data_to_d3_portal
 
-using Plots
-using JSON
-using Colors
+#using Plots
+#using JSON
+#using Colors
 using LinearAlgebra
 using SpecialFunctions
 using Statistics

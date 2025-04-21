@@ -9,7 +9,6 @@ using CSV
 using Dates
 using PrettyTables
 using Statistics
-using Plots
 using Interpolations
 using Random
 using Distributions

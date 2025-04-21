@@ -9,7 +9,6 @@ using Profile
 using ProfileView
 using .WellModel
 using SpecialFunctions
-using Plots
 using Statistics
 using PrettyTables # used to print the pressure field in a beautified table
 using Dates

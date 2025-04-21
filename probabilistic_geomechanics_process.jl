@@ -11,7 +11,7 @@ to calculate a distribution of slip pressures for each fault.
 ENV["JULIA_UNICODE_INPUT"] = "true"
 ENV["JULIA_UNICODE_OUTPUT"] = "true"
 
-using JSON
+#using JSON
 using ArgParse
 using Distributions
 using Statistics
@@ -19,14 +19,14 @@ using Random
 using LinearAlgebra
 using Distributed
 using SharedArrays
-using Plots
+#using Plots
 using ProgressMeter
 using DataFrames
 using CSV
 using Base.Threads
 using PrettyTables
 using StatsBase  # Add StatsBase for ecdf function
-gr()
+#gr()
 
 include("core/geomechanics_model.jl")
 #include("step2_deterministic_geomechanics.jl")
