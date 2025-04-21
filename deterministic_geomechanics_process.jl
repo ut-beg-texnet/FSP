@@ -684,7 +684,9 @@ function main()
     fault_ids = [string(result["FaultID"]) for result in results]
     # the line above creates a vector of type Vector{InlineStrings.String7}
     # we need to convert it to a vector of type Vector{String}
-    fault_ids = String.(fault_ids)
+    if typeof(fault_ids[1]) == InlineStrings.String7
+        fault_ids = String.(fault_ids)
+    end
 
     # extract strikes from each fault and store in a vector
     strikes = Float64[fault["Strike"] for fault in fault_data]

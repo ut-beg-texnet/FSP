@@ -4,6 +4,7 @@ using Dates
 using Statistics 
 using PrettyTables
 using Printf
+using InlineStrings
 
 
 
@@ -183,9 +184,8 @@ function main()
     if injection_data_type == "injection_tool_data"
         injection_wells_df = CSV.read(injection_wells_dataset_filepath, DataFrame, types = Dict(
             "API Number" => String,
-            "APINumber" => String,
             "UIC Number" => String
-        ))
+        ), validate = false)
         
     else
         # Parse injection well data
@@ -715,9 +715,7 @@ function main()
             
             # Add to total pressure for this fault
             pressure_on_faults[f] += pressure_contribution
-            println("pressure_on_faults: $pressure_on_faults")
-            println("fault: $f")
-            #error("stop here")
+            
         end
         
         # Add results to the DataFrame
@@ -738,7 +736,7 @@ function main()
             year_of_interest
         ))
         
-        println("    - Total pressure on fault $fault_id for year $year_of_interest: $(pressure_on_faults[f]) psi")
+       
     end
     
     
@@ -1009,6 +1007,10 @@ function main()
 
     #println("fault_inputs_df: $(fault_inputs_df)")
 
+    if typeof(fault_inputs_df.FaultID[1]) == String7
+        fault_inputs_df.FaultID = String.(fault_inputs_df.FaultID)
+    end
+
 
 
     # Get data for Mohr diagram with pressure changes
@@ -1026,7 +1028,7 @@ function main()
         friction_coefficient, 
         stress_regime, 
         slip_pressures, 
-        fault_ids,
+        String.(fault_ids),
         geo_arcs_df,
         geo_faults_df,
         geo_slip_df,
