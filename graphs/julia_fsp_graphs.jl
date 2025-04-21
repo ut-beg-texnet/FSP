@@ -394,11 +394,8 @@ function mohr_diagram_data_to_d3_portal(
         push!(faultDF, (string(fault_ids[1]), sigma_effective, tau_effective, slip_pressure))
     end
     
-    # Return all three DataFrames as a tuple
-    println("Successfully created Mohr diagram data for D3.js")
-    println("arcsDF saved to graphs/mohr_diagram_arcs.csv")
-    println("slipDF saved to graphs/mohr_diagram_slip.csv")
-    println("faultDF saved to graphs/mohr_diagram_faults.csv")
+    
+    
     return (arcsDF, slipDF, faultDF)
 end
 
@@ -1645,7 +1642,7 @@ function uncertainty_variability_inputs_to_d3(
             "max_horizontal_stress_uncertainty" => "SHmax Gradient",
             "min_horizontal_stress_uncertainty" => "SHmin Gradient"
         )
-    elseif stress_model_type == "aphi_model" || stress_model_type == "aphi_min"
+    elseif stress_model_type == "aphi_model" && stress_inputs["min_horizontal_stress"] !== nothing
         stress_param_mapping = Dict(
             "vertical_stress_gradient_uncertainty" => "Vert Stress Grad",
             "initial_pore_pressure_gradient_uncertainty" => "Pore Press Grad",
@@ -1653,7 +1650,7 @@ function uncertainty_variability_inputs_to_d3(
             "aphi_value_uncertainty" => "APhi Value",
             "min_horizontal_stress_uncertainty" => "SHmin Gradient"
         )
-    elseif stress_model_type == "aphi_model_no_min" || stress_model_type == "aphi_no_min"
+    elseif stress_model_type == "aphi_model" && stress_inputs["min_horizontal_stress"] === nothing
         stress_param_mapping = Dict(
             "vertical_stress_gradient_uncertainty" => "Vert Stress Grad",
             "initial_pore_pressure_gradient_uncertainty" => "Pore Press Grad",
@@ -1823,7 +1820,7 @@ function fault_sensitivity_tornado_chart_to_d3(
             "max_horizontal_stress_uncertainty" => "SHmax Gradient",
             "min_horizontal_stress_uncertainty" => "SHmin Gradient"
         )
-    elseif stress_model_type == "aphi_model" || stress_model_type == "aphi_min"
+    elseif stress_model_type == "aphi_model" && base_stress_inputs["min_horizontal_stress"] !== nothing
         stress_param_mapping = Dict(
             "vertical_stress_gradient_uncertainty" => "Vert Stress Grad",
             "initial_pore_pressure_gradient_uncertainty" => "Pore Press Grad",
@@ -1831,7 +1828,7 @@ function fault_sensitivity_tornado_chart_to_d3(
             "aphi_value_uncertainty" => "APhi Value",
             "min_horizontal_stress_uncertainty" => "SHmin Gradient"
         )
-    elseif stress_model_type == "aphi_model_no_min" || stress_model_type == "aphi_no_min"
+    elseif stress_model_type == "aphi_model" && base_stress_inputs["min_horizontal_stress"] === nothing
         stress_param_mapping = Dict(
             "vertical_stress_gradient_uncertainty" => "Vert Stress Grad",
             "initial_pore_pressure_gradient_uncertainty" => "Pore Press Grad",

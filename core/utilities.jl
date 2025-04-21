@@ -621,10 +621,12 @@ function prepare_monthly_fsp_data(
     end
     
     # Print summary of steps
+    #=
     println("DEBUG: Created $(length(step_times)) injection rate step changes")
     println("DEBUG: step_times: $(step_times)")
     println("DEBUG: step_rates: $(step_rates)")
     println("===== END DEBUG prepare_monthly_fsp_data =====\n")
+    =#
     
     return step_times, step_rates
 end

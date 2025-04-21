@@ -460,6 +460,10 @@ function main()
         
         # Prepare injection data for pressure front calculation
         well_specific_data = well_data  # Already filtered above
+
+        # convert well_id from String3 to String
+        well_id = String(well_id)
+        
         
         println("- Processing well data for pressure calculation (start=$inj_start_year, end=$actual_end_year)...")
         days, rates = prepare_well_data_for_pressure_scenario(
@@ -679,6 +683,9 @@ function main()
             
             # Calculate end year (limit to year_of_interest)
             actual_end_year = min(inj_end_year, year_of_interest)
+
+            # convert well_id from String3 to String
+            well_id = String(well_id)
             
             # Prepare injection data up to year_of_interest
             days, rates = prepare_well_data_for_pressure_scenario(
@@ -711,9 +718,7 @@ function main()
             
             # Add to total pressure for this fault
             pressure_on_faults[f] += pressure_contribution
-            println("pressure_on_faults: $pressure_on_faults")
-            println("fault: $f")
-            #error("stop here")
+            
         end
         
         # Add results to the DataFrame
@@ -734,7 +739,7 @@ function main()
             year_of_interest
         ))
         
-        println("    - Total pressure on fault $fault_id for year $year_of_interest: $(pressure_on_faults[f]) psi")
+        #println("    - Total pressure on fault $fault_id for year $year_of_interest: $(pressure_on_faults[f]) psi")
     end
     
     
@@ -742,7 +747,7 @@ function main()
     
     # Save the fault pressure DataFrame as a parameter
     save_dataframe_as_parameter!(helper, 4, "deterministic_hydrology_results", fault_pressure_by_year)
-    println("- Saved fault pressure data as parameter 'deterministic_hydrology_results'")
+    #println("- Saved fault pressure data as parameter 'deterministic_hydrology_results'")
 
     
     
@@ -1005,7 +1010,8 @@ function main()
 
     #println("fault_inputs_df: $(fault_inputs_df)")
 
-
+    # convert fault_ids from a Vector{String7} to a Vector{String}
+    fault_ids = String.(fault_ids)
 
     # Get data for Mohr diagram with pressure changes
     arcsDF, slipDF, faultsDF = JuliaFSPGraphs.mohr_diagram_hydro_data_to_d3_portal(

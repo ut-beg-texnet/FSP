@@ -623,18 +623,12 @@ function main()
         println("Error: No faults dataset provided.")
     end
 
+    println("stress_field_mode: $(stress_inputs["stress_field_mode"])")
+
     # Calculate absolute stresses at reference depth
     stress_state, initial_pressure = GeomechanicsModel.calculate_absolute_stresses(stress_inputs, mu, stress_inputs["stress_field_mode"])
     
-    # get stress regime
-    #stress_regime = get_stress_regime(stress_inputs["vertical_stress"], stress_inputs["min_horizontal_stress"], stress_inputs["max_horizontal_stress"])
-
-    #println("stress_state.principal_stresses[1]: $(stress_state.principal_stresses[1])")
-    #add_message_with_step_index!(helper, 2, "stress_state.principal_stresses[1]: $(stress_state.principal_stresses[1])", 0)
-    #println("stress_state.principal_stresses[2]: $(stress_state.principal_stresses[2])")
-    #add_message_with_step_index!(helper, 2, "stress_state.principal_stresses[2]: $(stress_state.principal_stresses[2])", 0)
-    #println("stress_state.principal_stresses[3]: $(stress_state.principal_stresses[3])")
-    #add_message_with_step_index!(helper, 2, "stress_state.principal_stresses[3]: $(stress_state.principal_stresses[3])", 0)
+    
 
 
     stress_regime = get_stress_regime(stress_state.principal_stresses[1], stress_state.principal_stresses[2], stress_state.principal_stresses[3])
@@ -705,6 +699,7 @@ function main()
 
 
     # print the moh diagram function arguments
+    #=
     println("stress_state.principal_stresses[2]: $(stress_state.principal_stresses[2])")
     println("stress_state.principal_stresses[3]: $(stress_state.principal_stresses[3])")
     println("stress_state.principal_stresses[1]: $(stress_state.principal_stresses[1])")
@@ -715,6 +710,7 @@ function main()
     println("stress_regime: $(stress_regime)")
     println("slip_pressure_faults: $(slip_pressure_faults)")
     println("fault_ids: $(fault_ids)")
+    =#
 
     
    

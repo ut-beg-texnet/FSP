@@ -70,7 +70,7 @@ function run_monte_carlo(stress_inputs::Dict, fault_inputs::DataFrame, uncertain
             "max_horizontal_stress_uncertainty" => "max_horizontal_stress",
             "min_horizontal_stress_uncertainty" => "min_horizontal_stress"
         )
-    elseif stress_model_type == "aphi_model" || stress_model_type == "aphi_min"
+    elseif stress_model_type == "aphi_model" && stress_inputs["min_horizontal_stress"] !== nothing
         stress_param_mapping = Dict(
             "vertical_stress_gradient_uncertainty" => "vertical_stress",
             "initial_pore_pressure_gradient_uncertainty" => "pore_pressure",
@@ -78,7 +78,8 @@ function run_monte_carlo(stress_inputs::Dict, fault_inputs::DataFrame, uncertain
             "aphi_value_uncertainty" => "aphi_value",
             "min_horizontal_stress_uncertainty" => "min_horizontal_stress"
         )
-    elseif stress_model_type == "aphi_model_no_min" || stress_model_type == "aphi_no_min"
+    elseif stress_model_type == "aphi_model" && stress_inputs["min_horizontal_stress"] === nothing
+        
         stress_param_mapping = Dict(
             "vertical_stress_gradient_uncertainty" => "vertical_stress",
             "initial_pore_pressure_gradient_uncertainty" => "pore_pressure",
@@ -369,7 +370,10 @@ function main()
             "initial_pore_pressure_gradient_uncertainty" => get_parameter_value(helper, 3, "initial_pore_pressure_gradient_uncertainty"),
             "max_stress_azimuth_uncertainty" => get_parameter_value(helper, 3, "max_stress_azimuth_uncertainty"),
             "max_horizontal_stress_uncertainty" => get_parameter_value(helper, 3, "max_horizontal_stress_gradient_uncertainty"),
-            "min_horizontal_stress_uncertainty" => get_parameter_value(helper, 3, "min_horizontal_stress_gradient_uncertainty")
+            "min_horizontal_stress_uncertainty" => get_parameter_value(helper, 3, "min_horizontal_stress_gradient_uncertainty"),
+            "strike_angles_uncertainty" => get_parameter_value(helper, 3, "strike_angles_uncertainty"),
+            "dip_angles_uncertainty" => get_parameter_value(helper, 3, "dip_angles_uncertainty"),
+            "friction_coefficient_uncertainty" => get_parameter_value(helper, 3, "friction_coefficient_uncertainty")
         )
     elseif stress_model_type == "aphi_model" || stress_model_type == "aphi_min"
         uncertainties = Dict(
@@ -377,7 +381,10 @@ function main()
             "initial_pore_pressure_gradient_uncertainty" => get_parameter_value(helper, 3, "initial_pore_pressure_gradient_uncertainty"),
             "max_stress_azimuth_uncertainty" => get_parameter_value(helper, 3, "max_stress_azimuth_uncertainty"),
             "aphi_value_uncertainty" => get_parameter_value(helper, 3, "aphi_value_uncertainty"),
-            "min_horizontal_stress_uncertainty" => get_parameter_value(helper, 3, "min_horizontal_stress_gradient_uncertainty")
+            "min_horizontal_stress_uncertainty" => get_parameter_value(helper, 3, "min_horizontal_stress_gradient_uncertainty"),
+            "strike_angles_uncertainty" => get_parameter_value(helper, 3, "strike_angles_uncertainty"),
+            "dip_angles_uncertainty" => get_parameter_value(helper, 3, "dip_angles_uncertainty"),
+            "friction_coefficient_uncertainty" => get_parameter_value(helper, 3, "friction_coefficient_uncertainty")
         )
     elseif stress_model_type == "aphi_model_no_min" || stress_model_type == "aphi_min"
         uncertainties = Dict(
@@ -430,18 +437,13 @@ function main()
     deterministic_results_filepath = get_dataset_file_path(helper, 2, "det_geomechanics_results")
     deterministic_results_df = CSV.read(deterministic_results_filepath, DataFrame)
 
-    println("mc_pp_results (first 10 rows):")
-    pretty_table(first(mc_pp_results, 10))
-
-    # save it as a csv file
-    CSV.write("mc_pp_results.csv", mc_pp_results)
+   
     
     
     # prepare the data for the d3.js CDF plot
     d3_cdf_data = prob_geomechanics_cdf(mc_pp_results, deterministic_results_df)
 
-    println("d3_cdf_data (first 10 rows):")
-    pretty_table(first(d3_cdf_data, 10))
+    
 
     # save the d3.js CDF data as a dataset to the portal
     save_dataframe_as_parameter!(helper, 3, "prob_geomechanics_cdf_graph_data", d3_cdf_data)
@@ -570,7 +572,7 @@ function main()
                 "max_horizontal_stress_uncertainty",
                 "min_horizontal_stress_uncertainty"
             ]
-        elseif stress_model_type == "aphi_model"
+        elseif stress_model_type == "aphi_model" && local_stress_inputs["min_horizontal_stress"] !== nothing
             
             stress_uncertainty_params = [
                 "vertical_stress_gradient_uncertainty",
@@ -579,7 +581,7 @@ function main()
                 "aphi_value_uncertainty",
                 "min_horizontal_stress_uncertainty"
             ]
-        elseif stress_model_type == "aphi_model_no_min"
+        elseif stress_model_type == "aphi_model" && local_stress_inputs["min_horizontal_stress"] === nothing
             
             stress_uncertainty_params = [
                 "vertical_stress_gradient_uncertainty",
