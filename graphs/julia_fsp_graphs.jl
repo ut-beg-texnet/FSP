@@ -2073,9 +2073,9 @@ function fault_sensitivity_tornado_chart_to_d3(
     )
     
     for row in eachrow(fault_sensitivity_df)
-        # Calculate absolute pressure changes
-        pressure_min = row.lower_bound - row.baseline
-        pressure_max = row.upper_bound - row.baseline
+        # Use actual pressure values, not differences from baseline
+        pressure_min = row.lower_bound
+        pressure_max = row.upper_bound
         
         # Ensure the min value is always less than max value
         if pressure_min > pressure_max
@@ -2084,8 +2084,8 @@ function fault_sensitivity_tornado_chart_to_d3(
         
         push!(tornado_df, (
             row.display_name,  # label
-            round(pressure_min, digits=2),      # min (pressure change at lower bound)
-            round(pressure_max, digits=2),      # max (pressure change at upper bound)
+            round(pressure_min, digits=2),      # min (actual pore pressure at lower bound)
+            round(pressure_max, digits=2),      # max (actual pore pressure at upper bound)
             fault_id           # id (fault ID)
         ))
     end

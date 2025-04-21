@@ -575,7 +575,7 @@ function get_injection_dataset_path_summary_step(helper::TexNetWebToolLaunchHelp
                 injection_data_type = "annual_fsp"
                 return filepath, injection_data_type
             elseif param_name == "injection_wells_monthly_summary"
-                prtinln("hellooooooooo")
+                
                 injection_data_type = "monthly_fsp"
                 return filepath, injection_data_type
             elseif param_name == "injection_tool_data_summary"
