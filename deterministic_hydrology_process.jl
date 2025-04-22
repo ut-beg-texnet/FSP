@@ -257,6 +257,13 @@ function main()
     lat_max_param = get_parameter_value(helper, 4, "grid_lat_max")
     lon_min_param = get_parameter_value(helper, 4, "grid_lon_min")
     lon_max_param = get_parameter_value(helper, 4, "grid_lon_max")
+
+    # Load fault data
+    fault_data_path = get_dataset_file_path(helper, 4, "faults")
+    if fault_data_path === nothing
+        error("Required fault dataset not found or accessible.")
+    end
+    fault_df = CSV.read(fault_data_path, DataFrame)
     
     # Check if all lat/lon parameters were provided
     if lat_min_param !== nothing && lat_max_param !== nothing && 
@@ -266,9 +273,7 @@ function main()
         local lat_max = Float64(lat_max_param)
         local lon_min = Float64(lon_min_param)
         local lon_max = Float64(lon_max_param)
-        println("- Using user-defined lat/lon grid bounds:")
-        println("  Latitude: [$lat_min, $lat_max]")
-        println("  Longitude: [$lon_min, $lon_max]")
+        
     else
         # Calculate grid bounds based on well lat/lon with a buffer
         println("- Calculating lat/lon grid bounds based on well locations...")
@@ -277,22 +282,30 @@ function main()
         lat_column = injection_data_type == "injection_tool_data" ? "Surface Latitude" : "Latitude(WGS84)"
         lon_column = injection_data_type == "injection_tool_data" ? "Surface Longitude" : "Longitude(WGS84)"
 
+        lat_column_faults = "Latitude(WGS84)"
+        lon_column_faults = "Longitude(WGS84)"
+
         
         # Check if we have well data
         if size(injection_wells_df, 1) == 0
             error("No well data available. Please provide well data.")
+        elseif size(fault_df, 1) == 0
+            error("No fault data available. Please provide fault data.")
         else
-
             # for dynamic bounds, get the (lat_max - lat_min) and (lon_max - lon_min), and add 10% to each
-            lat_range = maximum(injection_wells_df[!, lat_column]) - minimum(injection_wells_df[!, lat_column])
-            lon_range = maximum(injection_wells_df[!, lon_column]) - minimum(injection_wells_df[!, lon_column])
+            # First need to combine the arrays
+            all_lats = vcat(injection_wells_df[!, lat_column], fault_df[!, lat_column_faults])
+            all_lons = vcat(injection_wells_df[!, lon_column], fault_df[!, lon_column_faults])
+            
+            lat_range = maximum(all_lats) - minimum(all_lats)
+            lon_range = maximum(all_lons) - minimum(all_lons)
             lat_range_buffer = lat_range * 0.3
             lon_range_buffer = lon_range * 0.3
-            lat_min = minimum(injection_wells_df[!, lat_column]) - lat_range_buffer
-            lat_max = maximum(injection_wells_df[!, lat_column]) + lat_range_buffer
-            lon_min = minimum(injection_wells_df[!, lon_column]) - lon_range_buffer
-            lon_max = maximum(injection_wells_df[!, lon_column]) + lon_range_buffer
-        
+            lat_min = minimum(all_lats) - lat_range_buffer
+            lat_max = maximum(all_lats) + lat_range_buffer
+            lon_min = minimum(all_lons) - lon_range_buffer
+            lon_max = maximum(all_lons) + lon_range_buffer
+            
             println("- Grid bounds with lattitude $(lat_range_buffer)° and longitude $(lon_range_buffer)° buffer:")
             println("  Latitude: [$lat_min, $lat_max]")
             println("  Longitude: [$lon_min, $lon_max]")
@@ -547,12 +560,7 @@ function main()
     println("CALCULATING PRESSURE ON FAULTS FOR YEAR $year_of_interest")
     println("------------------------------------------------------")
     
-    # Load fault data
-    fault_data_path = get_dataset_file_path(helper, 4, "faults")
-    if fault_data_path === nothing
-        error("Required fault dataset not found or accessible.")
-    end
-    fault_df = CSV.read(fault_data_path, DataFrame)
+    
     num_faults = nrow(fault_df)
     
     

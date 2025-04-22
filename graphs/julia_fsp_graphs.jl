@@ -1799,17 +1799,7 @@ function fault_sensitivity_tornado_chart_to_d3(
     # Setup the parameters to test
     stress_param_mapping = Dict()
 
-    #println("\n====== DEBUG: Starting fault_sensitivity_tornado_chart_to_d3 ======")
-    #println("Stress Model Type: $stress_model_type")
-    #println("Input Uncertainties: ")
-    #for (key, value) in uncertainties
-        #println("  - $key: $value")
-    #end
-    #println("Input Stress Values: ")
-    #for (key, value) in base_stress_inputs
-        #println("  - $key: $value")
-    #end
-    #println("Fault Index: $fault_idx")
+    
     
     # Set the parameter mapping based on the stress model type
     if stress_model_type == "gradients" || stress_model_type == "all_gradients"
@@ -1876,15 +1866,11 @@ function fault_sensitivity_tornado_chart_to_d3(
         # Initial pore pressure from inputs (absolute value)
         initial_pressure = base_stress_inputs["absolute_pore_pressure"]
         
-        #println("Using provided absolute stresses for baseline calculations:")
-        #println("  vertical_stress: $(base_stress_inputs["absolute_vertical_stress"])")
-        #println("  min_horizontal_stress: $(base_stress_inputs["absolute_min_horizontal_stress"])")
-        #println("  max_horizontal_stress: $(base_stress_inputs["absolute_max_horizontal_stress"])")
-        #println("  pore_pressure: $(base_stress_inputs["absolute_pore_pressure"])")
+        
     else
         # Fallback to calculating absolute stresses from gradients
         # This is the original behavior
-        #println("Absolute stresses not provided, calculating from gradients")
+        println("Absolute stresses not provided, calculating from gradients")
         
         # Calculate absolute stresses from gradients for baseline
         reference_depth = base_stress_inputs["reference_depth"]
@@ -1900,10 +1886,11 @@ function fault_sensitivity_tornado_chart_to_d3(
         fault_dict["Dip"], 
         baseline_stress_state, 
         initial_pressure, 
-        0.0  # dp is 0 for initial calculation
+        0.0  
     )
     
-    # Calculate baseline critical pore pressure
+    # Calculate baseline critical pore pressure (we use that to compate the results from calculations
+    # with lower and upper bounds)
     baseline_pp_to_slip = ComputeCriticalPorePressureForFailure(
         sig_normal,
         tau_normal,
@@ -1945,22 +1932,22 @@ function fault_sensitivity_tornado_chart_to_d3(
             # Modify the affected parameters directly without using calculate_absolute_stresses
             try
                 #println("  Calculating with negative change (-$uncertainty_value)")
-            lower_pp_to_slip = calculate_with_direct_parameter(
-                base_stress_inputs, 
-                fault_dict, 
-                uncertainty_param, 
-                    -uncertainty_value,
-                    stress_model_type
-            )
-            
-                #println("  Calculating with positive change (+$uncertainty_value)")
-            upper_pp_to_slip = calculate_with_direct_parameter(
-                base_stress_inputs, 
-                fault_dict, 
-                uncertainty_param, 
-                    uncertainty_value,
-                    stress_model_type
+                lower_pp_to_slip = calculate_with_direct_parameter(
+                    base_stress_inputs, 
+                    fault_dict, 
+                    uncertainty_param, 
+                        -uncertainty_value,
+                        stress_model_type
                 )
+                
+                    #println("  Calculating with positive change (+$uncertainty_value)")
+                upper_pp_to_slip = calculate_with_direct_parameter(
+                    base_stress_inputs, 
+                    fault_dict, 
+                    uncertainty_param, 
+                        uncertainty_value,
+                        stress_model_type
+                    )
                 
                 #println("  Results: Lower PP: $lower_pp_to_slip, Upper PP: $upper_pp_to_slip")
             catch e
@@ -2035,7 +2022,7 @@ function fault_sensitivity_tornado_chart_to_d3(
         upper_deviation = ((upper_pp_to_slip - baseline_pp_to_slip) / baseline_pp_to_slip) * 100
         
         
-        # Use the maximum absolute deviation for sorting
+        # find the max absolute deviation (we use that for sorting, since we want a tornado-like graph)
         max_deviation = max(abs(lower_deviation), abs(upper_deviation))
         
         # Calculate absolute pressure change

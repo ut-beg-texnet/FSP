@@ -1193,4 +1193,62 @@ function interpolate_cdf(x_values::Vector{Float64}, y_values::Vector{Float64}, x
     return itp(x)
 end
 
+
+# Since we can have three possible formats, we need to reformat them all to the same format
+function clean_up_well_data(well_data::DataFrame, injection_wells_format::String)
+    # initialize a dataframe with a uniform format
+    uniform_well_data = DataFrame(
+        WellID = String[],
+        Month = Int[],
+        InjectionRate = Union{Float64, Int}[],
+        Year = Int[],
+        LastInjectionDate = Date[]
+    )
+
+
+    if injection_wells_format == "annual_fsp"
+        # Here we have columns 'WellID', 'StartYear', 'EndYear', 'InjectionRate(bbl/day)'
+        # We need to get the average monthly injection rates
+        # get unique well ids and iterate over their rows
+        well_ids = unique(well_data[!, "WellID"])
+        for well_id in well_ids
+            # get injection start and end dates
+            inj_start_date = Date(minimum(well_data[well_data[!, "WellID"] .== well_id, "StartYear"]), 1, 1)
+            inj_end_date = Date(maximum(well_data[well_data[!, "WellID"] .== well_id, "EndYear"]) - 1, 12, 31)
+
+            # get the daily injection rate
+            inj_rate = well_data[well_data[!, "WellID"] .== well_id, "InjectionRate(bbl/day)"]
+
+            # find the monthly injection rates for all months (1-12)
+            for month in 1:12
+                # get the month's start and end dates
+                month_start_date = Date(inj_start_date.year, month, 1)
+                month_end_date = lastdayofmonth(Date(inj_start_date.year, month, 1))
+
+                # get the average injection rate for the month
+                avg_inj_rate = mean(inj_rate[inj_rate .>= month_start_date .&& inj_rate .<= month_end_date])
+
+                # add the data to the uniform dataframe
+                push!(uniform_well_data, (WellID = well_id, Month = month, InjectionRate = avg_inj_rate, Year = inj_start_date.year))
+            end
+            # add the last injection date
+            push!(uniform_well_data, (WellID = well_id, LastInjectionDate = inj_end_date))
+        end
+
+    elseif injection_wells_format == "monthly_fsp"
+        # Here we have columns 'WellID', 'Month', 'InjectionRate(bbl/month)', 'Year'
+        # We already have 'WellID' 'Month' and 'Year' in the 'monthly_fsp' case
+        # get unique well ids and iterate over their rows
+        well_ids = unique(well_data[!, "WellID"])
+        for well_id in well_ids
+            # get injection start and end dates
+            # find 
+            
+        end
+        
+    end
+end
+
+
+
 end # module

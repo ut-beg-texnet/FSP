@@ -859,7 +859,7 @@ function main()
         det_hydro_results = get_dataset_file_path(helper, 5, "deterministic_hydrology_results")
         det_hydro_df = CSV.read(det_hydro_results, DataFrame)
         println("Using existing deterministic hydrology results:")
-        # for all the row in the 'probability' column, replace 1.0 with 100.0
+        
         
 
         # rename the 'FaultID' column to 'ID'
@@ -872,8 +872,8 @@ function main()
         Using Deterministic Hydrology to Calculate Slip Potential
         Once we have calculated the pore pressure added to a given fault and the 
         probability of fault slip as a function of pore pressure increase, we can calculate the 
-        cumulative probability of fault slip. We do this simply by slicing the probability shown 
-        by the CDF curve (from Figure 9) for the appropriate pore pressure increase
+        cumulative probability of fault slip. We do this simply by slicing the prob geomechanics 
+        CDF for the appropriate pore pressure increase
         =#
         
         # Calculate slip potential for all years in the dataset
