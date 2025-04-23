@@ -1,4 +1,4 @@
-# Fault Slip Potential (FSP)
+# Fault Slip Potential (FSP) 3.0
 
 ### A Program for Probabilistic Estimation of Fault Slip Potential Resulting from Fluid Injection
 
