@@ -399,7 +399,7 @@ end #ComputeStressTensor_CS_Reverse_Faults
 Process each fault and calculate geomechanical parameters
 """
 
-function process_faults(fault_data::Vector, stress_state::GeomechanicsModel.StressState, initial_pressure::Float64; tab::String = "det_geo", dp::Vector = Vector{Float64}())
+function process_faults(fault_data::Vector, stress_state::GeomechanicsModel.StressState, initial_pressure::Float64, friction_coefficient::Float64; tab::String = "det_geo", dp::Vector = Vector{Float64}())
     
     # if we run it as a Monte Carlo simulation, we need to store the results in a different way  
     if tab == "prob_geo"
@@ -422,7 +422,7 @@ function process_faults(fault_data::Vector, stress_state::GeomechanicsModel.Stre
             results[i] = analyze_fault(
                 Float64(fault["Strike"]),
                 Float64(fault["Dip"]),
-                Float64(fault["FrictionCoefficient"]),
+                friction_coefficient,
                 stress_state,
                 initial_pressure,
                 0.0  # No pressure change for deterministic analysis
@@ -449,7 +449,7 @@ function process_faults(fault_data::Vector, stress_state::GeomechanicsModel.Stre
             results[i] = analyze_fault_hydro(
                 fault["strike"],
                 fault["dip"],
-                fault["friction_coefficient"],
+                friction_coefficient,
                 stress_state,
                 initial_pressure,
                 dp_this_fault  # Use the value from dp for this fault
@@ -464,6 +464,7 @@ function process_faults(fault_data::Vector, stress_state::GeomechanicsModel.Stre
         end
     
     end
+
     return results
 end
 
@@ -554,10 +555,11 @@ function main()
         "pore_pressure" => get_parameter_value(helper, 2, "pore_pressure"),
         "max_stress_azimuth" => get_parameter_value(helper, 2, "max_stress_azimuth"),
         "aphi_value" => get_parameter_value(helper, 2, "aphi_value") === nothing ? nothing : get_parameter_value(helper, 2, "aphi_value"),
-        "stress_field_mode" => get_parameter_value(helper, 2, "stress_field_mode")
-        
+        "stress_field_mode" => get_parameter_value(helper, 2, "stress_field_mode"),
+        "friction_coefficient" => get_parameter_value(helper, 2, "friction_coefficient")
     )
 
+    println("friction_coefficient from the portal: $(stress_inputs["friction_coefficient"])")
     
     # REMOVE THIS
     #=
@@ -613,21 +615,19 @@ function main()
     # get friction coefficient from the first fault and apply it to all faults
     #println("Extracting fault data from the CSV at the scratch path...")
     faults_csv_filepath = get_dataset_file_path(helper, 2, "faults_model_inputs_output")
-    #println("Read fault CSV: $faults_csv_filepath")
     if faults_csv_filepath !== nothing
         faults_inputs = CSV.read(faults_csv_filepath, DataFrame)
-
-        mu = faults_inputs[1, "FrictionCoefficient"]        
-        faults_inputs[!, "FrictionCoefficient"] .= mu
-
     else
-        println("Error: No faults dataset provided.")
+        error("Error: No faults dataset provided.")
     end
+
+    
+    
 
     println("stress_field_mode: $(stress_inputs["stress_field_mode"])")
 
     # Calculate absolute stresses at reference depth
-    stress_state, initial_pressure = GeomechanicsModel.calculate_absolute_stresses(stress_inputs, mu, stress_inputs["stress_field_mode"])
+    stress_state, initial_pressure = GeomechanicsModel.calculate_absolute_stresses(stress_inputs, stress_inputs["friction_coefficient"], stress_inputs["stress_field_mode"])
     
     
 
@@ -640,7 +640,17 @@ function main()
     fault_data = collect(eachrow(faults_inputs))
     
     # Process each fault
-    results = process_faults(fault_data, stress_state, initial_pressure)
+    results = process_faults(fault_data, stress_state, initial_pressure, stress_inputs["friction_coefficient"])
+
+    # Print information for Fault1
+    for result in results
+        if string(result["FaultID"]) == "1" || string(result["FaultID"]) == "Fault1"
+            println("\nFault1 Results:")
+            println("  Slip Pressure: $(round(result["slip_pressure"], digits=3)) psi")
+            println("  Shear Capacity Utilization: $(round(result["shear_capacity_utilization"], digits=3))")
+            println("  Coulomb Failure Function: $(round(result["coulomb_failure_function"], digits=3))")
+        end
+    end
 
     # create a CSV dataframe from the results
     # for each fault (row), we have the columns: fault_id, slip_pressure, coulomb_failure_function, shear_capacity_utilization, normal_stress, shear_stress
@@ -696,30 +706,11 @@ function main()
     
     output = deepcopy(faults_inputs)  # Deep copy to avoid modifying original
 
-    # convert lat/lon to WKT format
-    #faults_wkt = latlon_to_wkt(faults_inputs)
-
-
-
-    # print the moh diagram function arguments
-    #=
-    println("stress_state.principal_stresses[2]: $(stress_state.principal_stresses[2])")
-    println("stress_state.principal_stresses[3]: $(stress_state.principal_stresses[3])")
-    println("stress_state.principal_stresses[1]: $(stress_state.principal_stresses[1])")
-    println("tau_effective_faults: $(tau_effective_faults)")
-    println("sigma_effective_faults: $(sigma_effective_faults)")
-    println("initial_pressure: $(initial_pressure)")
-    println("mu: $(mu)")
-    println("stress_regime: $(stress_regime)")
-    println("slip_pressure_faults: $(slip_pressure_faults)")
-    println("fault_ids: $(fault_ids)")
-    =#
-
     
    
     
     # get data for mohr diagram plot 
-    arcsDF, slipDF, faultDF = mohr_diagram_data_to_d3_portal(stress_state.principal_stresses[2], stress_state.principal_stresses[3], stress_state.principal_stresses[1], tau_effective_faults, sigma_effective_faults, initial_pressure, 1.0, 0.5, 0.0, strikes, mu, stress_regime, slip_pressure_faults, fault_ids)
+    arcsDF, slipDF, faultDF = mohr_diagram_data_to_d3_portal(stress_state.principal_stresses[2], stress_state.principal_stresses[3], stress_state.principal_stresses[1], tau_effective_faults, sigma_effective_faults, initial_pressure, 1.0, 0.5, 0.0, strikes, stress_inputs["friction_coefficient"], stress_regime, slip_pressure_faults, fault_ids)
     
     save_dataframe_as_parameter!(helper, 2, "arcsDF", arcsDF)
     save_dataframe_as_parameter!(helper, 2, "slipDF", slipDF)

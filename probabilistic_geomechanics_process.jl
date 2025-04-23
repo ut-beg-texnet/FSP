@@ -7,7 +7,7 @@ It takes deterministic inputs and applies random variations based on specified u
 to calculate a distribution of slip pressures for each fault.
 """
 
-# Set encoding to UTF-8 to avoid garbled text in console output
+
 ENV["JULIA_UNICODE_INPUT"] = "true"
 ENV["JULIA_UNICODE_OUTPUT"] = "true"
 
@@ -25,7 +25,7 @@ using DataFrames
 using CSV
 using Base.Threads
 using PrettyTables
-using StatsBase  # Add StatsBase for ecdf function
+using StatsBase  # Need this for theecdf function
 #gr()
 
 include("core/geomechanics_model.jl")
@@ -55,13 +55,14 @@ Runs Monte Carlo simulation
 function run_monte_carlo(stress_inputs::Dict, fault_inputs::DataFrame, uncertainties::Dict, n_sims::Int, stress_model_type::String, random_seed=nothing)
     n_faults = size(fault_inputs, 1)
     
-    # Use SharedArray instead of regular Array for parallelization
+    # Use SharedArray instead of regular Array for parallelization (need to implement the actual parallelization)
     pps_to_slip = SharedArray{Float64}(n_faults, n_sims)
     
-    # Initialize mapping dictionaries for parameter randomization
+    # this dictionary maps the uncertainty parameters to their corresponding stress parameters
     stress_param_mapping = Dict()
     
-    # We set the parameter mapping based on the stress model type
+    # we have different parameter mappings for different stress models
+    # Case 1: all three gradients are provided
     if stress_model_type == "gradients" || stress_model_type == "all_gradients"
         stress_param_mapping = Dict(
             "vertical_stress_gradient_uncertainty" => "vertical_stress",
@@ -70,6 +71,7 @@ function run_monte_carlo(stress_inputs::Dict, fault_inputs::DataFrame, uncertain
             "max_horizontal_stress_uncertainty" => "max_horizontal_stress",
             "min_horizontal_stress_uncertainty" => "min_horizontal_stress"
         )
+    # Case 2: aphi value is provided, with a min_horizontal_stress
     elseif stress_model_type == "aphi_model" && stress_inputs["min_horizontal_stress"] !== nothing
         stress_param_mapping = Dict(
             "vertical_stress_gradient_uncertainty" => "vertical_stress",
@@ -78,6 +80,7 @@ function run_monte_carlo(stress_inputs::Dict, fault_inputs::DataFrame, uncertain
             "aphi_value_uncertainty" => "aphi_value",
             "min_horizontal_stress_uncertainty" => "min_horizontal_stress"
         )
+    # Case 3: aphi value is provided, with no min_horizontal_stress
     elseif stress_model_type == "aphi_model" && stress_inputs["min_horizontal_stress"] === nothing
         
         stress_param_mapping = Dict(
@@ -88,7 +91,7 @@ function run_monte_carlo(stress_inputs::Dict, fault_inputs::DataFrame, uncertain
         )
     end
     
-    # Map uncertainty parameters to fault parameters
+    # For the faults, we always have the same uncertainty parameters
     fault_param_mapping = Dict(
         "strike_angles_uncertainty" => "Strike",
         "dip_angles_uncertainty" => "Dip",
@@ -105,7 +108,7 @@ function run_monte_carlo(stress_inputs::Dict, fault_inputs::DataFrame, uncertain
     elseif "ID" in names(fault_inputs)
         actual_fault_ids = string.(fault_inputs.ID)
     else
-        # If no ID column exists, use sequential numbers as strings
+        # If no ID column exists, use numbers (sequential) as strings
         actual_fault_ids = string.(1:n_faults)
     end
     
@@ -199,10 +202,10 @@ function run_monte_carlo(stress_inputs::Dict, fault_inputs::DataFrame, uncertain
             sim_faults[idx] = sim_fault
         end
         
-        # Get friction coefficient from first fault 
-        friction_coefficient = sim_faults[1]["FrictionCoefficient"]
+        # Get friction coefficient from stress_inputs
+        friction_coefficient = stress_inputs["friction_coefficient"]
         
-        # Calculate absolute stresses using the first fault's friction coefficient
+        # Calculate absolute stresses using the friction coefficient from stress_inputs
         stress_state_obj, initial_pressure = GeomechanicsModel.calculate_absolute_stresses(sim_stress, friction_coefficient, stress_model_type)
         
         # Update stress state with absolute values
@@ -351,7 +354,8 @@ function main()
         "max_horizontal_stress" => get_parameter_value(helper, 2, "max_horizontal_stress"),
         "pore_pressure" => get_parameter_value(helper, 2, "pore_pressure"),
         "max_stress_azimuth" => get_parameter_value(helper, 2, "max_stress_azimuth"),
-        "aphi_value" => get_parameter_value(helper, 2, "aphi_value")
+        "aphi_value" => get_parameter_value(helper, 2, "aphi_value"),
+        "friction_coefficient" => get_parameter_value(helper, 2, "friction_coefficient")
     )
 
     stress_model_type = get_parameter_value(helper, 2, "stress_model_type")
@@ -432,7 +436,8 @@ function main()
     #println(first(mc_pp_results, 10))
 
 
-    # before we create the CDF graph data, we need to read the  colors from the previous step 
+    # before we create the CDF graph data, we need to read the colors from the previous step 
+    # they are determined by the 'slip_pressure' column, which is the deterministic pore pressure to slip
     # read the dataframe with the deterministic results
     deterministic_results_filepath = get_dataset_file_path(helper, 2, "det_geomechanics_results")
     deterministic_results_df = CSV.read(deterministic_results_filepath, DataFrame)
@@ -448,23 +453,7 @@ function main()
     # save the d3.js CDF data as a dataset to the portal
     save_dataframe_as_parameter!(helper, 3, "prob_geomechanics_cdf_graph_data", d3_cdf_data)
 
-    # Generate input parameter distributions for histograms
-    #println("Generating input parameter distributions for histograms...")
-    #=
-    input_histograms_data = input_distribution_histograms_to_d3(
-        mc_pp_results,
-        stress_inputs,
-        fault_inputs,
-        uncertainties,
-        stress_model_type,
-        stress_param_values,
-        fault_param_values
-    )
-        =#
-
-    # Save the histogram data as a parameter
-    #save_dataframe_as_parameter!(helper, 3, "prob_geomechanics_input_histograms", input_histograms_data)
-    println("Input parameter distributions saved for visualization")
+    
 
     # Calculate statistics
     stats = calculate_statistics(mc_pp_results)
@@ -527,7 +516,7 @@ function main()
         #println("Generating tornado chart data for Fault #$fault_id...")
         
         # Calculate absolute stresses first to ensure we have the right values for the tornado chart
-        friction_coefficient = row.FrictionCoefficient
+        friction_coefficient = stress_inputs["friction_coefficient"]
         stress_state_obj, initial_pressure = GeomechanicsModel.calculate_absolute_stresses(stress_inputs, friction_coefficient, stress_model_type)
         
         # MODIFIED: Use original gradient values for the tornado chart function
@@ -610,7 +599,8 @@ function main()
             fault_inputs,
             local_uncertainties,
             idx,
-            stress_model_type
+            stress_model_type,
+            friction_coefficient
         )
         
         # Store the tornado chart data for this fault

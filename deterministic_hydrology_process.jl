@@ -864,7 +864,8 @@ function main()
         "pore_pressure" => get_parameter_value(helper, 2, "pore_pressure"),
         "max_stress_azimuth" => get_parameter_value(helper, 2, "max_stress_azimuth"),
         "model_type" => get_parameter_value(helper, 2, "stress_field_mode"),
-        "aphi_value" => get_parameter_value(helper, 2, "aphi_value") === nothing ? nothing : get_parameter_value(helper, 2, "aphi_value")
+        "aphi_value" => get_parameter_value(helper, 2, "aphi_value") === nothing ? nothing : get_parameter_value(helper, 2, "aphi_value"),
+        "friction_coefficient" => get_parameter_value(helper, 2, "friction_coefficient")
     )
 
     #=
@@ -879,7 +880,7 @@ function main()
     
     # Use friction coefficient from fault data
     # TO DO: we'll make the portal accepts this as a single scalar float value and not as part of the faults dataframe
-    friction_coefficient = first(fault_df.FrictionCoefficient)
+    friction_coefficient = stress_inputs["friction_coefficient"]
     
 
     
@@ -949,7 +950,7 @@ function main()
         push!(faults_with_pressure, Dict{String, Any}(
             "strike" => fault_df[i, "Strike"],
             "dip" => fault_df[i, "Dip"],
-            "friction_coefficient" => fault_df[i, "FrictionCoefficient"],
+            "friction_coefficient" => stress_inputs["friction_coefficient"],
             "fault_id" => fault_id
         ))
     end
@@ -966,7 +967,8 @@ function main()
     hydro_results = GeomechanicsDriver.process_faults(
         faults_with_pressure, 
         GeomechanicsDriver.GeomechanicsModel.StressState(stress_state.principal_stresses, stress_state.sH_azimuth), 
-        initial_pressure; 
+        initial_pressure,
+        stress_inputs["friction_coefficient"]; 
         tab="det_hydro", 
         dp=pressure_changes
     )
