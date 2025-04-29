@@ -72,7 +72,8 @@ function run_monte_carlo(stress_inputs::Dict, fault_inputs::DataFrame, uncertain
             "min_horizontal_stress_uncertainty" => "min_horizontal_stress"
         )
     # Case 2: aphi value is provided, with a min_horizontal_stress
-    elseif stress_model_type == "aphi_model" && stress_inputs["min_horizontal_stress"] !== nothing
+    elseif stress_model_type == "aphi_min" || (stress_model_type == "aphi_model" && stress_inputs["min_horizontal_stress"] !== nothing)
+        
         stress_param_mapping = Dict(
             "vertical_stress_gradient_uncertainty" => "vertical_stress",
             "initial_pore_pressure_gradient_uncertainty" => "pore_pressure",
@@ -81,8 +82,7 @@ function run_monte_carlo(stress_inputs::Dict, fault_inputs::DataFrame, uncertain
             "min_horizontal_stress_uncertainty" => "min_horizontal_stress"
         )
     # Case 3: aphi value is provided, with no min_horizontal_stress
-    elseif stress_model_type == "aphi_model" && stress_inputs["min_horizontal_stress"] === nothing
-        
+    elseif stress_model_type == "aphi_no_min" || (stress_model_type == "aphi_model" && stress_inputs["min_horizontal_stress"] === nothing)
         stress_param_mapping = Dict(
             "vertical_stress_gradient_uncertainty" => "vertical_stress",
             "initial_pore_pressure_gradient_uncertainty" => "pore_pressure",
@@ -90,6 +90,8 @@ function run_monte_carlo(stress_inputs::Dict, fault_inputs::DataFrame, uncertain
             "aphi_value_uncertainty" => "aphi_value"
         )
     end
+
+    
     
     # For the faults, we always have the same uncertainty parameters
     fault_param_mapping = Dict(
@@ -101,14 +103,14 @@ function run_monte_carlo(stress_inputs::Dict, fault_inputs::DataFrame, uncertain
     # Pre-convert DataFrame to array of dictionaries
     fault_dicts = [Dict(name => row[name] for name in names(fault_inputs)) for row in eachrow(fault_inputs)]
     
-    # Store actual fault IDs if present in the input dataframe
+    # Store the actual fault IDs if present in the input dataframe (not index values)
     actual_fault_ids = []
     if "FaultID" in names(fault_inputs)
         actual_fault_ids = string.(fault_inputs.FaultID)
     elseif "ID" in names(fault_inputs)
         actual_fault_ids = string.(fault_inputs.ID)
     else
-        # If no ID column exists, use numbers (sequential) as strings
+        # only use numbers as a fallback option (make sure they are strings)
         actual_fault_ids = string.(1:n_faults)
     end
     
@@ -204,6 +206,8 @@ function run_monte_carlo(stress_inputs::Dict, fault_inputs::DataFrame, uncertain
         
         # Get friction coefficient from stress_inputs
         friction_coefficient = stress_inputs["friction_coefficient"]
+
+        println("inputs for calculate_absolute_stresses: $sim_stress, $friction_coefficient, $stress_model_type")
         
         # Calculate absolute stresses using the friction coefficient from stress_inputs
         stress_state_obj, initial_pressure = GeomechanicsModel.calculate_absolute_stresses(sim_stress, friction_coefficient, stress_model_type)
@@ -231,7 +235,7 @@ function run_monte_carlo(stress_inputs::Dict, fault_inputs::DataFrame, uncertain
                 fault["Dip"], 
                 stress_state_obj, 
                 sim_stress["pore_pressure"], 
-                0.0  # dp is 0 for initial calculation
+                0.0  # dp is 0 in probabilistic geomechanics
             )
             
             # Calculate critical pore pressure
@@ -273,6 +277,8 @@ function run_monte_carlo(stress_inputs::Dict, fault_inputs::DataFrame, uncertain
     
     result_df = DataFrame(result_rows)
 
+    println("DEBUG: Final stress_param_values = $stress_param_values")
+    
     return result_df, stress_param_values, fault_param_values
 end
 
@@ -379,7 +385,7 @@ function main()
             "dip_angles_uncertainty" => get_parameter_value(helper, 3, "dip_angles_uncertainty"),
             "friction_coefficient_uncertainty" => get_parameter_value(helper, 3, "friction_coefficient_uncertainty")
         )
-    elseif stress_model_type == "aphi_model" || stress_model_type == "aphi_min"
+    elseif stress_model_type == "aphi_model" && stress_inputs["min_horizontal_stress"] !== nothing
         uncertainties = Dict(
             "vertical_stress_gradient_uncertainty" => get_parameter_value(helper, 3, "vertical_stress_gradient_uncertainty"),
             "initial_pore_pressure_gradient_uncertainty" => get_parameter_value(helper, 3, "initial_pore_pressure_gradient_uncertainty"),
@@ -390,7 +396,8 @@ function main()
             "dip_angles_uncertainty" => get_parameter_value(helper, 3, "dip_angles_uncertainty"),
             "friction_coefficient_uncertainty" => get_parameter_value(helper, 3, "friction_coefficient_uncertainty")
         )
-    elseif stress_model_type == "aphi_model_no_min" || stress_model_type == "aphi_min"
+        stress_model_type = "aphi_min"
+    elseif stress_model_type == "aphi_model" && stress_inputs["min_horizontal_stress"] === nothing
         uncertainties = Dict(
             "vertical_stress_gradient_uncertainty" => get_parameter_value(helper, 3, "vertical_stress_gradient_uncertainty"),
             "initial_pore_pressure_gradient_uncertainty" => get_parameter_value(helper, 3, "initial_pore_pressure_gradient_uncertainty"),
@@ -400,6 +407,7 @@ function main()
             "dip_angles_uncertainty" => get_parameter_value(helper, 3, "dip_angles_uncertainty"),
             "friction_coefficient_uncertainty" => get_parameter_value(helper, 3, "friction_coefficient_uncertainty")
         )
+        stress_model_type = "aphi_no_min"
     end
 
 
@@ -416,7 +424,12 @@ function main()
     println("Extracting fault parameters from args.json...")
     fault_inputs_filepath = get_dataset_file_path(helper, 3, "faults")
     fault_inputs = CSV.read(fault_inputs_filepath, DataFrame)
-    
+    # Require FaultID column in faults table
+    if !hasproperty(fault_inputs, :FaultID)
+        error("FaultID column not found in fault_inputs")
+    end
+    actual_fault_ids = string.(fault_inputs.FaultID)
+
 
 
     # get the number of MC simulations to run
@@ -424,16 +437,59 @@ function main()
 
     
     println("Running Monte Carlo simulation with $(Threads.nthreads()) threads for $n_sims iterations")
+    println("stress_model_type (after we distinguish between aphi_min and aphi_no_min): $stress_model_type")
 
     # create the shared array for the results (optimized for parallel processing)
     mc_pp_results, stress_param_values, fault_param_values = run_monte_carlo(stress_inputs, fault_inputs, uncertainties, n_sims, stress_model_type, random_seed)
 
 
-    # save the monte carlo dataframe as a dataset to the portal
-    #save_dataframe_as_parameter!(helper, 3, "prob_geomechanics_results", mc_pp_results)
+    
 
-    #println("prob_geomechanics_results:")
-    #println(first(mc_pp_results, 10))
+    # Convert index-keyed fault_param_values (from run_monte_carlo) into ID-keyed dict and include slip pressures
+    index_param_values = fault_param_values  # rename the original mapping
+    fault_param_values = Dict{String, Dict{String, Vector{Float64}}}()
+    for (idx, p_dict) in index_param_values
+        fid = actual_fault_ids[idx]
+        fault_param_values[fid] = deepcopy(p_dict)
+    end
+    # Add slip pressure samples to each fault's dict
+    for fid in keys(fault_param_values)
+        samples = convert(Vector{Float64}, mc_pp_results[mc_pp_results.FaultID .== fid, :SlipPressure])
+        fault_param_values[fid]["slip_pressure"] = samples
+    end
+
+
+    #println("stress_param_values (before we call input_distribution_histograms_to_d3): $stress_param_values")
+    # Generate combined histogram DF for both fault params + stress parameters
+    combined_hist_df = input_distribution_histograms_to_d3(
+        fault_param_values,
+        stress_param_values,
+        stress_model_type;
+        nbins=25
+    )
+    # save it as a CSV 'histogram_sample_data.csv'
+    # TO DO: uncomment those in production and configrue the graph in the portal
+    #CSV.write("histogram_sample_data.csv", combined_hist_df)
+    #save_dataframe_as_parameter!(helper, 3, "prob_geomechanics_histogram_data", combined_hist_df)
+
+    # print the combined histogram dataframe
+    # Filter for Fault5 and print only first 5 rows of each subgraph
+    fault5_data = combined_hist_df[combined_hist_df.id .== "Fault5", :]
+    if !isempty(fault5_data)
+        unique_subgraphs = unique(fault5_data.subgraph)
+        for sg in unique_subgraphs
+            sg_data = fault5_data[fault5_data.subgraph .== sg, :]
+            println("Subgraph: $sg (Fault5)")
+            pretty_table(first(sg_data, 5))
+        end
+    else
+        println("No data found for Fault5")
+    end
+
+    # save the Monte Carlo results as a dataset to the portal
+    save_dataframe_as_parameter!(helper, 3, "prob_geomechanics_results", mc_pp_results)
+
+    
 
 
     # before we create the CDF graph data, we need to read the colors from the previous step 

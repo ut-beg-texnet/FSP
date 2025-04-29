@@ -140,22 +140,22 @@ function calculate_absolute_stresses(stress_data::Dict, friction_coefficient::Re
     # Use the passed friction coefficient
     μ = friction_coefficient
 
-    if stress_model_type == "all_gradients"
-        #println("\nUsing gradients model (all stresses provided)")
+    if stress_model_type == "all_gradients" || stress_model_type == "gradients"
+        #println("\nUsing gradients model (all stresses provided), all_gradients")
         sH = round(stress_data["max_horizontal_stress"] * reference_depth, digits=2)
         sh = round(stress_data["min_horizontal_stress"] * reference_depth, digits=2)
-    elseif stress_model_type == "aphi_model" || stress_model_type == "aphi_no_min"
+    elseif stress_model_type == "aphi_model" || stress_model_type == "aphi_no_min" || stress_model_type == "aphi_min"
         #println("\nUsing A-phi model: $(stress_model_type)")
         aphi = stress_data["aphi_value"]
         n, phi = calculate_n_phi(aphi)
         
         if stress_data["min_horizontal_stress"] !== nothing
-            #println("Stress model type: A-phi with min horizontal stress")
+            #println("Stress model type: A-phi with min horizontal stress, aphi_min")
             sh = stress_data["min_horizontal_stress"] * reference_depth
             sH, _ = calculate_modified_aphi_stresses(n, phi, sV, sh, p0)
         else
             
-            #println("Stress model type: A-phi without min horizontal stress")
+            #println("Stress model type: A-phi without min horizontal stress, aphi_no_min")
             sH, sh = calculate_standard_aphi_stresses(n, phi, sV, p0, μ)
         end
     else

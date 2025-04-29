@@ -235,6 +235,11 @@ function main()
         error("Unsupported injection data type: $injection_data_type")
     end
 
+    # check if well_ids is String3, if so, convert to String
+    if eltype(well_ids) == String3
+        well_ids = String.(well_ids)
+    end
+
     
 
 
@@ -598,6 +603,8 @@ function main()
             if !haskey(well_locations, well_id)
                 continue
             end
+
+            
             
             # Get well coordinates
             well_lat, well_lon = well_locations[well_id]
@@ -695,7 +702,7 @@ function main()
             # Prepare injection data up to year_of_interest
             days, rates = prepare_well_data_for_pressure_scenario(
                 well_specific_data,
-                well_id,
+                String(well_id),
                 inj_start_year,
                 inj_start_date,
                 actual_end_year,
@@ -1056,8 +1063,8 @@ function main()
     end
 
     # Print the updated fault_inputs_df with new slip pressures
-    println("Updated fault_inputs_df with new slip pressures:")
-    pretty_table(fault_inputs_df, show_omitted_cell_summary=false, crop=:none)
+    #println("Updated fault_inputs_df with new slip pressures:")
+    #pretty_table(fault_inputs_df, show_omitted_cell_summary=false, crop=:none)
 
     # Save the updated fault dataframe
     save_dataframe_as_parameter!(helper, 4, "faults_with_det_hydro_pp", fault_inputs_df)
@@ -1068,7 +1075,6 @@ function main()
     save_dataframe_as_parameter!(helper, 4, "faultsDF_hydro", faultsDF)
     
     
-    println("- Mohr diagram data prepared and saved for visualization")
 
     # explicitly set this step's success state to true
     set_success_for_step_index!(helper, 4, true)

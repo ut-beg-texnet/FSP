@@ -161,14 +161,13 @@ function main()
 
             # get unique values from the 'WellID' column
             unique_well_ids = unique(injection_wells_df[!, "WellID"])
-            if length(unique_well_ids) > 200
-                add_message_with_step_index!(helper, 1, "Number of wells provided is greater than 200. Please provide a smaller number of wells.", 2)
+            if length(unique_well_ids) > 300
+                add_message_with_step_index!(helper, 1, "Number of wells provided is greater than 300. Please provide a smaller number of wells.", 2)
 
-                error("Number of wells provided is greater than 500. Please provide a smaller number of wells.")
+                error("Number of wells provided is greater than 300. Please provide a smaller number of wells.")
             end
 
-            println("fsp monthly injection df:")
-            println(injection_wells_df)
+            
             injection_rate_data = injection_rate_data_to_d3(injection_wells_df, injection_data_type)
             save_dataframe_as_parameter!(helper, 1, "injection_rate_d3_data", injection_rate_data)
             println("DEBUG: Saved monthly injection rate data for visualization")
@@ -179,10 +178,10 @@ function main()
 
             # get unique values from the 'WellID' column
             unique_well_ids = unique(injection_wells_df[!, "API Number"])
-            if length(unique_well_ids) > 200
-                add_message_with_step_index!(helper, 1, "Number of wells provided is greater than 200. Please provide a smaller number of wells.", 2)
+            if length(unique_well_ids) > 300
+                add_message_with_step_index!(helper, 1, "Number of wells provided is greater than 300. Please provide a smaller number of wells.", 2)
 
-                error("Number of wells provided is greater than 500. Please provide a smaller number of wells.")
+                error("Number of wells provided is greater than 300. Please provide a smaller number of wells.")
             end
             injection_rate_data = injection_rate_data_to_d3(injection_wells_df, injection_data_type)
             

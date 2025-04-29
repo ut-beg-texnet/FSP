@@ -559,15 +559,6 @@ function main()
         "friction_coefficient" => get_parameter_value(helper, 2, "friction_coefficient")
     )
 
-    println("friction_coefficient from the portal: $(stress_inputs["friction_coefficient"])")
-    
-    # REMOVE THIS
-    #=
-    if stress_inputs["max_horizontal_stress"] === nothing
-        add_message_with_step_index!(helper, 2, "Max Horizontal Stress Gradient is not provided, using default value of 1.22", 2)
-        stress_inputs["max_horizontal_stress"] = 1.22
-    end
-    =#
 
    
 
@@ -624,8 +615,6 @@ function main()
     
     
 
-    println("stress_field_mode: $(stress_inputs["stress_field_mode"])")
-
     # Calculate absolute stresses at reference depth
     stress_state, initial_pressure = GeomechanicsModel.calculate_absolute_stresses(stress_inputs, stress_inputs["friction_coefficient"], stress_inputs["stress_field_mode"])
     
@@ -642,15 +631,7 @@ function main()
     # Process each fault
     results = process_faults(fault_data, stress_state, initial_pressure, stress_inputs["friction_coefficient"])
 
-    # Print information for Fault1
-    for result in results
-        if string(result["FaultID"]) == "1" || string(result["FaultID"]) == "Fault1"
-            println("\nFault1 Results:")
-            println("  Slip Pressure: $(round(result["slip_pressure"], digits=3)) psi")
-            println("  Shear Capacity Utilization: $(round(result["shear_capacity_utilization"], digits=3))")
-            println("  Coulomb Failure Function: $(round(result["coulomb_failure_function"], digits=3))")
-        end
-    end
+    
 
     # create a CSV dataframe from the results
     # for each fault (row), we have the columns: fault_id, slip_pressure, coulomb_failure_function, shear_capacity_utilization, normal_stress, shear_stress

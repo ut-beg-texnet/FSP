@@ -137,6 +137,15 @@ function run_monte_carlo_hydrology(helper::TexNetWebToolLaunchHelperJulia,
     # create the matrix to store the results of the Monte Carlo simulations
     ppOnFaultMC = zeros(params.n_iterations, num_faults) # rows are iterations, columns are faults
 
+    # Create storage for parameter samples across all Monte Carlo iterations
+    hydro_samples = Dict{String, Vector{Float64}}()
+    hydro_samples["aquifer_thickness"] = Float64[]
+    hydro_samples["porosity"] = Float64[]
+    hydro_samples["permeability"] = Float64[]
+    hydro_samples["fluid_density"] = Float64[]
+    hydro_samples["dynamic_viscosity"] = Float64[]
+    hydro_samples["fluid_compressibility"] = Float64[]
+    hydro_samples["rock_compressibility"] = Float64[]
     
 
     # Get injection well data
@@ -324,6 +333,15 @@ function run_monte_carlo_hydrology(helper::TexNetWebToolLaunchHelperJulia,
             "fluid_compressibility" => rand(distributions["fluid_compressibility"]),
             "rock_compressibility" => rand(distributions["rock_compressibility"])
         )
+        
+        # Store the sampled parameters for histogram visualization
+        push!(hydro_samples["aquifer_thickness"], sampled_params["aquifer_thickness"])
+        push!(hydro_samples["porosity"], sampled_params["porosity"])
+        push!(hydro_samples["permeability"], sampled_params["permeability"])
+        push!(hydro_samples["fluid_density"], sampled_params["fluid_density"])
+        push!(hydro_samples["dynamic_viscosity"], sampled_params["dynamic_viscosity"])
+        push!(hydro_samples["fluid_compressibility"], sampled_params["fluid_compressibility"])
+        push!(hydro_samples["rock_compressibility"], sampled_params["rock_compressibility"])
 
         # calculate storativity and transmissivity
         S, T, rho = calcST(
@@ -396,7 +414,8 @@ function run_monte_carlo_hydrology(helper::TexNetWebToolLaunchHelperJulia,
     
     results_df = DataFrame(result_rows)
     
-    return results_df
+    # Return both the results dataframe and the parameter samples
+    return results_df, hydro_samples
 end
 
 """
@@ -965,13 +984,46 @@ function main()
         )
         
         # Run Monte Carlo simulation - updated to only receive one return value
-        prob_hydro_results = run_monte_carlo_hydrology(helper, params, "uniform", extrapolate_injection_rates, year_of_interest_date, year_of_interest)
+        prob_hydro_results, hydro_samples = run_monte_carlo_hydrology(helper, params, "uniform", extrapolate_injection_rates, year_of_interest_date, year_of_interest)
         
 
         # save the prob_hydro_results as a CSV in the current directory
-        CSV.write("prob_hydro_results.csv", prob_hydro_results)
+        #CSV.write("prob_hydro_results.csv", prob_hydro_results)
         
-
+        # Create histogram data for hydrology parameter distributions
+        # Use the actual samples from the Monte Carlo simulation
+        
+        # Get fault IDs to use for the histogram data
+        fault_dataset_path = get_dataset_file_path(helper, 5, "faults_model_inputs_output")
+        faults_df = CSV.read(fault_dataset_path, DataFrame)
+        fault_ids = string.(faults_df.FaultID)
+        
+        # Create a structure for each fault that references the global parameters
+        fault_param_values = Dict{String, Dict{String, Vector{Float64}}}()
+        for fault_id in fault_ids
+            fault_param_values[fault_id] = Dict{String, Vector{Float64}}()
+            # Include all the relevant distributions for this fault
+            fault_param_values[fault_id]["aquifer_thickness"] = hydro_samples["aquifer_thickness"]
+            fault_param_values[fault_id]["porosity"] = hydro_samples["porosity"]
+            fault_param_values[fault_id]["permeability"] = hydro_samples["permeability"]
+            fault_param_values[fault_id]["fluid_density"] = hydro_samples["fluid_density"]
+            fault_param_values[fault_id]["dynamic_viscosity"] = hydro_samples["dynamic_viscosity"]
+            fault_param_values[fault_id]["fluid_compressibility"] = hydro_samples["fluid_compressibility"]
+            fault_param_values[fault_id]["rock_compressibility"] = hydro_samples["rock_compressibility"]
+            
+            # Add the slip pressure for each fault
+            fault_pressures = prob_hydro_results[prob_hydro_results.ID .== fault_id, :Pressure]
+            fault_param_values[fault_id]["slip_pressure"] = fault_pressures
+        end
+        
+        # Generate histogram data
+        histogram_d3_data = input_distribution_histograms_to_d3(fault_param_values, Dict{String, Vector{Float64}}(), "hydrology", nbins=25)
+        
+        # Save histogram data
+        # TO DO: uncomment those in production and configrue the graph in the portal
+        #CSV.write("hydro_histogram_sample_data.csv", histogram_d3_data)
+        #save_dataframe_as_parameter!(helper, 5, "prob_hydrology_histogram_data", histogram_d3_data)
+        
         # Generate probabilistic hydrology CDF data
         prob_hydro_cdf_data = prob_hydrology_cdf(prob_hydro_results)
         save_dataframe_as_parameter!(helper, 5, "prob_hydrology_cdf_graph_data", prob_hydro_cdf_data)
@@ -979,7 +1031,7 @@ function main()
         pretty_table(prob_hydro_cdf_data[end-10:end, :])
 
         # save the prob_hydro_cdf_data as a CSV in the current directory
-        CSV.write("prob_hydro_cdf_data.csv", prob_hydro_cdf_data)
+        #CSV.write("prob_hydro_cdf_data.csv", prob_hydro_cdf_data)
 
         
         

@@ -284,7 +284,7 @@ function run_mc_hydrology_time_series(
                     # Prepare injection data
                     days, rates = Utilities.prepare_well_data_for_pressure_scenario(
                         well_data,
-                        well_id,
+                        String(well_id),
                         inj_start_year,
                         inj_start_date,
                         actual_end_year,

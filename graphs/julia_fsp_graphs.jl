@@ -1965,11 +1965,13 @@ function mohr_diagram_hydro_data_to_d3_portal(
         end
         
         # Return dataframes with consistent structure
+        #=
         println("MODIFIED DATAFRAMES FOR SHIFTED MOHR DIAGRAM:")
         println("arcsDF: ")
         pretty_table(arcsDF)
         println("faultsDF: ")
         pretty_table(faultsDF)
+        =#
         
         return (arcsDF, slipDF, faultsDF)
     else
@@ -1980,6 +1982,106 @@ function mohr_diagram_hydro_data_to_d3_portal(
         println("Created hydrology Mohr diagram data from scratch with mean dp = $(dp_mean) psi")
         return (arcsDF, slipDF, faultDF)
     end
+end
+
+"""
+Returns a DataFrame with data for Histograms for input parameter distributions.
+param_values: Dictionary mapping fault index to dictionary of parameter name => vector of samples
+ex. fault1 => Dict("strike" => [10, 20, 30...], "dip" => [30, 40, 50...])
+nbins: number of histogram bins (we will keep 25)
+"""
+# TO DO: also pass the stress parameters
+# strike, dip, and slip pressure are the only ones that are different for each fault
+function input_distribution_histograms_to_d3(
+    fault_param_values::Dict{String, Dict{String, Vector{Float64}}},
+    stress_values::Dict{String, Vector{Float64}},
+    stress_field_model::String;
+    nbins::Int=25
+)
+
+   
+
+    histogram_d3_data = DataFrame(id=String[], subgraph=String[], count=Int[], bar_index=String[])
+    # label mapping for all parameters
+    # Added some additional labels to catch all possible mappings
+    label_map = Dict(
+        # Lowercase keys 
+        "strike" => "Strike",
+        "dip" => "Dip",
+        "slip_pressure" => "Pore Pressure to Slip (PSI)",
+        "vertical_stress_gradient_uncertainty" => "Sv (PSI/ft)",
+        "initial_pore_pressure_gradient_uncertainty" => "Initial PP Grad (PSI/ft)",
+        "max_stress_azimuth_uncertainty" => "SHmax Azimuth (deg)",
+        "max_horizontal_stress_uncertainty" => "SHmax Grad (PSI/ft)",
+        "min_horizontal_stress_uncertainty" => "Shmin Grad (PSI/ft)",
+        "aphi_value_uncertainty" => "A-Phi Param",
+        
+        # Capitalized keys 
+        "Strike" => "Strike",
+        "Dip" => "Dip",
+        "FrictionCoefficient" => "Friction Coefficient",
+        "SlipPressure" => "Pore Pressure to Slip (PSI)",
+        
+        # Actual stress parameter names from run_monte_carlo
+        "vertical_stress" => "Sv (PSI/ft)",
+        "pore_pressure" => "Initial PP Grad (PSI/ft)",
+        "max_stress_azimuth" => "SHmax Azimuth (deg)",
+        "max_horizontal_stress" => "SHmax Grad (PSI/ft)",
+        "min_horizontal_stress" => "Shmin Grad (PSI/ft)",
+        "aphi_value" => "A-Phi Parameter",
+        
+        # Hydrology parameters
+        "aquifer_thickness" => "Aquifer Thickness (ft)",
+        "porosity" => "Porosity",
+        "permeability" => "Permeability (mD)",
+        "fluid_density" => "Fluid Density (kg/m³)",
+        "dynamic_viscosity" => "Dynamic Viscosity (Pa·s)",
+        "fluid_compressibility" => "Fluid Compressibility (Pa⁻¹)",
+        "rock_compressibility" => "Rock Compressibility (Pa⁻¹)"
+    )
+
+    # For each fault, histogram its inputs and then the selected stress uncertainties
+    for (fid, pdict) in fault_param_values
+        # fault-specific parameters
+        for (pname, vals) in pdict
+            h = fit(Histogram, vals, nbins=nbins)
+            edges = h.edges[1]; centers = [(edges[i]+edges[i+1])/2 for i in 1:length(h.weights)]
+            for i in eachindex(h.weights)
+                #println("pname: $pname, centers[i]: $(centers[i])")
+                push!(histogram_d3_data, (
+                    id=fid,
+                    subgraph=label_map[pname],
+                    count=Int(h.weights[i]),
+                    bar_index=string(centers[i])
+                ))
+            end
+        end
+        
+        # Only process stress values if we have any
+        if !isempty(stress_values)
+            # Directly iterate over the keys in stress_values
+            for (pname, vals) in stress_values
+                if haskey(label_map, pname)
+                    h = fit(Histogram, vals, nbins=nbins)
+                    edges = h.edges[1]; centers = [(edges[i]+edges[i+1])/2 for i in 1:length(h.weights)]
+                    for i in eachindex(h.weights)
+                        push!(histogram_d3_data, (
+                            id=fid,
+                            subgraph=label_map[pname],
+                            count=Int(h.weights[i]),
+                            bar_index=string(centers[i])
+                        ))
+                    end
+                else
+                    println("Warning: No label mapping found for stress parameter '$pname'")
+                end
+            end
+        else
+            println("No stress values available - skipping stress uncertainty histograms")
+        end
+    end
+
+    return histogram_d3_data
 end
 
 end # module
