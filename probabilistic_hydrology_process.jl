@@ -1027,8 +1027,8 @@ function main()
         # Generate probabilistic hydrology CDF data
         prob_hydro_cdf_data = prob_hydrology_cdf(prob_hydro_results)
         save_dataframe_as_parameter!(helper, 5, "prob_hydrology_cdf_graph_data", prob_hydro_cdf_data)
-        println("prob_hydrology_cdf_graph_data (after prob_hydrology_cdf) (last 10 rows):")
-        pretty_table(prob_hydro_cdf_data[end-10:end, :])
+        #println("prob_hydrology_cdf_graph_data (after prob_hydrology_cdf) (last 10 rows):")
+        #pretty_table(prob_hydro_cdf_data[end-10:end, :])
 
         # save the prob_hydro_cdf_data as a CSV in the current directory
         #CSV.write("prob_hydro_cdf_data.csv", prob_hydro_cdf_data)

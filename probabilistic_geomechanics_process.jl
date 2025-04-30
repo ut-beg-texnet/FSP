@@ -207,7 +207,7 @@ function run_monte_carlo(stress_inputs::Dict, fault_inputs::DataFrame, uncertain
         # Get friction coefficient from stress_inputs
         friction_coefficient = stress_inputs["friction_coefficient"]
 
-        println("inputs for calculate_absolute_stresses: $sim_stress, $friction_coefficient, $stress_model_type")
+        #println("inputs for calculate_absolute_stresses: $sim_stress, $friction_coefficient, $stress_model_type")
         
         # Calculate absolute stresses using the friction coefficient from stress_inputs
         stress_state_obj, initial_pressure = GeomechanicsModel.calculate_absolute_stresses(sim_stress, friction_coefficient, stress_model_type)
@@ -277,7 +277,7 @@ function run_monte_carlo(stress_inputs::Dict, fault_inputs::DataFrame, uncertain
     
     result_df = DataFrame(result_rows)
 
-    println("DEBUG: Final stress_param_values = $stress_param_values")
+    #println("DEBUG: Final stress_param_values = $stress_param_values")
     
     return result_df, stress_param_values, fault_param_values
 end
@@ -472,19 +472,7 @@ function main()
     #CSV.write("histogram_sample_data.csv", combined_hist_df)
     #save_dataframe_as_parameter!(helper, 3, "prob_geomechanics_histogram_data", combined_hist_df)
 
-    # print the combined histogram dataframe
-    # Filter for Fault5 and print only first 5 rows of each subgraph
-    fault5_data = combined_hist_df[combined_hist_df.id .== "Fault5", :]
-    if !isempty(fault5_data)
-        unique_subgraphs = unique(fault5_data.subgraph)
-        for sg in unique_subgraphs
-            sg_data = fault5_data[fault5_data.subgraph .== sg, :]
-            println("Subgraph: $sg (Fault5)")
-            pretty_table(first(sg_data, 5))
-        end
-    else
-        println("No data found for Fault5")
-    end
+    
 
     # save the Monte Carlo results as a dataset to the portal
     save_dataframe_as_parameter!(helper, 3, "prob_geomechanics_results", mc_pp_results)
@@ -497,6 +485,7 @@ function main()
     # read the dataframe with the deterministic results
     deterministic_results_filepath = get_dataset_file_path(helper, 2, "det_geomechanics_results")
     deterministic_results_df = CSV.read(deterministic_results_filepath, DataFrame)
+
 
    
     

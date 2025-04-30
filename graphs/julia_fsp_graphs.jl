@@ -1195,15 +1195,26 @@ function prob_geomechanics_cdf(mc_results_df::DataFrame, det_geomechanics_result
         "det_slip_pressure" => Float64[]
     )
 
+    # check if the FaultID column of the det_geomechanics_results_df is a string, if not, convert it to a string
+    if !(eltype(det_geomechanics_results_df[!, "FaultID"]) <: AbstractString)
+        det_geomechanics_results_df[!, "FaultID"] = string.(det_geomechanics_results_df[!, "FaultID"])
+    end
+
     # get the unique fault IDs
     fault_ids = unique(mc_results_df.FaultID)
 
+    
+
     for fault_id in fault_ids
+        
         # Get the 'slip pressure' column data for this fault
         fault_data = mc_results_df[mc_results_df.FaultID .== fault_id, :SlipPressure]
 
+
         # also get the deterministic slip pressure for this fault
         det_slip_pressure_df = det_geomechanics_results_df[det_geomechanics_results_df.FaultID .== fault_id, :slip_pressure]
+       
+
         
         if isempty(det_slip_pressure_df)
             # Skip if no deterministic data for this fault
@@ -1252,6 +1263,8 @@ function prob_geomechanics_cdf(mc_results_df::DataFrame, det_geomechanics_result
         end
         =#
     end
+
+    
 
     return points_df
 end

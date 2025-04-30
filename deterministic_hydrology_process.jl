@@ -920,10 +920,23 @@ function main()
         # Get the actual fault ID from the fault dataset
         fault_id = if "FaultID" in names(fault_df)
             fault_df[i, "FaultID"]
+            println("FAULT ID FOUND")
+            println("FAULT ID: $fault_id")
+            println("FAULT ID TYPE: $(typeof(fault_id))")
         else
             # Fall back to using the index as the ID
             string(i)
+            println("FALLBACK OPTION USED")
         end
+
+        # TO DO: I removed the fallback option (make sure it's not needed)
+        # also added the check if the fault_id is a string, if not, convert it to a string
+        #=
+        # check if the fault_id is a string, if not, convert it to a string
+        if typeof(fault_id) != String
+            fault_id = string(fault_id)
+        end
+        =#
         
         fault_rows = year_specific_data[year_specific_data.FaultID .== fault_id, :]
         if !isempty(fault_rows)
