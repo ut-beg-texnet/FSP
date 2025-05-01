@@ -582,7 +582,7 @@ function prepare_monthly_fsp_data(
                 push!(step_rates, daily_rate)
                 current_rate = daily_rate
             else
-                println("DEBUG: No significant rate change (current=$current_rate, new=$daily_rate), skipping step point")
+                #println("DEBUG: No significant rate change (current=$current_rate, new=$daily_rate), skipping step point")
             end
         elseif extrapolate && !isnothing(current_rate) && current_rate > 0
             # Keep using current rate if extrapolating

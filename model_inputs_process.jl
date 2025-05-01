@@ -172,6 +172,7 @@ function main()
             save_dataframe_as_parameter!(helper, 1, "injection_rate_d3_data", injection_rate_data)
             println("DEBUG: Saved monthly injection rate data for visualization")
 
+
             save_dataframe_as_parameter!(helper, 1, "injection_wells_monthly_output", injection_wells_df)
         elseif injection_data_type == "injection_tool_data"
 
@@ -213,6 +214,8 @@ function main()
     else
         error("No injection wells dataset provided.")
     end
+
+    
 
     #println("Generating D3.js visualization data...")
     #faults_csv, wells_csv = fault_surface_map_data_to_d3(faults_df, injection_wells_df)

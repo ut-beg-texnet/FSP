@@ -252,6 +252,29 @@ function main()
     println("- Storativity (S): $S")
     println("- Transmissivity (T): $T m²/s")
 
+    println("LOADING FAULT DATA...")
+    # Load fault data
+    fault_data_path = get_dataset_file_path(helper, 4, "faults")
+    if fault_data_path === nothing
+        error("Required fault dataset not found or accessible.")
+    end
+
+    fault_df = CSV.read(fault_data_path, DataFrame)
+
+    # check if the 'Strike' and 'Dip' columns are floats, if not, convert them to floats
+    println("FAULT DATA (original):")
+    pretty_table(fault_df)
+    if !(eltype(fault_df[!, "Strike"]) <: Float64)
+        fault_df[!, "Strike"] = Float64.(fault_df[!, "Strike"])
+    end
+    if !(eltype(fault_df[!, "Dip"]) <: Float64)
+        fault_df[!, "Dip"] = Float64.(fault_df[!, "Dip"])
+    end
+    println("FAULT DATA (converted):")
+    pretty_table(fault_df)
+
+    
+
     
 
     # Get grid bounds from args.json if provided, otherwise calculate based on well locations
@@ -263,12 +286,8 @@ function main()
     lon_min_param = get_parameter_value(helper, 4, "grid_lon_min")
     lon_max_param = get_parameter_value(helper, 4, "grid_lon_max")
 
-    # Load fault data
-    fault_data_path = get_dataset_file_path(helper, 4, "faults")
-    if fault_data_path === nothing
-        error("Required fault dataset not found or accessible.")
-    end
-    fault_df = CSV.read(fault_data_path, DataFrame)
+    
+
     
     # Check if all lat/lon parameters were provided
     if lat_min_param !== nothing && lat_max_param !== nothing && 
@@ -916,18 +935,28 @@ function main()
     # Extract pore pressure changes for each fault
     pressure_changes_vec = zeros(nrow(fault_df))
     pressure_changes_df = DataFrame(FaultID = String[], Pressure = Float64[])
+
+    
+
+    # check if the fault_df 'FaultID' column is a string, if not, convert it to a string
+    if !(eltype(fault_df[!, "FaultID"]) <: AbstractString)
+        fault_df[!, "FaultID"] = string.(fault_df[!, "FaultID"])
+    end
+
+    
+
+
     for i in 1:nrow(fault_df)
         # Get the actual fault ID from the fault dataset
         fault_id = if "FaultID" in names(fault_df)
             fault_df[i, "FaultID"]
-            println("FAULT ID FOUND")
-            println("FAULT ID: $fault_id")
-            println("FAULT ID TYPE: $(typeof(fault_id))")
         else
             # Fall back to using the index as the ID
             string(i)
             println("FALLBACK OPTION USED")
         end
+
+        
 
         # TO DO: I removed the fallback option (make sure it's not needed)
         # also added the check if the fault_id is a string, if not, convert it to a string

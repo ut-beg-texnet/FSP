@@ -895,7 +895,7 @@ function injection_rate_data_to_d3(well_df::DataFrame, injection_data_type::Stri
                             
                             # Add start-of-month data point
                             push!(wells_reformatted, (
-                                well_id,
+                                String(well_id),
                                 injection_rate_monthly,
                                 year,
                                 month,
@@ -904,7 +904,7 @@ function injection_rate_data_to_d3(well_df::DataFrame, injection_data_type::Stri
                             ))
                             # Add end-of-month data point with the same rate
                              push!(wells_reformatted, (
-                                well_id,
+                                String(well_id),
                                 injection_rate_monthly,
                                 year,
                                 month,
@@ -920,6 +920,8 @@ function injection_rate_data_to_d3(well_df::DataFrame, injection_data_type::Stri
                     error("Error processing well $i: $(sprint(showerror, e))")
                 end
             end
+
+            
             
             return wells_reformatted
 
@@ -938,7 +940,7 @@ function injection_rate_data_to_d3(well_df::DataFrame, injection_data_type::Stri
                 "Timestamp" => Float64[]
             )
 
-            # Get unique API numbers
+            # Get unique Well IDs numbers
             unique_well_ids = unique(string.(well_df.WellID))
             num_unique_wells = length(unique_well_ids)
             
@@ -962,7 +964,7 @@ function injection_rate_data_to_d3(well_df::DataFrame, injection_data_type::Stri
 
                     # Add start-of-month data point
                     push!(wells_reformatted, (
-                        well_id,
+                        String(well_id),
                         injection_rate,
                         month,
                         year,
@@ -971,7 +973,7 @@ function injection_rate_data_to_d3(well_df::DataFrame, injection_data_type::Stri
                     ))
                     # Add end-of-month data point with the same rate
                     push!(wells_reformatted, (
-                        well_id,
+                        String(well_id),
                         injection_rate,
                         month,
                         year,
@@ -983,8 +985,9 @@ function injection_rate_data_to_d3(well_df::DataFrame, injection_data_type::Stri
                 end
             end
 
-            println("wells_reformatted:")
-            println(wells_reformatted)
+            
+            
+            
 
             
             return wells_reformatted
@@ -1054,7 +1057,7 @@ function injection_rate_data_to_d3(well_df::DataFrame, injection_data_type::Stri
                         
                         # Add start-of-month data point
                         push!(wells_reformatted, (
-                            well_id,
+                            String(well_id),
                             monthly_rate,
                             year_val,
                             month_val,
@@ -1063,7 +1066,7 @@ function injection_rate_data_to_d3(well_df::DataFrame, injection_data_type::Stri
                         ))
                         # Add end-of-month data point with the same rate
                         push!(wells_reformatted, (
-                            well_id,
+                            String(well_id),
                             monthly_rate,
                             year_val,
                             month_val,
@@ -1078,6 +1081,8 @@ function injection_rate_data_to_d3(well_df::DataFrame, injection_data_type::Stri
                     error("Error processing well $well_id: $(sprint(showerror, e))")
                 end
             end
+
+            
 
             return wells_reformatted
         end
