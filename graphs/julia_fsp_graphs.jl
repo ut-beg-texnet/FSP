@@ -2,7 +2,7 @@ module JuliaFSPGraphs
 
 export plot_pressure_distance_graph, plot_pressure_grid_heatmap, plot_mohr_diagram_geo, plot_mohr_diagram_hydro, plot_injection_rate_line_chart, plot_fault_surface_map,
 plot_cdf_det_hydro, plot_prob_hydro_combined_cdf, fault_surface_map_data_to_d3, mohr_diagram_data_to_d3_portal, injection_rate_data_to_d3, prob_geomechanics_cdf, fault_sensitivity_tornado_chart_to_d3,
-uncertainty_variability_inputs_to_d3, prob_hydrology_cdf, input_distribution_histograms_to_d3, mohr_diagram_hydro_data_to_d3_portal
+uncertainty_variability_inputs_to_d3, prob_hydrology_cdf, input_distribution_histograms_to_d3, mohr_diagram_hydro_data_to_d3_portal, hydro_input_distribution_histograms_to_d3
 
 #using Plots
 #using JSON
@@ -2075,9 +2075,9 @@ function input_distribution_histograms_to_d3(
             end
         end
         
-        # Only process stress values if we have any
+        # this shouldn't be empty but we should check
         if !isempty(stress_values)
-            # Directly iterate over the keys in stress_values
+            
             for (pname, vals) in stress_values
                 if haskey(label_map, pname)
                     h = fit(Histogram, vals, nbins=nbins)
@@ -2091,15 +2091,60 @@ function input_distribution_histograms_to_d3(
                         ))
                     end
                 else
-                    println("Warning: No label mapping found for stress parameter '$pname'")
+                    error("Warning: No label mapping found for stress parameter '$pname'")
                 end
             end
         else
-            println("No stress values available - skipping stress uncertainty histograms")
+            error("No stress values available - skipping stress uncertainty histograms")
         end
     end
 
     return histogram_d3_data
 end
+
+
+function hydro_input_distribution_histograms_to_d3(
+    hydro_param_values::Dict{String, Vector{Float64}};
+    nbins::Int=25
+)
+
+    histogram_d3_data = DataFrame(subgraph=String[], count=Int[], label=String[])
+
+    # label mapping for all hydrology parameters
+    label_map = Dict(
+        "aquifer_thickness" => "Injection Formation Thickness (ft)",
+        "porosity" => "Porosity (%)",
+        "permeability" => "Permeability (mD)",
+        "fluid_density" => "Fluid Density (kg/m³)",
+        "dynamic_viscosity" => "Dynamic Viscosity (Pa.s)",
+        "fluid_compressibility" => "Fluid Compressibility (Pa⁻¹)",
+        "rock_compressibility" => "Rock Compressibility (Pa⁻¹)"
+    )
+
+    # in the hydrology case, these histograms are the same for all faults
+    # so we don't need to iterate over faults
+    if !isempty(hydro_param_values)
+        for (pname, vals) in hydro_param_values
+            if haskey(label_map, pname)
+                h = fit(Histogram, vals, nbins=nbins)
+                edges = h.edges[1]; centers = [(edges[i]+edges[i+1])/2 for i in 1:length(h.weights)]
+                for i in eachindex(h.weights)
+                    push!(histogram_d3_data, (
+                        subgraph=label_map[pname],
+                        count=Int(h.weights[i]),
+                        label=string(centers[i])
+                    ))
+                end
+            else
+                error("Warning: No label mapping found for hydrology parameter '$pname'")
+            end
+        end
+    else
+        error("No randomly sampled hydrology parameters were provided for the histograms")
+    end
+
+    return histogram_d3_data
+end
+
 
 end # module

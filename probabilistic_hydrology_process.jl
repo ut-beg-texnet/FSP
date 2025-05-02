@@ -115,7 +115,7 @@ function run_monte_carlo_hydrology(helper::TexNetWebToolLaunchHelperJulia,
 
     
     num_faults = nrow(fault_df)
-    println("Read faults_model_inputs_output.csv: $fault_df")
+    #println("Read faults_model_inputs_output.csv: $fault_df")
     
     # Extract actual fault IDs from the input file
     fault_id_col = "FaultID" in names(fault_df) ? "FaultID" : "ID"
@@ -545,22 +545,36 @@ function calculate_probabilistic_slip_potential(prob_geo_cdf::DataFrame, prob_hy
         SlipPotential = Float64[]
     )
 
-    # Get unique fault IDs
-    fault_ids = unique(prob_geo_cdf.ID)
+    
     
     # prob_hydro_results are the raw monte carlo results, so we need to convert them to an exceedance curve
     prob_hydro_cdf_data = prob_hydrology_cdf(prob_hydro_results)
 
-    #=
-    println("inside calculate_probabilistic_slip_potential, prob_hydro_results:")
-    pretty_table(prob_hydro_results)
+    # check both prob_hydro_cdf_data and prob_geo_cdf and see if their 'ID' column is String
+    # if not, convert it to String
+    if !(eltype(prob_hydro_cdf_data.ID) <: AbstractString)
+        prob_hydro_cdf_data.ID = string.(prob_hydro_cdf_data.ID)
+    end
 
-    println("inside calculate_probabilistic_slip_potential, prob_hydro_cdf_data:")
-    pretty_table(prob_hydro_cdf_data)
+    if !(eltype(prob_geo_cdf.ID) <: AbstractString)
+        prob_geo_cdf.ID = string.(prob_geo_cdf.ID)
+    end
 
-    println("inside calculate_probabilistic_slip_potential, prob_geo_cdf:")
-    pretty_table(prob_geo_cdf)
-    =#
+    # Get unique fault IDs
+    fault_ids = unique(prob_geo_cdf.ID)
+
+    #println("Unique IDs in prob_hydro_cdf_data: ", unique(prob_hydro_cdf_data.ID))
+    #println("Unique IDs in prob_geo_cdf: ", unique(prob_geo_cdf.ID))
+
+    # print the first 10 rows of prob_hydro_cdf_data using pretty_table
+    println("prob_hydro_cdf_data (first 10 rows):")
+    pretty_table(prob_hydro_cdf_data[1:10, :])
+
+    # print the first 10 rows of prob_geo_cdf using pretty_table
+    println("prob_geo_cdf (first 10 rows):")
+    pretty_table(prob_geo_cdf[1:10, :])
+
+    #error("stop here")
     
     # verify column names
     geo_pressure_col = "slip_pressure" in names(prob_geo_cdf) ? "slip_pressure" : "pressure"
@@ -863,10 +877,12 @@ function main()
     year_of_interest_date = Date(year_of_interest-1, 12, 31)
 
     # Read probabilistic geomechanics CDF data
-    # CONTINUE FROM HERE: configure 'prob_geomechanics_cdf_graph_data' in the portal
+   
     prob_geo_results = get_dataset_file_path(helper, 5, "prob_geomechanics_cdf_graph_data_prob_hydro")
     prob_geo_cdf = CSV.read(prob_geo_results, DataFrame)
     println("Loaded original probabilistic geomechanics CDF data: (last 10 rows)")
+
+
     pretty_table(prob_geo_cdf[end-10:end, :])
 
     if hydro_model_type == "deterministic"
@@ -997,31 +1013,15 @@ function main()
         fault_dataset_path = get_dataset_file_path(helper, 5, "faults_model_inputs_output")
         faults_df = CSV.read(fault_dataset_path, DataFrame)
         fault_ids = string.(faults_df.FaultID)
+
         
-        # Create a structure for each fault that references the global parameters
-        fault_param_values = Dict{String, Dict{String, Vector{Float64}}}()
-        for fault_id in fault_ids
-            fault_param_values[fault_id] = Dict{String, Vector{Float64}}()
-            # Include all the relevant distributions for this fault
-            fault_param_values[fault_id]["aquifer_thickness"] = hydro_samples["aquifer_thickness"]
-            fault_param_values[fault_id]["porosity"] = hydro_samples["porosity"]
-            fault_param_values[fault_id]["permeability"] = hydro_samples["permeability"]
-            fault_param_values[fault_id]["fluid_density"] = hydro_samples["fluid_density"]
-            fault_param_values[fault_id]["dynamic_viscosity"] = hydro_samples["dynamic_viscosity"]
-            fault_param_values[fault_id]["fluid_compressibility"] = hydro_samples["fluid_compressibility"]
-            fault_param_values[fault_id]["rock_compressibility"] = hydro_samples["rock_compressibility"]
-            
-            # Add the slip pressure for each fault
-            fault_pressures = prob_hydro_results[prob_hydro_results.ID .== fault_id, :Pressure]
-            fault_param_values[fault_id]["slip_pressure"] = fault_pressures
-        end
         
-        # Generate histogram data
-        histogram_d3_data = input_distribution_histograms_to_d3(fault_param_values, Dict{String, Vector{Float64}}(), "hydrology", nbins=25)
+        # Generate histogram data directly from the hydro_samples
+        histogram_d3_data = hydro_input_distribution_histograms_to_d3(hydro_samples, nbins=25)
         
         # Save histogram data
         # TO DO: uncomment those in production and configrue the graph in the portal
-        #CSV.write("hydro_histogram_sample_data.csv", histogram_d3_data)
+        CSV.write("hydro_histogram_sample_data.csv", histogram_d3_data)
         #save_dataframe_as_parameter!(helper, 5, "prob_hydrology_histogram_data", histogram_d3_data)
         
         # Generate probabilistic hydrology CDF data
@@ -1033,7 +1033,7 @@ function main()
         # save the prob_hydro_cdf_data as a CSV in the current directory
         #CSV.write("prob_hydro_cdf_data.csv", prob_hydro_cdf_data)
 
-        
+
 
         
         
