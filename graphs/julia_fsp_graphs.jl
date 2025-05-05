@@ -2019,7 +2019,7 @@ function input_distribution_histograms_to_d3(
 
    
 
-    histogram_d3_data = DataFrame(id=String[], subgraph=String[], count=Int[], label=String[])
+    histogram_d3_data = DataFrame(id=String[], subgraph=String[], count=Int[], bar_index=String[])
     # label mapping for all parameters
     # Added some additional labels to catch all possible mappings
     label_map = Dict(
@@ -2070,7 +2070,7 @@ function input_distribution_histograms_to_d3(
                     id=fid,
                     subgraph=label_map[pname],
                     count=Int(h.weights[i]),
-                    label=string(centers[i])
+                    bar_index=string(centers[i])
                 ))
             end
         end
@@ -2087,7 +2087,7 @@ function input_distribution_histograms_to_d3(
                             id=fid,
                             subgraph=label_map[pname],
                             count=Int(h.weights[i]),
-                            label=string(centers[i])
+                            bar_index=string(centers[i])
                         ))
                     end
                 else
@@ -2108,7 +2108,7 @@ function hydro_input_distribution_histograms_to_d3(
     nbins::Int=25
 )
 
-    histogram_d3_data = DataFrame(subgraph=String[], count=Int[], label=String[])
+    histogram_d3_data = DataFrame(subgraph=String[], count=Int[], bar_index=String[])
 
     # label mapping for all hydrology parameters
     label_map = Dict(
@@ -2132,7 +2132,7 @@ function hydro_input_distribution_histograms_to_d3(
                     push!(histogram_d3_data, (
                         subgraph=label_map[pname],
                         count=Int(h.weights[i]),
-                        label=string(centers[i])
+                        bar_index=string(centers[i])
                     ))
                 end
             else
