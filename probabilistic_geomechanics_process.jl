@@ -469,7 +469,7 @@ function main()
     )
     # save it as a CSV 'histogram_sample_data.csv'
     # TO DO: uncomment those in production and configrue the graph in the portal
-    CSV.write("histogram_sample_data.csv", combined_hist_df)
+    #CSV.write("histogram_sample_data.csv", combined_hist_df)
     save_dataframe_as_parameter!(helper, 3, "prob_geomechanics_histogram_data", combined_hist_df)
 
 
