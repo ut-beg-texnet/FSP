@@ -1068,6 +1068,10 @@ function main()
 
     if typeof(fault_inputs_df.FaultID[1]) == String7
         fault_inputs_df.FaultID = String.(fault_inputs_df.FaultID)
+    elseif typeof(fault_inputs_df.FaultID[1]) == InlineStrings.String1
+        fault_inputs_df.FaultID = String.(fault_inputs_df.FaultID)
+    elseif typeof(fault_inputs_df.FaultID[1]) == InlineStrings.String15
+        fault_inputs_df.FaultID = String.(fault_inputs_df.FaultID)
     end
 
 
