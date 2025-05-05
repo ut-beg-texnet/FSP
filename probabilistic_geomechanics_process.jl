@@ -707,13 +707,7 @@ function main()
     non_nan_count = count(!isnan, combined_tornado_df.det_slip_pressure)
     #println("Added $(non_nan_count) non-NaN deterministic slip pressure values out of $(nrow(combined_tornado_df)) rows")
     
-    # Look at some sample matches
-    if nrow(combined_tornado_df) > 0
-        for i in 1:min(10, nrow(combined_tornado_df))
-            row = combined_tornado_df[i, :]
-            println("Row $i: id=$(row.id), det_slip_pressure=$(row.det_slip_pressure)")
-        end
-    end
+    
     
     # If no matches were found (or very few), try a different approach
     if non_nan_count < nrow(combined_tornado_df) / 8 # Less than 1/8th of rows have matches

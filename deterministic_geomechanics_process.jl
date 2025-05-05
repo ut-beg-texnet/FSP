@@ -678,6 +678,10 @@ function main()
     # we need to convert it to a vector of type Vector{String}
     if typeof(fault_ids[1]) == String7
         fault_ids = String.(fault_ids)
+    elseif typeof(fault_ids[1]) == InlineStrings.String1
+        fault_ids = String.(fault_ids)
+    elseif typeof(fault_ids[1]) == InlineStrings.String15
+        fault_ids = String.(fault_ids)
     end
 
     # extract strikes from each fault and store in a vector
