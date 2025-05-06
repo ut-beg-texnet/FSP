@@ -2024,8 +2024,8 @@ function input_distribution_histograms_to_d3(
     # Added some additional labels to catch all possible mappings
     label_map = Dict(
         # Lowercase keys 
-        "strike" => "Strike",
-        "dip" => "Dip",
+        "strike" => "Strike (Degrees)",
+        "dip" => "Dip (Degrees)",
         "slip_pressure" => "Pore Pressure to Slip (PSI)",
         "vertical_stress_gradient_uncertainty" => "Sv (PSI/ft)",
         "initial_pore_pressure_gradient_uncertainty" => "Initial PP Grad (PSI/ft)",
@@ -2035,8 +2035,8 @@ function input_distribution_histograms_to_d3(
         "aphi_value_uncertainty" => "A-Phi Param",
         
         # Capitalized keys 
-        "Strike" => "Strike",
-        "Dip" => "Dip",
+        "Strike" => "Strike (Degrees)",
+        "Dip" => "Dip (Degrees)",
         "FrictionCoefficient" => "Friction Coefficient",
         "SlipPressure" => "Pore Pressure to Slip (PSI)",
         
