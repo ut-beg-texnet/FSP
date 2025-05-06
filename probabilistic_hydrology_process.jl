@@ -1021,8 +1021,8 @@ function main()
         
         # Save histogram data
         # TO DO: uncomment those in production and configrue the graph in the portal
-        CSV.write("hydro_histogram_sample_data.csv", histogram_d3_data)
-        #save_dataframe_as_parameter!(helper, 5, "prob_hydrology_histogram_data", histogram_d3_data)
+        #CSV.write("hydro_histogram_sample_data.csv", histogram_d3_data)
+        save_dataframe_as_parameter!(helper, 5, "prob_hydrology_histogram_data", histogram_d3_data)
         
         # Generate probabilistic hydrology CDF data
         prob_hydro_cdf_data = prob_hydrology_cdf(prob_hydro_results)
