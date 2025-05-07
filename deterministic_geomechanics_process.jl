@@ -399,13 +399,20 @@ end #ComputeStressTensor_CS_Reverse_Faults
 Process each fault and calculate geomechanical parameters
 """
 
-function process_faults(fault_data::Vector, stress_state::GeomechanicsModel.StressState, initial_pressure::Float64, friction_coefficient::Float64; tab::String = "det_geo", dp::Vector = Vector{Float64}())
+function process_faults(fault_data::Vector, stress_state::GeomechanicsModel.StressState, initial_pressure::Float64, friction_coefficient::Float64; tab::String = "det_geo", 
+    dp::Vector = Vector{Float64}(),
+    n_iterations::Union{Int, Nothing} = nothing)
     
     # if we run it as a Monte Carlo simulation, we need to store the results in a different way  
     if tab == "prob_geo"
         # for each fault, we have a vector of results (default: 1000 for each fault)
         num_faults = length(fault_data)
-        num_iterations = 1000
+        if n_iterations === nothing
+            num_iterations = 1000
+        else
+            num_iterations = n_iterations
+        end
+        println("Prob geomechanics: running with $(num_iterations) iterations for each fault")
         results = Vector{Vector{Dict{String, Any}}}(undef, num_faults)
         for i in 1:num_faults
             results[i] = Vector{Dict{String, Any}}(undef, num_iterations)
@@ -603,8 +610,8 @@ function main()
 
 
 
-    # get friction coefficient from the first fault and apply it to all faults
-    #println("Extracting fault data from the CSV at the scratch path...")
+    
+    
     faults_csv_filepath = get_dataset_file_path(helper, 2, "faults_model_inputs_output")
     if faults_csv_filepath !== nothing
         faults_inputs = CSV.read(faults_csv_filepath, DataFrame)
@@ -628,7 +635,7 @@ function main()
     # convert faults df to a vector so we can use it in the process_faults function
     fault_data = collect(eachrow(faults_inputs))
     
-    # Process each fault
+    
     results = process_faults(fault_data, stress_state, initial_pressure, stress_inputs["friction_coefficient"])
 
     

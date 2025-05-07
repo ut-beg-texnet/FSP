@@ -118,7 +118,7 @@ end
 
 # PORTAL VERSION (accepts df for faults instead of vector)
 function calculate_absolute_stresses(stress_data::Dict, friction_coefficient::Real, stress_model_type::String)
-    # Extract common parameters
+    # common stressparameters
     reference_depth = stress_data["reference_depth"]
     vertical_gradient = stress_data["vertical_stress"]
     pore_pressure_gradient = stress_data["pore_pressure"]

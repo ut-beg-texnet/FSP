@@ -820,6 +820,10 @@ function date_to_js_timestamp(date::Date)::BigInt
     return Dates.datetime2unix(DateTime(date)) * 1000 # seconds to milliseconds
 end
 
+function next_month_date(date::Date)::Date
+    return date + Dates.Month(1)
+end
+
 
 
 
@@ -877,7 +881,7 @@ function injection_rate_data_to_d3(well_df::DataFrame, injection_data_type::Stri
                                 continue
                             end
 
-                            # Calculate days in the month for conversion
+                            # get the number of days in the month
                             days_in_month = Dates.daysinmonth(start_date)
                             
                             # Convert daily rate to monthly rate
@@ -885,6 +889,9 @@ function injection_rate_data_to_d3(well_df::DataFrame, injection_data_type::Stri
                             
                             # Get end date of the month
                             end_date = Dates.lastdayofmonth(start_date)
+                            
+
+                            
 
                             # Create date string (month/day/year) - use start date for representation
                             date_string = Dates.format(start_date, "m/d/Y")
@@ -892,6 +899,8 @@ function injection_rate_data_to_d3(well_df::DataFrame, injection_data_type::Stri
                             # convert start and end dates to unix timestamps
                             start_timestamp = date_to_js_timestamp(start_date)
                             end_timestamp = date_to_js_timestamp(end_date)
+
+                            
                             
                             # Add start-of-month data point
                             push!(wells_reformatted, (
@@ -953,7 +962,10 @@ function injection_rate_data_to_d3(well_df::DataFrame, injection_data_type::Stri
                     month = row["Month"]
                     year = row["Year"]
                     start_date = Date(year, month, 1)
-                    end_date = Dates.lastdayofmonth(start_date)
+                    #end_date = Dates.lastdayofmonth(start_date)
+                    end_date = next_month_date(start_date)
+
+                    println("start_date: $start_date, end_date: $end_date")
                     
                     # Format date as "month/day/year" - use start date for representation
                     date_formatted = Dates.format(start_date, "m/d/Y")
@@ -961,6 +973,8 @@ function injection_rate_data_to_d3(well_df::DataFrame, injection_data_type::Stri
                     # convert start and end dates to unix timestamps
                     start_timestamp = date_to_js_timestamp(start_date)
                     end_timestamp = date_to_js_timestamp(end_date)
+
+                    println("start_timestamp: $start_timestamp, end_timestamp: $end_timestamp")
 
                     # Add start-of-month data point
                     push!(wells_reformatted, (
@@ -2024,8 +2038,8 @@ function input_distribution_histograms_to_d3(
     # Added some additional labels to catch all possible mappings
     label_map = Dict(
         # Lowercase keys 
-        "strike" => "Strike",
-        "dip" => "Dip",
+        "strike" => "Strike (Degrees)",
+        "dip" => "Dip (Degrees)",
         "slip_pressure" => "Pore Pressure to Slip (PSI)",
         "vertical_stress_gradient_uncertainty" => "Sv (PSI/ft)",
         "initial_pore_pressure_gradient_uncertainty" => "Initial PP Grad (PSI/ft)",
@@ -2035,8 +2049,8 @@ function input_distribution_histograms_to_d3(
         "aphi_value_uncertainty" => "A-Phi Param",
         
         # Capitalized keys 
-        "Strike" => "Strike",
-        "Dip" => "Dip",
+        "Strike" => "Strike (Degrees)",
+        "Dip" => "Dip (Degrees)",
         "FrictionCoefficient" => "Friction Coefficient",
         "SlipPressure" => "Pore Pressure to Slip (PSI)",
         
