@@ -4,6 +4,7 @@ using DataFrames
 using Shapefile
 using Geodesy 
 using PrettyTables
+using InlineStrings
 
 
 include("TexNetWebToolLauncherHelperJulia.jl")
@@ -78,7 +79,10 @@ function main()
     # get file path for faults dataset using the helper
     faults_csv_filepath = get_dataset_file_path(helper, 1, "faults")
     if faults_csv_filepath !== nothing
-        faults_df = CSV.read(faults_csv_filepath, DataFrame)
+        faults_df = CSV.read(faults_csv_filepath, DataFrame, types=Dict("FaultID" => String))
+
+        # check the type of the FaultID column
+        println("DEBUG: FaultID column type = $(typeof(faults_df[!, "FaultID"]))")
 
         #get all the unique faults from the FaultID column
         unique_faults_num = unique(faults_df[!, "FaultID"])

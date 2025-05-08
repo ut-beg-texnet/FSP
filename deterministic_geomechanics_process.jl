@@ -566,7 +566,7 @@ function main()
         "friction_coefficient" => get_parameter_value(helper, 2, "friction_coefficient")
     )
 
-
+    
    
 
     # if both aphi_value and max_horizontal_stress are not nothing, then we need to throw an error
@@ -575,6 +575,16 @@ function main()
         throw(ErrorException("Error: Aphi value and Max Horizontal Stress Gradient cannot both be provided"))
     end
 
+    # for all stress inputs, if they are not nothing, check if they are a float, if not, make them a float
+    for key in keys(stress_inputs)
+        if stress_inputs[key] !== nothing && stress_inputs[key] isa Number
+            if typeof(stress_inputs[key]) != Float64
+                stress_inputs[key] = Float64(stress_inputs[key])
+            end
+        end
+    end
+
+    
 
     
 
@@ -686,6 +696,8 @@ function main()
     if typeof(fault_ids[1]) == String7
         fault_ids = String.(fault_ids)
     elseif typeof(fault_ids[1]) == InlineStrings.String1
+        fault_ids = String.(fault_ids)
+    elseif typeof(fault_ids[1]) == InlineStrings.String3
         fault_ids = String.(fault_ids)
     elseif typeof(fault_ids[1]) == InlineStrings.String15
         fault_ids = String.(fault_ids)
