@@ -4,6 +4,7 @@ using DataFrames
 using Shapefile
 using Geodesy 
 using PrettyTables
+using InlineStrings
 
 
 include("TexNetWebToolLauncherHelperJulia.jl")
@@ -78,7 +79,8 @@ function main()
     # get file path for faults dataset using the helper
     faults_csv_filepath = get_dataset_file_path(helper, 1, "faults")
     if faults_csv_filepath !== nothing
-        faults_df = CSV.read(faults_csv_filepath, DataFrame)
+        faults_df = CSV.read(faults_csv_filepath, DataFrame, types=Dict("FaultID" => String))
+
 
         #get all the unique faults from the FaultID column
         unique_faults_num = unique(faults_df[!, "FaultID"])
@@ -135,7 +137,8 @@ function main()
         if injection_data_type == "injection_tool_data"
             injection_wells_df = CSV.read(injection_wells_csv_filepath, DataFrame; types=Dict("API Number" => String))
         else
-            injection_wells_df = CSV.read(injection_wells_csv_filepath, DataFrame)
+            injection_wells_df = CSV.read(injection_wells_csv_filepath, DataFrame, types=Dict("WellID" => String), pool=false)
+            println("well id type: $(typeof(injection_wells_df[!, "WellID"]))")
         end
 
         

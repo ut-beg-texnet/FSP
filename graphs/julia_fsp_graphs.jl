@@ -965,7 +965,7 @@ function injection_rate_data_to_d3(well_df::DataFrame, injection_data_type::Stri
                     #end_date = Dates.lastdayofmonth(start_date)
                     end_date = next_month_date(start_date)
 
-                    println("start_date: $start_date, end_date: $end_date")
+                    #println("start_date: $start_date, end_date: $end_date")
                     
                     # Format date as "month/day/year" - use start date for representation
                     date_formatted = Dates.format(start_date, "m/d/Y")
@@ -974,7 +974,7 @@ function injection_rate_data_to_d3(well_df::DataFrame, injection_data_type::Stri
                     start_timestamp = date_to_js_timestamp(start_date)
                     end_timestamp = date_to_js_timestamp(end_date)
 
-                    println("start_timestamp: $start_timestamp, end_timestamp: $end_timestamp")
+                    #println("start_timestamp: $start_timestamp, end_timestamp: $end_timestamp")
 
                     # Add start-of-month data point
                     push!(wells_reformatted, (
@@ -982,7 +982,7 @@ function injection_rate_data_to_d3(well_df::DataFrame, injection_data_type::Stri
                         injection_rate,
                         month,
                         year,
-                        date_formatted, # Representational date string
+                        date_formatted, 
                         start_timestamp
                     ))
                     # Add end-of-month data point with the same rate
@@ -991,7 +991,7 @@ function injection_rate_data_to_d3(well_df::DataFrame, injection_data_type::Stri
                         injection_rate,
                         month,
                         year,
-                        date_formatted, # Representational date string
+                        date_formatted, 
                         end_timestamp
                     ))
                 catch e
