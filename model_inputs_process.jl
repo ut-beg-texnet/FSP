@@ -81,8 +81,6 @@ function main()
     if faults_csv_filepath !== nothing
         faults_df = CSV.read(faults_csv_filepath, DataFrame, types=Dict("FaultID" => String))
 
-        # check the type of the FaultID column
-        println("DEBUG: FaultID column type = $(typeof(faults_df[!, "FaultID"]))")
 
         #get all the unique faults from the FaultID column
         unique_faults_num = unique(faults_df[!, "FaultID"])
@@ -139,7 +137,8 @@ function main()
         if injection_data_type == "injection_tool_data"
             injection_wells_df = CSV.read(injection_wells_csv_filepath, DataFrame; types=Dict("API Number" => String))
         else
-            injection_wells_df = CSV.read(injection_wells_csv_filepath, DataFrame)
+            injection_wells_df = CSV.read(injection_wells_csv_filepath, DataFrame, types=Dict("WellID" => String), pool=false)
+            println("well id type: $(typeof(injection_wells_df[!, "WellID"]))")
         end
 
         
