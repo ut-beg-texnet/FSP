@@ -928,9 +928,21 @@ function main()
     injection_wells_csv_filepath, injection_data_type = get_injection_dataset_path_summary_step(helper, 6)
     if injection_wells_csv_filepath === nothing
         error("No injection wells dataset provided.")
+    elseif "WellID" in names(CSV.read(injection_wells_csv_filepath, DataFrame))
+        # check if we have a 'WellID' column
+        injection_wells_df = CSV.read(injection_wells_csv_filepath, DataFrame, types=Dict("WellID" => String), pool=false)
+    elseif "API Number" in names(CSV.read(injection_wells_csv_filepath, DataFrame))
+        # check if we have a 'API Number' column
+        injection_wells_df = CSV.read(injection_wells_csv_filepath, DataFrame, types=Dict("API Number" => String), pool=false)
+    elseif "APINumber" in names(CSV.read(injection_wells_csv_filepath, DataFrame))
+        # check if we have a 'APINumber' column
+        injection_wells_df = CSV.read(injection_wells_csv_filepath, DataFrame, types=Dict("APINumber" => String), pool=false)
     else
-                injection_wells_df = CSV.read(injection_wells_csv_filepath, DataFrame)
+        error("No valid well ID column found in the injection wells dataset.")
     end
+
+    # check the type of the WellID column
+    #println("DEBUG: WellID column type = $(typeof(injection_wells_df[!, "WellID"]))")
 
     # Get the model that was run from the previous step
     model_run = get_parameter_value(helper, 6, "model_run_summary")
@@ -940,25 +952,32 @@ function main()
         println("Model run type not specified, defaulting to probabilistic")
     end
     
-    println("Using model type: $model_run")
+    #println("Using model type: $model_run")
 
     # 3) Read fault data
     fault_data_path = get_dataset_file_path(helper, 6, "faults")
     if fault_data_path === nothing
         error("Required fault dataset not found or accessible.")
     end
-    fault_df = CSV.read(fault_data_path, DataFrame)
+    fault_df = CSV.read(fault_data_path, DataFrame, types=Dict("FaultID" => String), pool=false)
+
+    # check the type of the FaultID column
+    #println("DEBUG: FaultID column type = $(typeof(fault_df[!, "FaultID"]))")
+
+   
     
+    
+
 
     # 4) Read probabilistic geomechanics results
     prob_geo_cdf_path = get_dataset_file_path(helper, 6, "prob_geomechanics_cdf_graph_data_summary")
     if prob_geo_cdf_path === nothing
         error("Probabilistic geomechanics CDF data not found.")
     end
-    prob_geo_cdf = CSV.read(prob_geo_cdf_path, DataFrame)
+    prob_geo_cdf = CSV.read(prob_geo_cdf_path, DataFrame, types=Dict("ID" => String), pool=false)
     println("Loaded probabilistic geomechanics data (first 10 rows) out of $(nrow(prob_geo_cdf)) rows:")
     
-    pretty_table(prob_geo_cdf[1:10, :])
+    #pretty_table(prob_geo_cdf[1:10, :])
 
     # 5) Get hydrology parameters
     aquifer_thickness = get_parameter_value(helper, 4, "aquifer_thickness_ft")
@@ -975,7 +994,7 @@ function main()
         end
     end
 
-    println("aquifer_thickness: $aquifer_thickness")
+    
     
     # Get uncertainty parameters
     aquifer_thickness_uncertainty = get_parameter_value(helper, 5, "aquifer_thickness_uncertainty")
@@ -1027,10 +1046,11 @@ function main()
     inj_start_date, inj_end_date = Utilities.get_date_bounds(injection_wells_df)
     start_year = year(inj_start_date)
     end_year = year(inj_end_date)
+    
     years_to_analyze = start_year:end_year
     
-    println("Injection period (for all wells): $inj_start_date to $inj_end_date")
-    println("Years to analyze: $years_to_analyze")
+    #println("Injection period (for all wells): $inj_start_date to $inj_end_date")
+    #println("Years to analyze: $years_to_analyze")
 
     # Depending on model_run, either run deterministic or probabilistic hydrology
     if model_run == 0

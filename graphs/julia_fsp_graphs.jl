@@ -888,7 +888,8 @@ function injection_rate_data_to_d3(well_df::DataFrame, injection_data_type::Stri
                             injection_rate_monthly = injection_rate_daily * days_in_month
                             
                             # Get end date of the month
-                            end_date = Dates.lastdayofmonth(start_date)
+                            #end_date = Dates.lastdayofmonth(start_date)
+                            end_date = next_month_date(start_date)
                             
 
                             
@@ -1061,7 +1062,8 @@ function injection_rate_data_to_d3(well_df::DataFrame, injection_data_type::Stri
                         month_val = row.Month
                         monthly_rate = row.MonthlyInjectionRate
                         start_date_obj = Date(year_val, month_val, 1)
-                        end_date_obj = Dates.lastdayofmonth(start_date_obj)
+                        #end_date_obj = Dates.lastdayofmonth(start_date_obj)
+                        end_date_obj = next_month_date(start_date_obj)
                         
                         date_formatted = Dates.format(start_date_obj, "m/d/Y") # Use start date for representation
                         
@@ -2022,7 +2024,7 @@ param_values: Dictionary mapping fault index to dictionary of parameter name => 
 ex. fault1 => Dict("strike" => [10, 20, 30...], "dip" => [30, 40, 50...])
 nbins: number of histogram bins (we will keep 25)
 """
-# TO DO: also pass the stress parameters
+
 # strike, dip, and slip pressure are the only ones that are different for each fault
 function input_distribution_histograms_to_d3(
     fault_param_values::Dict{String, Dict{String, Vector{Float64}}},
