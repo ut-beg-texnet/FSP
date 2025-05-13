@@ -1075,7 +1075,7 @@ function main()
     start_year = year(inj_start_date)
     end_year = (year(inj_end_date) + 1) #since we evaluate up to the end of the last year, we need to add 1 to include the last year
     # we are also adding 2 extra years to the end of the analysis to account for the future and show the diffusion of the pressure
-    end_year = end_year + 6
+    end_year = end_year + 2
     
     years_to_analyze = start_year:end_year
     
