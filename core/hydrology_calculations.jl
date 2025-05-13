@@ -296,7 +296,8 @@ function pfieldcalc_all_rates(
     bpds::Vector{Float64}, 
     xwell_km::Union{Float64, Integer}, 
     ywell_km::Union{Float64, Integer}, 
-    coordinate_type::String="latlon"
+    coordinate_type::String="latlon",
+    evaluation_days_from_start::Union{Float64, Nothing}=nothing
     )
     
     # IMPORTANT: Due to the flipped meshgrid call in create_spatial_grid_latlon:
@@ -321,7 +322,7 @@ function pfieldcalc_all_rates(
     # 4) call pressureScenario for this well
     S, T, rho = STRho
     
-    pfrontResult_flat = pressureScenario_Rall(bpds, days, R_meters_flattened, STRho)
+    pfrontResult_flat = pressureScenario_Rall(bpds, days, R_meters_flattened, STRho, evaluation_days_from_start)
     
     # Ensure no negative pressure values exist
     pfrontResult_flat = max.(0.0, pfrontResult_flat)
@@ -405,7 +406,8 @@ function pfieldcalc_all_rates(
     days::Vector{Float64}, 
     bpds::Vector{Float64}, 
     xwell_deg::Union{Float64, Integer}, 
-    ywell_deg::Union{Float64, Integer}
+    ywell_deg::Union{Float64, Integer},
+    evaluation_days_from_start::Union{Float64, Nothing}=nothing
     )
 
     #println("fault coordinates: longitude = $x_fault_deg, latitude = $y_fault_deg")
@@ -425,7 +427,7 @@ function pfieldcalc_all_rates(
     
     # Convert R_meters to a vector since pressureScenario_Rall expects a vector
     R_meters_vec = [R_meters]
-    pfrontResult = pressureScenario_Rall(bpds, days, R_meters_vec, STRho)
+    pfrontResult = pressureScenario_Rall(bpds, days, R_meters_vec, STRho, evaluation_days_from_start)
     
     # Ensure no negative pressure values
     pfrontResult = max.(0.0, pfrontResult)

@@ -140,6 +140,10 @@ function run_mc_hydrology_time_series(
 
     println("Injection rate time window for all wells: inj_start_date = $inj_start_date, inj_end_date = $inj_end_date")
     
+    # Find the max end date of all injections
+    max_injection_year = year(inj_end_date)
+    println("Maximum injection end date: $inj_end_date (year $max_injection_year)")
+    
     # Container for results
     # Structure: year -> iteration -> fault -> pressure
     results = Dict{Int, Dict{Int, Dict{String, Float64}}}()
@@ -299,6 +303,15 @@ function run_mc_hydrology_time_series(
                         continue
                     end
                     
+                    # Calculate days from injection start to analysis date
+                    evaluation_days_from_start = Float64((cutoff_date - inj_start_date).value + 1)
+                    
+                    # For years after injection has stopped, evaluation date should use the current year
+                    # to properly model pressure diffusion over time
+                    if analysis_year > max_injection_year && i == 1
+                        println("Calculating pressure diffusion for year $analysis_year (after injection end)")
+                    end
+                    
                     # Calculate pressure contribution from this well
                     pressure_contribution = HydroCalculations.pfieldcalc_all_rates(
                         fault_lon, #fault longitude
@@ -307,7 +320,8 @@ function run_mc_hydrology_time_series(
                         days, #days of injection
                         rates, #rates of injection
                         well_lon, #well longitude
-                        well_lat #well latitude
+                        well_lat, #well latitude
+                        evaluation_days_from_start #days from injection start to evaluation date
                     )
 
                     
@@ -754,6 +768,10 @@ function run_deterministic_hydrology_time_series(
         years_to_analyze = year(inj_start_date):year_of_interest
     end
     
+    # Find the max end date of all injections - we'll set the evaluation date to this for pressure diffusion
+    max_injection_year = year(inj_end_date)
+    println("Maximum injection end date: $inj_end_date (year $max_injection_year)")
+    
     # Process each year
     for analysis_year in years_to_analyze
         # Set up year cutoff date (Dec 31 of the analysis year)
@@ -865,6 +883,15 @@ function run_deterministic_hydrology_time_series(
                     continue
                 end
                 
+                # Calculate days from injection start to analysis date
+                evaluation_days_from_start = Float64((cutoff_date - inj_start_date).value + 1)
+                
+                # For years after injection has stopped, evaluation date should use the current year
+                # to properly model pressure diffusion over time
+                if analysis_year > max_injection_year
+                    println("Calculating pressure diffusion for year $analysis_year (after injection end)")
+                end
+                
                 # Calculate pressure contribution from this well
                 pressure_contribution = HydroCalculations.pfieldcalc_all_rates(
                     fault_lon, #fault longitude
@@ -873,7 +900,8 @@ function run_deterministic_hydrology_time_series(
                     days, #days of injection
                     rates, #rates of injection
                     well_lon, #well longitude
-                    well_lat #well latitude
+                    well_lat, #well latitude
+                    evaluation_days_from_start #days from injection start to evaluation date
                 )
                 
                 # Add to total pressure for this fault
@@ -1045,7 +1073,9 @@ function main()
     # 6) Get injection date bounds and determine years to analyze
     inj_start_date, inj_end_date = Utilities.get_date_bounds(injection_wells_df)
     start_year = year(inj_start_date)
-    end_year = year(inj_end_date)
+    end_year = (year(inj_end_date) + 1) #since we evaluate up to the end of the last year, we need to add 1 to include the last year
+    # we are also adding 2 extra years to the end of the analysis to account for the future and show the diffusion of the pressure
+    end_year = end_year + 6
     
     years_to_analyze = start_year:end_year
     

@@ -84,14 +84,16 @@ Inputs:
 - STRho = (S, T, rho): storativity [dimensionless], 
                      transmissivity [m²/s], 
                      fluid density [kg/m³]
+- evaluation_days_from_start: Optional parameter to specify evaluation time in days from start
+                              If not provided, defaults to maximum(days)
 
 Output:
 - A Vector or Matrix of pressure change in PSI 
   (same shape as r_meters if it was 2D).
 
 Logic:
-1) Convert final time = maximum(days) to seconds,
-   i.e., t_final_sec = max(days) * 86400.
+1) Convert final time = evaluation_days_from_start to seconds,
+   or if not provided, use maximum(days) * 86400.
 2) Step superposition:
    For i in 2..N:
      - dt = (t_final_sec - days[i-1]*86400)
@@ -106,7 +108,8 @@ function pressureScenario_Rall(
     bpds::Vector{Float64},
     days::Vector{Float64},
     r_meters::AbstractVector{Float64},
-    STRho::Tuple{Float64, Float64, Float64}
+    STRho::Tuple{Float64, Float64, Float64},
+    evaluation_days_from_start::Union{Float64, Nothing} = nothing
 ) :: Array{Float64}
 
     # 0) If there's no data, return zeros
@@ -127,7 +130,10 @@ function pressureScenario_Rall(
     end
 
     # 1) Convert final time: t_final_sec
-    t_final_sec = maximum(days) * 86400.0
+    # Either use the provided evaluation time or the maximum injection time
+    t_final_sec = isnothing(evaluation_days_from_start) ? 
+                  maximum(days) * 86400.0 : 
+                  evaluation_days_from_start * 86400.0
 
     # 2) Convert rates to m³/s
     Q_m3s = bpds .* 1.84013e-6
@@ -172,7 +178,7 @@ function pressureScenario_Rall(
 
         well_func = expint.(u)
 
-        # Add this step’s contribution: well_func * dQ
+        # Add this step's contribution: well_func * dQ
         tstep_sum .+= well_func .* dQ
     end
 

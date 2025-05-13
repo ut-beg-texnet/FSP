@@ -2,7 +2,7 @@ module JuliaFSPGraphs
 
 export plot_pressure_distance_graph, plot_pressure_grid_heatmap, plot_mohr_diagram_geo, plot_mohr_diagram_hydro, plot_injection_rate_line_chart, plot_fault_surface_map,
 plot_cdf_det_hydro, plot_prob_hydro_combined_cdf, fault_surface_map_data_to_d3, mohr_diagram_data_to_d3_portal, injection_rate_data_to_d3, prob_geomechanics_cdf, fault_sensitivity_tornado_chart_to_d3,
-uncertainty_variability_inputs_to_d3, prob_hydrology_cdf, input_distribution_histograms_to_d3, mohr_diagram_hydro_data_to_d3_portal, hydro_input_distribution_histograms_to_d3
+uncertainty_variability_inputs_to_d3, prob_hydrology_cdf, input_distribution_histograms_to_d3, mohr_diagram_hydro_data_to_d3_portal, hydro_input_distribution_histograms_to_d3, injection_rate_data_to_d3_bbl_day
 
 #using Plots
 #using JSON
@@ -1109,39 +1109,532 @@ function injection_rate_data_to_d3(well_df::DataFrame, injection_data_type::Stri
     end
 end
 
-        
 
+# function that accepts a dataframe of injection data and returns a dataframe of injection data with the following columns for d3 visualization:
+# WellID, InjectionRate(bbl/day), Year, Month, Date, Timestamp
+# it should return the inejction rate in bbl/day, sampled monthly
+function injection_rate_data_to_d3_bbl_day(well_df::DataFrame, injection_data_type::String)
 
+    # possible types: 'annual_fsp', 'monthly_fsp', 'injection_tool_data'
 
+    # Helper function to normalize column names
+    normalize_colname(col) = strip(lowercase(string(col)))
+    
+    # get the columns names of the df
+    colnames = lowercase.(strip.(names(well_df)))
 
+    try
+        if injection_data_type == "annual_fsp"
+            # well data for each row
+            wells_reformatted = DataFrame(
+                "WellID" => String[],
+                "InjectionRate(bbl/day)" => Float64[],
+                "Year" => Int[],
+                "Month" => Int[],
+                "Date" => String[],
+                "Timestamp" => Float64[]
+            )
 
+            for (i, row) in enumerate(eachrow(well_df))
+                try
+                    well_id = string(row["WellID"])
+                    injection_rate_daily = row["InjectionRate(bbl/day)"]
+                    start_year = row["StartYear"]
+                    end_year = row["EndYear"]
+                    
+                    # Calculate the dates for the start and end of the injection period
+                    start_date = Date(start_year, 1, 1)
+                    end_date = Date(end_year, 12, 31)
+                    
+                    # Add a data point just before the start date with 0 rate (for step visualization)
+                    one_day_before = start_date - Dates.Day(1)
+                    date_string_before = Dates.format(one_day_before, "m/d/Y")
+                    timestamp_before = date_to_js_timestamp(one_day_before)
+                    
+                    push!(wells_reformatted, (
+                        String(well_id),
+                        0.0,  # Zero injection rate
+                        Dates.year(one_day_before),
+                        Dates.month(one_day_before),
+                        date_string_before,
+                        timestamp_before
+                    ))
+                    
+                    # For each year in the range
+                    for year in start_year:end_year
+                        # For each month in the year
+                        for month in 1:12
+                            # Define the date for the start of the month
+                            month_start_date = Date(year, month, 1)
 
+                            # Skip months before start date if it's the first year
+                            # or after end date if it's the last year
+                            if year < start_year || year > end_year
+                                continue
+                            end
 
-#=
-function plot_cdf_det_hydro(prob_geo_values, det_hydro_values)
-    plot()
-    for (fault_id, fault_data) in prob_geo_values
-        pressures = sort(fault_data["pressures"])
-        probabilities = range(0, stop=1, length=length(pressures))
+                            # Get end date of the month
+                            month_end_date = next_month_date(month_start_date)
+                            
+                            # Create date string (month/day/year) - use start date for representation
+                            date_string = Dates.format(month_start_date, "m/d/Y")
 
-        # CDF of prob geomechanics
-        plot!(pressures, probabilities, label="Fault $fault_id", linestyle=:dash, lw=2)
+                            # convert start and end dates to unix timestamps (D3 needs those to format the date correctly on the x-axis)
+                            start_timestamp = date_to_js_timestamp(month_start_date)
+                            end_timestamp = date_to_js_timestamp(month_end_date)
+                            
+                            # For annual_fsp, we already have the daily rate
+                            # Add start-of-month data point
+                            push!(wells_reformatted, (
+                                String(well_id),
+                                injection_rate_daily,
+                                year,
+                                month,
+                                date_string,
+                                start_timestamp
+                            ))
+                            # Add end-of-month data point with the same rate
+                            push!(wells_reformatted, (
+                                String(well_id),
+                                injection_rate_daily,
+                                year,
+                                month,
+                                date_string,
+                                end_timestamp
+                            ))
+                        end
+                    end
+                    
+                    # Add a data point just after the end date with 0 rate (for step visualization)
+                    one_day_after = Date(end_year, 12, 31) + Dates.Day(1)
+                    date_string_after = Dates.format(one_day_after, "m/d/Y")
+                    timestamp_after = date_to_js_timestamp(one_day_after)
+                    
+                    push!(wells_reformatted, (
+                        String(well_id),
+                        0.0,  # Zero injection rate
+                        Dates.year(one_day_after),
+                        Dates.month(one_day_after),
+                        date_string_after,
+                        timestamp_after
+                    ))
+                    
+                    #println("Processed well: $well_id with daily rate $injection_rate_daily for $start_year-$end_year")
+                    
+                catch e
+                    error("Error processing well $i: $(sprint(showerror, e))")
+                end
+            end
+            
+            return wells_reformatted
 
-        # plot the vertical slicing lines (deterministic hydrology pressure values)
-        if haskey(det_hydro_values, fault_id)
-            pp_value = det_hydro_values[fault_id]
-            plot!([pp_value, pp_value], [0, 1], label="", color=:blue, lw=2)
+        # monthly injection rates (FSP format) - need to convert to daily
+        elseif injection_data_type == "monthly_fsp"
+            # well data for each row
+            wells_reformatted = DataFrame(
+                "WellID" => String[],
+                "InjectionRate(bbl/day)" => Float64[],
+                "Month" => Int[],
+                "Year" => Int[],
+                "Date" => String[],
+                "Timestamp" => Float64[]
+            )
+
+            # Get unique Well IDs
+            unique_well_ids = unique(string.(well_df.WellID))
+            
+            # Process each well separately
+            for well_id in unique_well_ids
+                # Filter data for this well
+                well_data = well_df[map(id -> string(id) == well_id, well_df.WellID), :]
+                
+                # Sort by year and month to ensure chronological order
+                sort!(well_data, [:Year, :Month])
+                
+                # Skip if no data
+                if isempty(well_data)
+                    continue
+                end
+                
+                # Collect all month/year combinations and rates
+                month_year_pairs = []
+                daily_rates = []
+                
+                for row in eachrow(well_data)
+                    month = row["Month"]
+                    year = row["Year"]
+                    
+                    # Calculate days in month for conversion
+                    month_start_date = Date(year, month, 1)
+                    days_in_month = Dates.daysinmonth(month_start_date)
+                    
+                    # Convert monthly rate to daily rate
+                    monthly_injection_rate = row["InjectionRate(bbl/month)"]
+                    daily_injection_rate = monthly_injection_rate / days_in_month
+                    
+                    push!(month_year_pairs, (month=month, year=year, date=month_start_date))
+                    push!(daily_rates, daily_injection_rate)
+                end
+                
+                # Process each month 
+                for i in 1:length(month_year_pairs)
+                    month_year = month_year_pairs[i]
+                    daily_rate = daily_rates[i]
+                    
+                    month_start_date = month_year.date
+                    month_end_date = next_month_date(month_start_date)
+                    
+                    date_string = Dates.format(month_start_date, "m/d/Y")
+                    
+                    start_timestamp = date_to_js_timestamp(month_start_date)
+                    end_timestamp = date_to_js_timestamp(month_end_date)
+                    
+                    # Check if this is the first month with non-zero injection
+                    if i == 1 && daily_rate > 0
+                        # Add a zero point at the exact same timestamp to create a vertical step
+                        push!(wells_reformatted, (
+                            well_id,
+                            0.0,  # Zero injection rate
+                            month_year.month,
+                            month_year.year,
+                            date_string,
+                            start_timestamp
+                        ))
+                    end
+                    
+                    # Check for transitions between months
+                    if i > 1
+                        prev_daily_rate = daily_rates[i-1]
+                        
+                        # If there's a change in injection rate, add points to create a step
+                        if prev_daily_rate != daily_rate
+                            # Add entry with previous rate at current timestamp (end of step)
+                            push!(wells_reformatted, (
+                                well_id,
+                                prev_daily_rate,
+                                month_year.month,
+                                month_year.year,
+                                date_string,
+                                start_timestamp
+                            ))
+                            
+                            # Add entry with new rate at same timestamp (start of new step)
+                            push!(wells_reformatted, (
+                                well_id,
+                                daily_rate,
+                                month_year.month,
+                                month_year.year,
+                                date_string,
+                                start_timestamp
+                            ))
+                        else
+                            # If no change in rate, just add the standard point
+                            push!(wells_reformatted, (
+                                well_id,
+                                daily_rate,
+                                month_year.month,
+                                month_year.year,
+                                date_string,
+                                start_timestamp
+                            ))
+                        end
+                    else
+                        # First month, add standard point (after zero point if needed)
+                        push!(wells_reformatted, (
+                            well_id,
+                            daily_rate,
+                            month_year.month,
+                            month_year.year,
+                            date_string,
+                            start_timestamp
+                        ))
+                    end
+                    
+                    # Always add end-of-month data point with the same rate
+                    push!(wells_reformatted, (
+                        well_id,
+                        daily_rate,
+                        month_year.month,
+                        month_year.year,
+                        date_string,
+                        end_timestamp
+                    ))
+                    
+                    # Check if this is the last month and has injection
+                    if i == length(month_year_pairs) && daily_rate > 0
+                        # Check if there's another dataset to continue
+                        if i < length(month_year_pairs)
+                            next_month_year = month_year_pairs[i+1]
+                            next_start_date = next_month_year.date
+                            
+                            # If there's a gap, add zero point
+                            if month_end_date != next_start_date
+                                date_string_end = Dates.format(month_end_date, "m/d/Y")
+                                
+                                # Add entry with current rate
+                                push!(wells_reformatted, (
+                                    well_id,
+                                    daily_rate,
+                                    Dates.month(month_end_date),
+                                    Dates.year(month_end_date),
+                                    date_string_end,
+                                    end_timestamp
+                                ))
+                                
+                                # Add entry with zero rate at same timestamp
+                                push!(wells_reformatted, (
+                                    well_id,
+                                    0.0,
+                                    Dates.month(month_end_date),
+                                    Dates.year(month_end_date),
+                                    date_string_end,
+                                    end_timestamp
+                                ))
+                            end
+                        else
+                            # Last month in dataset, add zero point
+                            date_string_end = Dates.format(month_end_date, "m/d/Y")
+                            
+                            # Add entry with current rate
+                            push!(wells_reformatted, (
+                                well_id,
+                                daily_rate,
+                                Dates.month(month_end_date),
+                                Dates.year(month_end_date),
+                                date_string_end,
+                                end_timestamp
+                            ))
+                            
+                            # Add entry with zero rate at same timestamp
+                            push!(wells_reformatted, (
+                                well_id,
+                                0.0,
+                                Dates.month(month_end_date),
+                                Dates.year(month_end_date),
+                                date_string_end,
+                                end_timestamp
+                            ))
+                        end
+                    end
+                end
+            end
+            
+            return wells_reformatted
+
+        elseif injection_data_type == "injection_tool_data"
+            # First, ensure "Date of Injection" is a Date object
+            if eltype(well_df[!, "Date of Injection"]) <: AbstractString
+                well_df[!, "Date of Injection"] = Date.(well_df[!, "Date of Injection"])
+            end
+
+            # Get unique API numbers
+            unique_api_numbers = unique(string.(well_df[!, "API Number"]))
+            #println("Unique API numbers: $unique_api_numbers")
+            
+            # well data for each row
+            wells_reformatted = DataFrame(
+                "WellID" => String[],
+                "InjectionRate(bbl/day)" => Float64[],
+                "Year" => Int[],
+                "Month" => Int[],
+                "Date" => String[],
+                "Timestamp" => Float64[]
+            )
+
+            # we process each well separately
+            for (i, well_id) in enumerate(unique_api_numbers)
+                
+                
+                try
+                    # Filter data for this well
+                    well_data = well_df[well_df[!, "API Number"] .== well_id, :]
+                    
+                    # Since 'Volume Injected (BBLs)' is already a daily value,
+                    # we'll organize by dates to create step changes in the timeline
+                    
+                    # Sort the data by date
+                    sort!(well_data, "Date of Injection")
+                    
+                    # Track the dates we've processed
+                    processed_months = Set{Tuple{Int, Int}}()
+                    
+                    # Create a temporary DataFrame to store the date ranges
+                    temp_df = DataFrame(
+                        "StartDate" => Date[],
+                        "EndDate" => Date[],
+                        "Year" => Int[],
+                        "Month" => Int[],
+                        "DailyRate" => Float64[]
+                    )
+                    
+                    # Group by month to get monthly average daily rate
+                    for row in eachrow(well_data)
+                        injection_date = row["Date of Injection"]
+                        daily_volume = row["Volume Injected (BBLs)"]
+                        year_val = Dates.year(injection_date)
+                        month_val = Dates.month(injection_date)
+                        
+                        # Check if we've already processed this month
+                        month_key = (year_val, month_val)
+                        if month_key ∉ processed_months
+                            # Calculate monthly average daily rate
+                            month_data = well_data[
+                                (year.(well_data[!, "Date of Injection"]) .== year_val) .&
+                                (month.(well_data[!, "Date of Injection"]) .== month_val), 
+                                :]
+                            
+                            # If there are multiple entries for the same day, 
+                            # we need to sum them but only count the day once
+                            unique_days = unique(day.(month_data[!, "Date of Injection"]))
+                            num_days_with_data = length(unique_days)
+                            total_volume = sum(month_data[!, "Volume Injected (BBLs)"])
+                            
+                            # Calculate average daily injection rate for this month
+                            start_date = Date(year_val, month_val, 1)
+                            days_in_month = Dates.daysinmonth(start_date)
+                            
+                            # Option 1: Divide by actual days with data (assumes other days had zero injection)
+                            # daily_rate = total_volume / num_days_with_data
+                            
+                            # Option 2: Divide by days in month (assumes zero injection for missing days)
+                            # This means the total volume for the month is spread across all days,
+                            # which effectively treats missing days as zero injection
+                            daily_rate = total_volume / days_in_month
+                            
+                            # Add to temp DataFrame
+                            push!(temp_df, (
+                                start_date,
+                                next_month_date(start_date),
+                                year_val,
+                                month_val,
+                                daily_rate
+                            ))
+                            
+                            # Mark this month as processed
+                            push!(processed_months, month_key)
+                        end
+                    end
+                    
+                    # Sort temp DataFrame by date
+                    sort!(temp_df, :StartDate)
+                    
+                    # Process each month with step transitions
+                    for i in 1:nrow(temp_df)
+                        row = temp_df[i, :]
+                        start_date = row.StartDate
+                        end_date = row.EndDate
+                        daily_rate = row.DailyRate
+                        year_val = row.Year
+                        month_val = row.Month
+                        
+                        date_formatted = Dates.format(start_date, "m/d/Y")
+                        start_timestamp = date_to_js_timestamp(start_date)
+                        end_timestamp = date_to_js_timestamp(end_date)
+                        
+                        # Skip if rate is zero (no injection)
+                        if daily_rate == 0
+                            continue
+                        end
+                        
+                        # First month or transition from zero
+                        if i == 1 || (i > 1 && temp_df[i-1, :DailyRate] == 0)
+                            # Add zero point at same timestamp to create vertical step
+                            push!(wells_reformatted, (
+                                String(well_id),
+                                0.0,
+                                month_val,
+                                year_val,
+                                date_formatted,
+                                start_timestamp
+                            ))
+                        end
+                        
+                        # Check for rate change between months
+                        if i > 1 && temp_df[i-1, :DailyRate] != daily_rate && temp_df[i-1, :DailyRate] > 0
+                            # Add previous rate at current timestamp
+                            push!(wells_reformatted, (
+                                String(well_id),
+                                temp_df[i-1, :DailyRate],
+                                month_val,
+                                year_val,
+                                date_formatted,
+                                start_timestamp
+                            ))
+                        end
+                        
+                        # Add current month start point
+                        push!(wells_reformatted, (
+                            String(well_id),
+                            daily_rate,
+                            month_val,
+                            year_val,
+                            date_formatted,
+                            start_timestamp
+                        ))
+                        
+                        # Add current month end point
+                        push!(wells_reformatted, (
+                            String(well_id),
+                            daily_rate,
+                            month_val,
+                            year_val,
+                            date_formatted,
+                            end_timestamp
+                        ))
+                        
+                        # Check if next month is 0 or end of data
+                        if i == nrow(temp_df) || (i < nrow(temp_df) && temp_df[i+1, :DailyRate] == 0)
+                            # Add zero point at same timestamp for step down
+                            end_date_formatted = Dates.format(end_date, "m/d/Y")
+                            push!(wells_reformatted, (
+                                String(well_id),
+                                0.0,
+                                Dates.month(end_date),
+                                Dates.year(end_date),
+                                end_date_formatted,
+                                end_timestamp
+                            ))
+                        end
+                    end
+                    
+                    println("Processed well $well_id with $(length(processed_months)) monthly data points")
+                    
+                catch e
+                    error("Error processing well $well_id: $(sprint(showerror, e))")
+                end
+            end
+
+            # print the type of each column in the wells_reformatted dataframe
+            println("Type of each column in wells_reformatted:")
+            for col in names(wells_reformatted)
+                println("$col: $(eltype(wells_reformatted[!, col]))")
+            end
+            
+            return wells_reformatted
         end
-
-        xlabel!("Δ Pore Pressure on fault [psi]")
-        ylabel!("Probability")
-        title!("CDF of Pore Pressure on Fault")
-        savefig("graphs/cdf_det_hydro.png")
-        println("Prob hydrology CDF saved as cdf_det_hydro.png")
+    
+    catch e
+        @warn "Error processing injection data: $(sprint(showerror, e))"
+        return nothing
     end
     
+    # Default return if no valid injection_data_type is matched
+    return nothing
 end
-=#
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 function plot_cdf_det_hydro(prob_geo_values, det_hydro_values)
     # Generate distinguishable colors based on number of faults
@@ -1563,7 +2056,6 @@ function fault_sensitivity_tornado_chart_to_d3(
     # Combine all parameters
     parameter_mapping = merge(stress_param_mapping, fault_param_mapping)
     
-    #println("Combined Parameter Mapping Keys: $(sort(collect(keys(parameter_mapping))))")
     
     # Convert the specific fault to a dictionary for easier manipulation
     fault_dict = Dict(name => base_fault_inputs[fault_idx, name] for name in names(base_fault_inputs))
@@ -1740,7 +2232,7 @@ function fault_sensitivity_tornado_chart_to_d3(
             #println("  Results: Lower PP: $lower_pp_to_slip, Upper PP: $upper_pp_to_slip")
         end
         
-        # Calculate percent deviation
+        # Calculate percent deviation (we use that for sorting)
         lower_deviation = ((lower_pp_to_slip - baseline_pp_to_slip) / baseline_pp_to_slip) * 100
         
         upper_deviation = ((upper_pp_to_slip - baseline_pp_to_slip) / baseline_pp_to_slip) * 100
@@ -1754,6 +2246,11 @@ function fault_sensitivity_tornado_chart_to_d3(
         
         #println("  Deviations: Lower: $lower_deviation%, Upper: $upper_deviation%, Max: $max_deviation%")
         #println("  Delta pressure: $delta_pressure")
+
+        # ensure that the lower bound is always less than the upper bound
+        if lower_pp_to_slip > upper_pp_to_slip
+            lower_pp_to_slip, upper_pp_to_slip = upper_pp_to_slip, lower_pp_to_slip
+        end
         
         # Add to results
         push!(fault_sensitivity_df, (
@@ -1780,13 +2277,16 @@ function fault_sensitivity_tornado_chart_to_d3(
         label = String[],
         min = Float64[],
         max = Float64[],
-        id = String[]
+        id = String[],
+        baseline = Float64[]
     )
     
     for row in eachrow(fault_sensitivity_df)
-        # Calculate absolute pressure changes
-        pressure_min = row.lower_bound - row.baseline
-        pressure_max = row.upper_bound - row.baseline
+        # Get the actual values of pore pressure to slip when the parameter is at the lower and upper bounds
+        pressure_min = row.lower_bound
+        pressure_max = row.upper_bound
+
+        baseline = row.baseline
         
         # Ensure the min value is always less than max value
         if pressure_min > pressure_max
@@ -1795,9 +2295,10 @@ function fault_sensitivity_tornado_chart_to_d3(
         
         push!(tornado_df, (
             row.display_name,  # label
-            round(pressure_min, digits=2),      # min (pressure change at lower bound)
-            round(pressure_max, digits=2),      # max (pressure change at upper bound)
-            fault_id           # id (fault ID)
+            round(pressure_min, digits=2),      # min (actual pore pressure at lower bound)
+            round(pressure_max, digits=2),      # max (actual pore pressure at upper bound)
+            fault_id,           # id (fault ID)
+            baseline           # baseline (actual pore pressure to center the graph around)
         ))
     end
     
