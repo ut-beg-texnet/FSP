@@ -2142,11 +2142,18 @@ function fault_sensitivity_tornado_chart_to_d3(
         uncertainty_value = uncertainties[uncertainty_param]
         #println("  Uncertainty value: $uncertainty_value")
         
+        # Flag to track if we're processing a fault parameter (vs. stress parameter)
+        is_fault_param = !haskey(stress_param_mapping, uncertainty_param)
+        # Initialize param_key variable for safety
+        param_key = ""
+        
         # Process separately for stress and fault parameters
         if haskey(stress_param_mapping, uncertainty_param)
             #println("  This is a STRESS parameter")
             # Modify the affected parameters directly without using calculate_absolute_stresses
             try
+                
+                
                 #println("  Calculating with negative change (-$uncertainty_value)")
                 lower_pp_to_slip = calculate_with_direct_parameter(
                     base_stress_inputs, 
@@ -2164,6 +2171,8 @@ function fault_sensitivity_tornado_chart_to_d3(
                         uncertainty_value,
                         stress_model_type
                     )
+                
+                
                 
                 #println("  Results: Lower PP: $lower_pp_to_slip, Upper PP: $upper_pp_to_slip")
             catch e
@@ -2183,11 +2192,35 @@ function fault_sensitivity_tornado_chart_to_d3(
             end
             
             # Calculate with modified fault parameters
+            # For strike, we need to wrap it around 360 degrees
+            # For dip, we need to clamp it between 0 and 90 degrees
+            # For friction coefficient, we don't need to change it
             lower_fault_dict = copy(fault_dict)
-            lower_fault_dict[param_key] = fault_dict[param_key] - uncertainty_value
+            raw_lower_value = fault_dict[param_key] - uncertainty_value
+            if param_key == "Strike"
+                lower_fault_dict[param_key] = mod(raw_lower_value, 360.0)
+                
+                
+            elseif param_key == "Dip"
+                lower_fault_dict[param_key] = clamp(raw_lower_value, 0.0, 90.0)
+                
+                
+            else # FrictionCoefficient
+                lower_fault_dict[param_key] = raw_lower_value
+            end
             
             upper_fault_dict = copy(fault_dict)
-            upper_fault_dict[param_key] = fault_dict[param_key] + uncertainty_value
+            raw_upper_value = fault_dict[param_key] + uncertainty_value
+            if param_key == "Strike"
+                upper_fault_dict[param_key] = mod(raw_upper_value, 360.0)
+                
+                
+            elseif param_key == "Dip"
+                upper_fault_dict[param_key] = clamp(raw_upper_value, 0.0, 90.0)
+                
+            else # FrictionCoefficient
+                upper_fault_dict[param_key] = raw_upper_value
+            end
             
             #println("  Original value: $(fault_dict[param_key]), Lower: $(lower_fault_dict[param_key]), Upper: $(upper_fault_dict[param_key])")
             
@@ -2229,6 +2262,8 @@ function fault_sensitivity_tornado_chart_to_d3(
                 1.0
             )
             
+            
+            
             #println("  Results: Lower PP: $lower_pp_to_slip, Upper PP: $upper_pp_to_slip")
         end
         
@@ -2248,8 +2283,10 @@ function fault_sensitivity_tornado_chart_to_d3(
         #println("  Delta pressure: $delta_pressure")
 
         # ensure that the lower bound is always less than the upper bound
+        # regardless of which parameter produced which slip pressure
         if lower_pp_to_slip > upper_pp_to_slip
             lower_pp_to_slip, upper_pp_to_slip = upper_pp_to_slip, lower_pp_to_slip
+            
         end
         
         # Add to results
@@ -2345,7 +2382,10 @@ function calculate_with_direct_parameter(
         modified_stress["pore_pressure"] += param_change
         #println("Changed pore_pressure gradient to: $(modified_stress["pore_pressure"])")
     elseif uncertainty_param == "max_stress_azimuth_uncertainty"
-        modified_stress["max_stress_azimuth"] += param_change
+        
+        
+        # since this is in degrees, we need to wrap it around 360 degrees
+        modified_stress["max_stress_azimuth"] = mod(modified_stress["max_stress_azimuth"] + param_change, 360.0)
         #println("Changed max_stress_azimuth to: $(modified_stress["max_stress_azimuth"])")
     elseif uncertainty_param == "max_horizontal_stress_uncertainty"
         modified_stress["max_horizontal_stress"] += param_change

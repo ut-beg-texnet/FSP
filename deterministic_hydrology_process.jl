@@ -90,18 +90,21 @@ function main()
     # Fluid compressibility (1/psi)
     beta = get_parameter_value(helper, 4, "fluid_compressibility")
     if beta === nothing
+        add_message_with_step_index!(helper, 4, "Fluid compressibility was not provided, using the default value of 3.6e-10 1/psi", 0)
         beta = 3.6e-10
     end
     
     # Rock compressibility (1/psi)
     alphav = get_parameter_value(helper, 4, "rock_compressibility")
     if alphav === nothing
+        add_message_with_step_index!(helper, 4, "Rock compressibility was not provided, using the default value of 1.08e-09 1/psi", 0)
         alphav = 1.08e-09 
     end
     
     # Fluid density (kg/m³)
     rho = get_parameter_value(helper, 4, "fluid_density")
     if rho === nothing
+        add_message_with_step_index!(helper, 4, "Fluid density was not provided, using the default value of 1000 kg/m³", 0)
         rho = 1000.0  
     end
     
@@ -109,6 +112,7 @@ function main()
     # Dynamic viscosity (Pa·s)
     mu = get_parameter_value(helper, 4, "dynamic_viscosity")
     if mu === nothing
+        add_message_with_step_index!(helper, 4, "Dynamic viscosity was not provided, using the default value of 0.0008 Pa·s", 0)
         mu = 0.0008
     end
     
@@ -132,12 +136,15 @@ function main()
         #println("- Year of interest: $year_of_interest")
     end
 
+    # we don't include the year of interest in the analysis, we evaluate injection rates up to the end of the previous year
+    # ex. if year_of_interest = 2025, we evaluate injection rates up to the end of 2024
     year_of_interest_date = Date(year_of_interest-1, 12, 31)
 
     
     # Aquifer thickness (ft)
     h_feet = get_parameter_value(helper, 4, "aquifer_thickness_ft")
     if h_feet === nothing
+        add_message_with_step_index!(helper, 4, "Aquifer thickness was not provided, using the default value of 100 ft", 0)
         h_feet = 100.0
     end
 
@@ -146,12 +153,14 @@ function main()
     # Porosity
     phi = get_parameter_value(helper, 4, "porosity")
     if phi === nothing
+        add_message_with_step_index!(helper, 4, "Porosity was not provided, using the default value of 0.1 (10%)", 0)
         phi = 0.1
     end
     
     # Permeability (mD)
     kap_md = get_parameter_value(helper, 4, "permeability_md")
     if kap_md === nothing
+        add_message_with_step_index!(helper, 4, "Permeability was not provided, using the default value of 200 mD", 0)
         kap_md = 200.0  
     end
 
@@ -524,9 +533,13 @@ function main()
         println("- Injection history: $(length(days)) step changes over $(maximum(days)) days")
         
         # 1. Calculate pressure field contribution for this well
+        # Calculate days from injection start to analysis date
+        evaluation_days_from_start = Float64((year_of_interest_date - inj_start_date).value + 1)
+        
         pfield_this_well = pfieldcalc_all_rates(
             LON_grid, LAT_grid, STRho, days, rates,
-            well_lon, well_lat, "latlon"
+            well_lon, well_lat, "latlon",
+            evaluation_days_from_start
         )
 
         
@@ -737,6 +750,9 @@ function main()
             end
             
             # Calculate pressure contribution from this well at the fault location
+            # Calculate days from injection start to analysis date
+            evaluation_days_from_start = Float64((year_of_interest_date - inj_start_date).value + 1)
+            
             pressure_contribution = pfieldcalc_all_rates(
                 fault_lon,  # longitude is x
                 fault_lat,  # latitude is y
@@ -745,6 +761,7 @@ function main()
                 rates,
                 well_lon,  # longitude is x
                 well_lat,  # latitude is y
+                evaluation_days_from_start
             )
             
             # Add to total pressure for this fault

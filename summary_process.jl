@@ -1150,13 +1150,30 @@ function main()
         # Round FSP values to 2 decimal places
         fsp_through_time[!, :FSP] = round.(fsp_through_time.FSP, digits=2)
         
-        println("fsp_through_time:")
-        pretty_table(fsp_through_time)
+        
+    end
+
+    # try to parse the 'ID' column as an integer, if that fails, keep the original 'ID' column
+    try
+        fsp_through_time[!, :ID] = parse.(Int, fsp_through_time.ID)
+    catch
+        fsp_through_time[!, :ID] = fsp_through_time.ID
     end
     
-    # Common code for both models
-    println("pressure_through_time_results_aggregated (Pressure through time graph): ")
-    pretty_table(pressure_through_time_results_aggregated)
+    # sort both dataframes by the 'ID' column
+
+    # try to parse the 'ID' column as an integer, if it doesn't fail, then sort by the 'ID' column numerically
+    # if it fails, then sort by the 'ID' column treating it as a string
+    try
+        fsp_through_time[!, :ID] = parse.(Int, fsp_through_time.ID)
+    catch
+        fsp_through_time[!, :ID] = fsp_through_time.ID
+    end
+    
+
+
+    sort!(pressure_through_time_results_aggregated, [:ID])
+    sort!(fsp_through_time, [:ID])
 
     save_dataframe_as_parameter!(helper, 6, "pressure_through_time_results", pressure_through_time_results_aggregated)
     

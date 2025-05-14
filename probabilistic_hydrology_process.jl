@@ -314,7 +314,8 @@ function run_monte_carlo_hydrology(helper::TexNetWebToolLaunchHelperJulia,
                 "days" => days,
                 "rates" => rates,
                 "lat" => info["lat"],
-                "lon" => info["lon"]
+                "lon" => info["lon"],
+                "inj_start_date" => info["inj_start_date"]  # Store start date for pressure calculation
             )
         end
     end
@@ -375,6 +376,9 @@ function run_monte_carlo_hydrology(helper::TexNetWebToolLaunchHelperJulia,
             # Loop over wells using PRE-PROCESSED DATA
             for (well_id, data) in prepared_well_data
                 # Use pre-processed injection data
+                # Calculate days from injection start to analysis date
+                evaluation_days_from_start = Float64((year_of_interest_date - data["inj_start_date"]).value + 1)
+                
                 pressure_contribution = pfieldcalc_all_rates(
                     x_fault_km,
                     y_fault_km,
@@ -383,6 +387,7 @@ function run_monte_carlo_hydrology(helper::TexNetWebToolLaunchHelperJulia,
                     data["rates"],
                     data["lon"],
                     data["lat"],
+                    evaluation_days_from_start
                 )
 
                 
