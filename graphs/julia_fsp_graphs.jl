@@ -1899,15 +1899,15 @@ function uncertainty_variability_inputs_to_d3(
     id_counter = 1
     
     for (uncertainty_param, display_name) in parameter_mapping
-        #println("Processing parameter: $uncertainty_param => $display_name")
+        println("\nProcessing parameter: $uncertainty_param => $display_name")
         
-        # Skip if uncertainty is not defined or is 0
         if !haskey(uncertainties, uncertainty_param) || isnothing(uncertainties[uncertainty_param]) || uncertainties[uncertainty_param] == 0
             println("  SKIPPING: Uncertainty not defined or is 0")
-            continue
+            continue  # Skip if uncertainty is not defined or is 0
         end
         
         uncertainty_value = uncertainties[uncertainty_param]
+        println("  Uncertainty value: $uncertainty_value")
         
         # Get the base parameter value for min/max calculation
         base_value = 0.0
@@ -1953,32 +1953,65 @@ function uncertainty_variability_inputs_to_d3(
             end
         end
         
-        #println("  Base value: $base_value, Uncertainty: $uncertainty_value")
-        
         # Skip if base value is 0 to avoid division by zero
         if base_value == 0.0
             println("  SKIPPING: Base value is zero, cannot calculate percentage")
             continue
         end
         
-        # Calculate percentage deviation (not absolute min/max)
-        percent_deviation = (uncertainty_value / base_value) * 100
+        # Calculate percentage deviation based on parameter type
+        # Following MATLAB implementation with fixed reference values for angles
+        if uncertainty_param == "strike_angles_uncertainty" || uncertainty_param == "max_stress_azimuth_uncertainty"
+            # For strike and azimuth, use 180 as reference value (MATLAB approach)
+            reference_value = 180.0
+            percent_deviation = (uncertainty_value / reference_value) * 100
+            
+            # Ensure we don't exceed 100% in either direction (consistent with other parameters)
+            percent_deviation = min(percent_deviation, 100.0)
+            
+            min_percent = -percent_deviation
+            max_percent = percent_deviation
+        elseif uncertainty_param == "dip_angles_uncertainty"
+            # For dip, use 90 as reference value (MATLAB approach)
+            reference_value = 90.0
+            percent_deviation = (uncertainty_value / reference_value) * 100
+            
+            # Ensure we don't exceed 100% in either direction
+            percent_deviation = min(percent_deviation, 100.0)
+            
+            min_percent = -percent_deviation
+            max_percent = percent_deviation
+        else
+            # Standard percent deviation calculation for other parameters
+            percent_deviation = (uncertainty_value / base_value) * 100
+            percent_deviation = min(percent_deviation, 100.0)  # Cap at 100%
+            
+            min_percent = -percent_deviation
+            max_percent = percent_deviation
+        end
         
         # Round to 2 decimal places
-        percent_deviation = round(percent_deviation, digits=2)
+        min_percent = round(min_percent, digits=2)
+        max_percent = round(max_percent, digits=2)
         
-        #println("  Calculated percentage deviation: $percent_deviation%")
+        println("  Calculated percentage deviation: min=$min_percent%, max=$max_percent%")
         
         # Add to DataFrame with negative and positive percentage deviations
         push!(uncertainty_df, (
             label = display_name,
-            min = -percent_deviation,  # Negative percentage deviation
-            max = percent_deviation,   # Positive percentage deviation
+            min = min_percent,
+            max = max_percent,
             id = id_counter
         ))
         
         id_counter += 1
     end
+    
+    # Sort by the value of the deviations (largest range first)
+    # Create a new column (we only use that for sorting)
+    uncertainty_df.range = abs.(uncertainty_df.max .- uncertainty_df.min)
+    sort!(uncertainty_df, :range, rev=true)
+    select!(uncertainty_df, Not(:range))  # Remove the temporary column
     
     #println("Created uncertainty variability data with $(nrow(uncertainty_df)) parameters")
     #println("====== DEBUG: Ending uncertainty_variability_inputs_to_d3 ======\n")
@@ -2132,15 +2165,15 @@ function fault_sensitivity_tornado_chart_to_d3(
     
     # For each parameter, calculate slip pressure at lower and upper bounds
     for (uncertainty_param, display_name) in parameter_mapping
-        #println("\nProcessing parameter: $uncertainty_param => $display_name")
+        println("\nProcessing parameter: $uncertainty_param => $display_name")
         
         if !haskey(uncertainties, uncertainty_param) || isnothing(uncertainties[uncertainty_param]) || uncertainties[uncertainty_param] == 0
-            #println("  SKIPPING: Uncertainty not defined or is 0")
+            println("  SKIPPING: Uncertainty not defined or is 0")
             continue  # Skip if uncertainty is not defined or is 0
         end
         
         uncertainty_value = uncertainties[uncertainty_param]
-        #println("  Uncertainty value: $uncertainty_value")
+        
         
         # Flag to track if we're processing a fault parameter (vs. stress parameter)
         is_fault_param = !haskey(stress_param_mapping, uncertainty_param)
@@ -2152,8 +2185,6 @@ function fault_sensitivity_tornado_chart_to_d3(
             #println("  This is a STRESS parameter")
             # Modify the affected parameters directly without using calculate_absolute_stresses
             try
-                
-                
                 #println("  Calculating with negative change (-$uncertainty_value)")
                 lower_pp_to_slip = calculate_with_direct_parameter(
                     base_stress_inputs, 
@@ -2163,7 +2194,7 @@ function fault_sensitivity_tornado_chart_to_d3(
                         stress_model_type
                 )
                 
-                    #println("  Calculating with positive change (+$uncertainty_value)")
+                #println("  Calculating with positive change (+$uncertainty_value)")
                 upper_pp_to_slip = calculate_with_direct_parameter(
                     base_stress_inputs, 
                     fault_dict, 
@@ -2173,11 +2204,74 @@ function fault_sensitivity_tornado_chart_to_d3(
                     )
                 
                 
-                
-                #println("  Results: Lower PP: $lower_pp_to_slip, Upper PP: $upper_pp_to_slip")
             catch e
-                #println("  ERROR calculating slip pressure: $e")
-                continue
+                # Special handling for max_stress_azimuth_uncertainty
+                if uncertainty_param == "max_stress_azimuth_uncertainty"
+                    println("  Using special handling for SHmax Azimuth")
+                    # Create copies of the stress inputs with modified azimuth values
+                    lower_stress_inputs = copy(base_stress_inputs)
+                    upper_stress_inputs = copy(base_stress_inputs)
+                    
+                    # Apply the azimuth changes with wrapping around 360 degrees
+                    original_azimuth = base_stress_inputs["max_stress_azimuth"]
+                    lower_stress_inputs["max_stress_azimuth"] = mod(original_azimuth - uncertainty_value, 360.0)
+                    upper_stress_inputs["max_stress_azimuth"] = mod(original_azimuth + uncertainty_value, 360.0)
+                    
+                    
+                    
+                    # Calculate baseline stress state and initial pressure
+                    baseline_stress_state_lower, initial_pressure_lower = calculate_absolute_stresses(
+                        lower_stress_inputs, friction_coefficient, stress_model_type
+                    )
+                    baseline_stress_state_upper, initial_pressure_upper = calculate_absolute_stresses(
+                        upper_stress_inputs, friction_coefficient, stress_model_type
+                    )
+                    
+                    # Calculate fault stresses for lower bound
+                    sig_normal_lower, tau_normal_lower, _, _, _, _, _, _ = calculate_fault_effective_stresses(
+                        fault_dict["Strike"], 
+                        fault_dict["Dip"], 
+                        baseline_stress_state_lower, 
+                        initial_pressure_lower, 
+                        0.0
+                    )
+                    
+                    # Calculate critical pore pressure for lower bound
+                    lower_pp_to_slip = ComputeCriticalPorePressureForFailure(
+                        sig_normal_lower,
+                        tau_normal_lower,
+                        friction_coefficient,
+                        initial_pressure_lower,
+                        1.0,  # biot coefficient
+                        0.5,  # Poisson's ratio
+                        1.0   # dp
+                    )
+                    
+                    # Calculate fault stresses for upper bound
+                    sig_normal_upper, tau_normal_upper, _, _, _, _, _, _ = calculate_fault_effective_stresses(
+                        fault_dict["Strike"], 
+                        fault_dict["Dip"], 
+                        baseline_stress_state_upper, 
+                        initial_pressure_upper, 
+                        0.0
+                    )
+                    
+                    # Calculate critical pore pressure for upper bound
+                    upper_pp_to_slip = ComputeCriticalPorePressureForFailure(
+                        sig_normal_upper,
+                        tau_normal_upper,
+                        friction_coefficient,
+                        initial_pressure_upper,
+                        1.0,  # biot coefficient
+                        0.5,  # Poisson's ratio
+                        1.0   # dp
+                    )
+                    
+                    
+                else
+                    println("  ERROR calculating slip pressure for $uncertainty_param: $e")
+                    continue
+                end
             end
         else
             #println("  This is a FAULT parameter")
@@ -2287,6 +2381,7 @@ function fault_sensitivity_tornado_chart_to_d3(
         if lower_pp_to_slip > upper_pp_to_slip
             lower_pp_to_slip, upper_pp_to_slip = upper_pp_to_slip, lower_pp_to_slip
             
+            
         end
         
         # Add to results
@@ -2339,13 +2434,16 @@ function fault_sensitivity_tornado_chart_to_d3(
         ))
     end
     
-    #println("\nFinal tornado_df ($(nrow(tornado_df)) rows):")
-    #for row in eachrow(tornado_df)
-        #println("  $(row.label): min=$(row.min), max=$(row.max), id=$(row.id)")
-    #end
+    # Print the final tornado dataframe
+    println("\nFinal tornado_df for fault $fault_id ($(nrow(tornado_df)) rows):")
+    for row in eachrow(tornado_df)
+        println("  $(row.label): min=$(row.min), max=$(row.max)")
+    end
     
     #println("Created tornado chart data for fault ID: $fault_id with $(nrow(tornado_df)) parameters")
     #println("====== DEBUG: Ending fault_sensitivity_tornado_chart_to_d3 ======\n")
+
+    pretty_table(tornado_df)
     
     return tornado_df
 end
@@ -2383,9 +2481,14 @@ function calculate_with_direct_parameter(
         #println("Changed pore_pressure gradient to: $(modified_stress["pore_pressure"])")
     elseif uncertainty_param == "max_stress_azimuth_uncertainty"
         
+        # Debug the azimuth value before modifying it
+        println("  DEBUG: max_stress_azimuth before change: $(modified_stress["max_stress_azimuth"])")
+        println("  DEBUG: param_change: $param_change")
         
         # since this is in degrees, we need to wrap it around 360 degrees
         modified_stress["max_stress_azimuth"] = mod(modified_stress["max_stress_azimuth"] + param_change, 360.0)
+        
+        println("  DEBUG: max_stress_azimuth after change: $(modified_stress["max_stress_azimuth"])")
         #println("Changed max_stress_azimuth to: $(modified_stress["max_stress_azimuth"])")
     elseif uncertainty_param == "max_horizontal_stress_uncertainty"
         modified_stress["max_horizontal_stress"] += param_change

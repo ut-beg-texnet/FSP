@@ -586,12 +586,18 @@ function main()
         # Make sure all stress uncertainties are defined according to stress_model_type
         local_uncertainties = copy(uncertainties)
  
-        #=
-        println("local_uncertainties: ")
+        # Print the uncertainties to debug
+        println("\nUncertainties for Fault #$fault_id:")
         for (key, value) in local_uncertainties
             println("  - $key: $value")
         end
-        =#
+
+        # Specifically check if max_stress_azimuth_uncertainty exists and has a non-zero value
+        if haskey(local_uncertainties, "max_stress_azimuth_uncertainty")
+            println("  * max_stress_azimuth_uncertainty exists with value: $(local_uncertainties["max_stress_azimuth_uncertainty"])")
+        else
+            println("  * max_stress_azimuth_uncertainty is missing!")
+        end
 
         # Initialize the array for stress uncertainty parameters
         stress_uncertainty_params = String[]
