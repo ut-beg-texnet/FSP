@@ -469,9 +469,6 @@ function prepare_monthly_fsp_data(
     global_end_date = min(inj_end_date, year_of_interest_date)
     
     
-    println("DEBUG: global_start_date = $global_start_date, global_end_date = $global_end_date")
-    println("DEBUG: Timespan is $((global_end_date - global_start_date).value + 1) days")
-    
     # Arrays for step changes
     step_times = Float64[]
     step_rates = Float64[]
@@ -616,7 +613,7 @@ function prepare_monthly_fsp_data(
     
     # If we have no data, return empty arrays
     if isempty(step_times)
-        println("DEBUG: NO VALID STEP CHANGES FOUND. step_times and step_rates are empty.")
+        #println("DEBUG: NO VALID STEP CHANGES FOUND. step_times and step_rates are empty.")
         return Float64[], Float64[]
     end
     

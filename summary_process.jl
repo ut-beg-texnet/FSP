@@ -140,6 +140,10 @@ function run_mc_hydrology_time_series(
 
     println("Injection rate time window for all wells: inj_start_date = $inj_start_date, inj_end_date = $inj_end_date")
     
+    # Find the max end date of all injections
+    max_injection_year = year(inj_end_date)
+    println("Maximum injection end date: $inj_end_date (year $max_injection_year)")
+    
     # Container for results
     # Structure: year -> iteration -> fault -> pressure
     results = Dict{Int, Dict{Int, Dict{String, Float64}}}()
@@ -299,6 +303,15 @@ function run_mc_hydrology_time_series(
                         continue
                     end
                     
+                    # Calculate days from injection start to analysis date
+                    evaluation_days_from_start = Float64((cutoff_date - inj_start_date).value + 1)
+                    
+                    # For years after injection has stopped, evaluation date should use the current year
+                    # to properly model pressure diffusion over time
+                    if analysis_year > max_injection_year && i == 1
+                        println("Calculating pressure diffusion for year $analysis_year (after injection end)")
+                    end
+                    
                     # Calculate pressure contribution from this well
                     pressure_contribution = HydroCalculations.pfieldcalc_all_rates(
                         fault_lon, #fault longitude
@@ -307,7 +320,8 @@ function run_mc_hydrology_time_series(
                         days, #days of injection
                         rates, #rates of injection
                         well_lon, #well longitude
-                        well_lat #well latitude
+                        well_lat, #well latitude
+                        evaluation_days_from_start #days from injection start to evaluation date
                     )
 
                     
@@ -754,6 +768,10 @@ function run_deterministic_hydrology_time_series(
         years_to_analyze = year(inj_start_date):year_of_interest
     end
     
+    # Find the max end date of all injections - we'll set the evaluation date to this for pressure diffusion
+    max_injection_year = year(inj_end_date)
+    println("Maximum injection end date: $inj_end_date (year $max_injection_year)")
+    
     # Process each year
     for analysis_year in years_to_analyze
         # Set up year cutoff date (Dec 31 of the analysis year)
@@ -865,6 +883,15 @@ function run_deterministic_hydrology_time_series(
                     continue
                 end
                 
+                # Calculate days from injection start to analysis date
+                evaluation_days_from_start = Float64((cutoff_date - inj_start_date).value + 1)
+                
+                # For years after injection has stopped, evaluation date should use the current year
+                # to properly model pressure diffusion over time
+                if analysis_year > max_injection_year
+                    println("Calculating pressure diffusion for year $analysis_year (after injection end)")
+                end
+                
                 # Calculate pressure contribution from this well
                 pressure_contribution = HydroCalculations.pfieldcalc_all_rates(
                     fault_lon, #fault longitude
@@ -873,7 +900,8 @@ function run_deterministic_hydrology_time_series(
                     days, #days of injection
                     rates, #rates of injection
                     well_lon, #well longitude
-                    well_lat #well latitude
+                    well_lat, #well latitude
+                    evaluation_days_from_start #days from injection start to evaluation date
                 )
                 
                 # Add to total pressure for this fault
@@ -928,9 +956,21 @@ function main()
     injection_wells_csv_filepath, injection_data_type = get_injection_dataset_path_summary_step(helper, 6)
     if injection_wells_csv_filepath === nothing
         error("No injection wells dataset provided.")
+    elseif "WellID" in names(CSV.read(injection_wells_csv_filepath, DataFrame))
+        # check if we have a 'WellID' column
+        injection_wells_df = CSV.read(injection_wells_csv_filepath, DataFrame, types=Dict("WellID" => String), pool=false)
+    elseif "API Number" in names(CSV.read(injection_wells_csv_filepath, DataFrame))
+        # check if we have a 'API Number' column
+        injection_wells_df = CSV.read(injection_wells_csv_filepath, DataFrame, types=Dict("API Number" => String), pool=false)
+    elseif "APINumber" in names(CSV.read(injection_wells_csv_filepath, DataFrame))
+        # check if we have a 'APINumber' column
+        injection_wells_df = CSV.read(injection_wells_csv_filepath, DataFrame, types=Dict("APINumber" => String), pool=false)
     else
-                injection_wells_df = CSV.read(injection_wells_csv_filepath, DataFrame)
+        error("No valid well ID column found in the injection wells dataset.")
     end
+
+    # check the type of the WellID column
+    #println("DEBUG: WellID column type = $(typeof(injection_wells_df[!, "WellID"]))")
 
     # Get the model that was run from the previous step
     model_run = get_parameter_value(helper, 6, "model_run_summary")
@@ -940,25 +980,32 @@ function main()
         println("Model run type not specified, defaulting to probabilistic")
     end
     
-    println("Using model type: $model_run")
+    #println("Using model type: $model_run")
 
     # 3) Read fault data
     fault_data_path = get_dataset_file_path(helper, 6, "faults")
     if fault_data_path === nothing
         error("Required fault dataset not found or accessible.")
     end
-    fault_df = CSV.read(fault_data_path, DataFrame)
+    fault_df = CSV.read(fault_data_path, DataFrame, types=Dict("FaultID" => String), pool=false)
+
+    # check the type of the FaultID column
+    #println("DEBUG: FaultID column type = $(typeof(fault_df[!, "FaultID"]))")
+
+   
     
+    
+
 
     # 4) Read probabilistic geomechanics results
     prob_geo_cdf_path = get_dataset_file_path(helper, 6, "prob_geomechanics_cdf_graph_data_summary")
     if prob_geo_cdf_path === nothing
         error("Probabilistic geomechanics CDF data not found.")
     end
-    prob_geo_cdf = CSV.read(prob_geo_cdf_path, DataFrame)
+    prob_geo_cdf = CSV.read(prob_geo_cdf_path, DataFrame, types=Dict("ID" => String), pool=false)
     println("Loaded probabilistic geomechanics data (first 10 rows) out of $(nrow(prob_geo_cdf)) rows:")
     
-    pretty_table(prob_geo_cdf[1:10, :])
+    #pretty_table(prob_geo_cdf[1:10, :])
 
     # 5) Get hydrology parameters
     aquifer_thickness = get_parameter_value(helper, 4, "aquifer_thickness_ft")
@@ -975,7 +1022,7 @@ function main()
         end
     end
 
-    println("aquifer_thickness: $aquifer_thickness")
+    
     
     # Get uncertainty parameters
     aquifer_thickness_uncertainty = get_parameter_value(helper, 5, "aquifer_thickness_uncertainty")
@@ -1026,11 +1073,14 @@ function main()
     # 6) Get injection date bounds and determine years to analyze
     inj_start_date, inj_end_date = Utilities.get_date_bounds(injection_wells_df)
     start_year = year(inj_start_date)
-    end_year = year(inj_end_date)
+    end_year = (year(inj_end_date) + 1) #since we evaluate up to the end of the last year, we need to add 1 to include the last year
+    # we are also adding 2 extra years to the end of the analysis to account for the future and show the diffusion of the pressure
+    end_year = end_year + 2
+    
     years_to_analyze = start_year:end_year
     
-    println("Injection period (for all wells): $inj_start_date to $inj_end_date")
-    println("Years to analyze: $years_to_analyze")
+    #println("Injection period (for all wells): $inj_start_date to $inj_end_date")
+    #println("Years to analyze: $years_to_analyze")
 
     # Depending on model_run, either run deterministic or probabilistic hydrology
     if model_run == 0
@@ -1100,13 +1150,30 @@ function main()
         # Round FSP values to 2 decimal places
         fsp_through_time[!, :FSP] = round.(fsp_through_time.FSP, digits=2)
         
-        println("fsp_through_time:")
-        pretty_table(fsp_through_time)
+        
+    end
+
+    # try to parse the 'ID' column as an integer, if that fails, keep the original 'ID' column
+    try
+        fsp_through_time[!, :ID] = parse.(Int, fsp_through_time.ID)
+    catch
+        fsp_through_time[!, :ID] = fsp_through_time.ID
     end
     
-    # Common code for both models
-    println("pressure_through_time_results_aggregated (Pressure through time graph): ")
-    pretty_table(pressure_through_time_results_aggregated)
+    # sort both dataframes by the 'ID' column
+
+    # try to parse the 'ID' column as an integer, if it doesn't fail, then sort by the 'ID' column numerically
+    # if it fails, then sort by the 'ID' column treating it as a string
+    try
+        fsp_through_time[!, :ID] = parse.(Int, fsp_through_time.ID)
+    catch
+        fsp_through_time[!, :ID] = fsp_through_time.ID
+    end
+    
+
+
+    sort!(pressure_through_time_results_aggregated, [:ID])
+    sort!(fsp_through_time, [:ID])
 
     save_dataframe_as_parameter!(helper, 6, "pressure_through_time_results", pressure_through_time_results_aggregated)
     

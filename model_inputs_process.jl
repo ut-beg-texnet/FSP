@@ -84,10 +84,10 @@ function main()
 
         #get all the unique faults from the FaultID column
         unique_faults_num = unique(faults_df[!, "FaultID"])
-        if length(unique_faults_num) > 500
-            add_message_with_step_index!(helper, 1, "Number of faults provided is greater than 500. Please provide a smaller number of faults.", 2)
+        if length(unique_faults_num) > 100
+            add_message_with_step_index!(helper, 1, "Number of faults provided is greater than 100. Please provide a smaller number of faults.", 2)
 
-            error("Number of faults provided is greater than 500. Please provide a smaller number of faults.")
+            error("Number of faults provided is greater than 100. Please provide a smaller number of faults.")
             
         end
 
@@ -138,7 +138,10 @@ function main()
             injection_wells_df = CSV.read(injection_wells_csv_filepath, DataFrame; types=Dict("API Number" => String))
         else
             injection_wells_df = CSV.read(injection_wells_csv_filepath, DataFrame, types=Dict("WellID" => String), pool=false)
-            println("well id type: $(typeof(injection_wells_df[!, "WellID"]))")
+            println("column types:")
+            for col in names(injection_wells_df)
+                println("$col: $(eltype(injection_wells_df[!, col]))")
+            end
         end
 
         
@@ -156,7 +159,8 @@ function main()
             end
 
 
-            injection_rate_data = injection_rate_data_to_d3(injection_wells_df, injection_data_type)
+            #injection_rate_data = injection_rate_data_to_d3(injection_wells_df, injection_data_type)
+            injection_rate_data = injection_rate_data_to_d3_bbl_day(injection_wells_df, injection_data_type)
             save_dataframe_as_parameter!(helper, 1, "injection_rate_d3_data", injection_rate_data)
             println("DEBUG: Saved annual injection rate data for visualization")
             save_dataframe_as_parameter!(helper, 1, "injection_wells_annual_output", injection_wells_df)
@@ -164,16 +168,23 @@ function main()
 
             # get unique values from the 'WellID' column
             unique_well_ids = unique(injection_wells_df[!, "WellID"])
-            if length(unique_well_ids) > 300
-                add_message_with_step_index!(helper, 1, "Number of wells provided is greater than 300. Please provide a smaller number of wells.", 2)
+            if length(unique_well_ids) > 200
+                add_message_with_step_index!(helper, 1, "Number of wells provided is greater than 200. Please provide a smaller number of wells.", 2)
 
-                error("Number of wells provided is greater than 300. Please provide a smaller number of wells.")
+                error("Number of wells provided is greater than 200. Please provide a smaller number of wells.")
             end
 
             
-            injection_rate_data = injection_rate_data_to_d3(injection_wells_df, injection_data_type)
+            #injection_rate_data = injection_rate_data_to_d3(injection_wells_df, injection_data_type)
+            injection_rate_data = injection_rate_data_to_d3_bbl_day(injection_wells_df, injection_data_type)
             save_dataframe_as_parameter!(helper, 1, "injection_rate_d3_data", injection_rate_data)
             println("DEBUG: Saved monthly injection rate data for visualization")
+
+            # print the type of each column in the injection_rate_data dataframe
+            println("Type of each column in the injection_rate_data dataframe:")
+            for col in names(injection_rate_data)
+                println("$col: $(eltype(injection_rate_data[!, col]))")
+            end
 
 
             save_dataframe_as_parameter!(helper, 1, "injection_wells_monthly_output", injection_wells_df)
@@ -182,13 +193,13 @@ function main()
 
             # get unique values from the 'WellID' column
             unique_well_ids = unique(injection_wells_df[!, "API Number"])
-            if length(unique_well_ids) > 300
-                add_message_with_step_index!(helper, 1, "Number of wells provided is greater than 300. Please provide a smaller number of wells.", 2)
+            if length(unique_well_ids) > 200
+                add_message_with_step_index!(helper, 1, "Number of wells provided is greater than 200. Please provide a smaller number of wells.", 2)
 
-                error("Number of wells provided is greater than 300. Please provide a smaller number of wells.")
+                error("Number of wells provided is greater than 200. Please provide a smaller number of wells.")
             end
-            injection_rate_data = injection_rate_data_to_d3(injection_wells_df, injection_data_type)
-            
+            #injection_rate_data = injection_rate_data_to_d3(injection_wells_df, injection_data_type)
+            injection_rate_data = injection_rate_data_to_d3_bbl_day(injection_wells_df, injection_data_type)
             save_dataframe_as_parameter!(helper, 1, "injection_rate_d3_data", injection_rate_data)
 
             

@@ -468,7 +468,6 @@ function main()
         nbins=25
     )
     # save it as a CSV 'histogram_sample_data.csv'
-    # TO DO: uncomment those in production and configrue the graph in the portal
     #CSV.write("histogram_sample_data.csv", combined_hist_df)
     save_dataframe_as_parameter!(helper, 3, "prob_geomechanics_histogram_data", combined_hist_df)
 
@@ -550,7 +549,7 @@ function main()
     )
 
     # print the uncertainty variability dataframe
-    println("uncertainty_variability_df: $uncertainty_variability_df")
+    
     
     # Save the dataframe as a parameter
     save_dataframe_as_parameter!(helper, 3, "uncertainty_variability_tornado_chart_data", uncertainty_variability_df)
@@ -587,12 +586,18 @@ function main()
         # Make sure all stress uncertainties are defined according to stress_model_type
         local_uncertainties = copy(uncertainties)
  
-        #=
-        println("local_uncertainties: ")
+        # Print the uncertainties to debug
+        println("\nUncertainties for Fault #$fault_id:")
         for (key, value) in local_uncertainties
             println("  - $key: $value")
         end
-        =#
+
+        # Specifically check if max_stress_azimuth_uncertainty exists and has a non-zero value
+        if haskey(local_uncertainties, "max_stress_azimuth_uncertainty")
+            println("  * max_stress_azimuth_uncertainty exists with value: $(local_uncertainties["max_stress_azimuth_uncertainty"])")
+        else
+            println("  * max_stress_azimuth_uncertainty is missing!")
+        end
 
         # Initialize the array for stress uncertainty parameters
         stress_uncertainty_params = String[]
