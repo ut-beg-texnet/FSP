@@ -271,16 +271,14 @@ function main()
     fault_df = CSV.read(fault_data_path, DataFrame)
 
     # check if the 'Strike' and 'Dip' columns are floats, if not, convert them to floats
-    println("FAULT DATA (original):")
-    pretty_table(fault_df)
+    
     if !(eltype(fault_df[!, "Strike"]) <: Float64)
         fault_df[!, "Strike"] = Float64.(fault_df[!, "Strike"])
     end
     if !(eltype(fault_df[!, "Dip"]) <: Float64)
         fault_df[!, "Dip"] = Float64.(fault_df[!, "Dip"])
     end
-    println("FAULT DATA (converted):")
-    pretty_table(fault_df)
+    
 
     
 
@@ -585,8 +583,7 @@ function main()
                  max_pressure_lat, max_pressure_lon]
     )
     
-    println("Pressure Field Statistics:")
-    pretty_table(pressure_stats)
+    
 
     
 
@@ -994,8 +991,7 @@ function main()
         end
     end
 
-    println("- Pressure changes for year $year_of_interest:")
-    pretty_table(pressure_changes_df)
+    
 
     # We still need to keep pressure_changes_vec for compatibility with existing code
     pressure_changes = pressure_changes_vec

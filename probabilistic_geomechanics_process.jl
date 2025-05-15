@@ -162,7 +162,38 @@ function run_monte_carlo(stress_inputs::Dict, fault_inputs::DataFrame, uncertain
                     
                     # Only apply randomization if uncertainty is greater than 0
                     if uncertainty > 0.0
-                        sim_stress[stress_param] = base_value + rand(local_rng, Uniform(-uncertainty, uncertainty))
+                        # Special handling for max_stress_azimuth to wrap around 0-360 degrees
+                        if stress_param == "max_stress_azimuth"
+                            # Handle azimuth with proper bounded sampling
+                            min_azimuth = mod(base_value - uncertainty, 360.0)
+                            max_azimuth = mod(base_value + uncertainty, 360.0)
+
+                            # Special handling for ranges that cross the 0/360 boundary
+                            if min_azimuth > max_azimuth
+                                # The range crosses the 0/360 boundary - use two-step sampling
+                                if rand(local_rng) < (360.0 - min_azimuth) / (360.0 - min_azimuth + max_azimuth)
+                                    # Sample from [min_azimuth, 360]
+                                    sim_stress[stress_param] = rand(local_rng, Uniform(min_azimuth, 360.0))
+                                else
+                                    # Sample from [0, max_azimuth]
+                                    sim_stress[stress_param] = rand(local_rng, Uniform(0.0, max_azimuth))
+                                end
+                            else
+                                # Normal sampling between min and max
+                                sim_stress[stress_param] = rand(local_rng, Uniform(min_azimuth, max_azimuth))
+                            end
+                        else
+                            # For other stress parameters (handle positivity constraints where needed)
+                            min_value = base_value - uncertainty
+                            max_value = base_value + uncertainty
+                            
+                            # Ensure minimum value is not negative for parameters that should be positive
+                            if base_value > 0
+                                min_value = max(min_value, 0.0)
+                            end
+                            
+                            sim_stress[stress_param] = rand(local_rng, Uniform(min_value, max_value))
+                        end
                     else
                         sim_stress[stress_param] = base_value
                     end
@@ -192,7 +223,40 @@ function run_monte_carlo(stress_inputs::Dict, fault_inputs::DataFrame, uncertain
                         
                         # Only apply randomization if uncertainty is greater than 0
                         if uncertainty > 0.0
-                            sim_fault[fault_param] += rand(local_rng, Uniform(-uncertainty, uncertainty))
+                            # Apply randomization with boundary handling for angular parameters
+                            if fault_param == "Strike" 
+                                # Pre-compute the boundaries for strike angles (0-360 degrees)
+                                min_strike = mod(fault[fault_param] - uncertainty, 360.0)
+                                max_strike = mod(fault[fault_param] + uncertainty, 360.0)
+                                
+                                # Special handling for ranges that cross the 0/360 boundary
+                                if min_strike > max_strike
+                                    # The range crosses the 0/360 boundary - use two-step sampling
+                                    if rand(local_rng) < (360.0 - min_strike) / (360.0 - min_strike + max_strike)
+                                        # Sample from [min_strike, 360]
+                                        sim_fault[fault_param] = rand(local_rng, Uniform(min_strike, 360.0))
+                                    else
+                                        # Sample from [0, max_strike]
+                                        sim_fault[fault_param] = rand(local_rng, Uniform(0.0, max_strike))
+                                    end
+                                else
+                                    # Normal sampling between min and max
+                                    sim_fault[fault_param] = rand(local_rng, Uniform(min_strike, max_strike))
+                                end
+                            elseif fault_param == "Dip"
+                                # Pre-clamp dip angles to valid range (0-90 degrees)
+                                min_dip = max(fault[fault_param] - uncertainty, 0.0)
+                                max_dip = min(fault[fault_param] + uncertainty, 90.0)
+                                
+                                # Sample uniformly between the clamped bounds
+                                sim_fault[fault_param] = rand(local_rng, Uniform(min_dip, max_dip))
+                            else
+                                # Standard randomization for friction coefficient
+                                # Ensure the friction coefficient is positive
+                                min_value = max(fault[fault_param] - uncertainty, 0.0)
+                                max_value = fault[fault_param] + uncertainty
+                                sim_fault[fault_param] = rand(local_rng, Uniform(min_value, max_value))
+                            end
                         end
                         
                         # Store the randomized value
@@ -586,18 +650,6 @@ function main()
         # Make sure all stress uncertainties are defined according to stress_model_type
         local_uncertainties = copy(uncertainties)
  
-        # Print the uncertainties to debug
-        println("\nUncertainties for Fault #$fault_id:")
-        for (key, value) in local_uncertainties
-            println("  - $key: $value")
-        end
-
-        # Specifically check if max_stress_azimuth_uncertainty exists and has a non-zero value
-        if haskey(local_uncertainties, "max_stress_azimuth_uncertainty")
-            println("  * max_stress_azimuth_uncertainty exists with value: $(local_uncertainties["max_stress_azimuth_uncertainty"])")
-        else
-            println("  * max_stress_azimuth_uncertainty is missing!")
-        end
 
         # Initialize the array for stress uncertainty parameters
         stress_uncertainty_params = String[]

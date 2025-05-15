@@ -1899,7 +1899,7 @@ function uncertainty_variability_inputs_to_d3(
     id_counter = 1
     
     for (uncertainty_param, display_name) in parameter_mapping
-        println("\nProcessing parameter: $uncertainty_param => $display_name")
+        
         
         if !haskey(uncertainties, uncertainty_param) || isnothing(uncertainties[uncertainty_param]) || uncertainties[uncertainty_param] == 0
             println("  SKIPPING: Uncertainty not defined or is 0")
@@ -1907,7 +1907,7 @@ function uncertainty_variability_inputs_to_d3(
         end
         
         uncertainty_value = uncertainties[uncertainty_param]
-        println("  Uncertainty value: $uncertainty_value")
+        
         
         # Get the base parameter value for min/max calculation
         base_value = 0.0
@@ -1994,7 +1994,7 @@ function uncertainty_variability_inputs_to_d3(
         min_percent = round(min_percent, digits=2)
         max_percent = round(max_percent, digits=2)
         
-        println("  Calculated percentage deviation: min=$min_percent%, max=$max_percent%")
+        
         
         # Add to DataFrame with negative and positive percentage deviations
         push!(uncertainty_df, (
@@ -2165,7 +2165,7 @@ function fault_sensitivity_tornado_chart_to_d3(
     
     # For each parameter, calculate slip pressure at lower and upper bounds
     for (uncertainty_param, display_name) in parameter_mapping
-        println("\nProcessing parameter: $uncertainty_param => $display_name")
+        
         
         if !haskey(uncertainties, uncertainty_param) || isnothing(uncertainties[uncertainty_param]) || uncertainties[uncertainty_param] == 0
             println("  SKIPPING: Uncertainty not defined or is 0")
@@ -2434,16 +2434,12 @@ function fault_sensitivity_tornado_chart_to_d3(
         ))
     end
     
-    # Print the final tornado dataframe
-    println("\nFinal tornado_df for fault $fault_id ($(nrow(tornado_df)) rows):")
-    for row in eachrow(tornado_df)
-        println("  $(row.label): min=$(row.min), max=$(row.max)")
-    end
+    
     
     #println("Created tornado chart data for fault ID: $fault_id with $(nrow(tornado_df)) parameters")
     #println("====== DEBUG: Ending fault_sensitivity_tornado_chart_to_d3 ======\n")
 
-    pretty_table(tornado_df)
+    
     
     return tornado_df
 end
@@ -2480,16 +2476,15 @@ function calculate_with_direct_parameter(
         modified_stress["pore_pressure"] += param_change
         #println("Changed pore_pressure gradient to: $(modified_stress["pore_pressure"])")
     elseif uncertainty_param == "max_stress_azimuth_uncertainty"
-        
+        # For azimuth, we need to use mod to handle 0-360 wrapping properly
         # Debug the azimuth value before modifying it
         println("  DEBUG: max_stress_azimuth before change: $(modified_stress["max_stress_azimuth"])")
         println("  DEBUG: param_change: $param_change")
         
-        # since this is in degrees, we need to wrap it around 360 degrees
+        # Apply wrapping for azimuth (0-360 degrees)
         modified_stress["max_stress_azimuth"] = mod(modified_stress["max_stress_azimuth"] + param_change, 360.0)
         
         println("  DEBUG: max_stress_azimuth after change: $(modified_stress["max_stress_azimuth"])")
-        #println("Changed max_stress_azimuth to: $(modified_stress["max_stress_azimuth"])")
     elseif uncertainty_param == "max_horizontal_stress_uncertainty"
         modified_stress["max_horizontal_stress"] += param_change
         #println("Changed max_horizontal_stress gradient to: $(modified_stress["max_horizontal_stress"])")
@@ -2627,8 +2622,8 @@ function mohr_diagram_hydro_data_to_d3_portal(
             tau_fault = tau_effective[i]
             fault_slip_pressure = slip_pressure[i]
             
-            println("Using calculated stresses for fault: $(fault_id)")
-            println("  sig_fault: $(sig_fault), tau_fault: $(tau_fault)")
+            #println("Using calculated stresses for fault: $(fault_id)")
+            #println("  sig_fault: $(sig_fault), tau_fault: $(tau_fault)")
             
             # Create a new row for this fault with updated coordinates
             new_row = Dict(name => geo_faults_df[i, name] for name in names(geo_faults_df))

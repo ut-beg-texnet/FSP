@@ -20,7 +20,7 @@ import Proj: CRS # explicitly
 
 export latlon_to_wkt, convert_easting_northing_to_latlon, convert_latlon_to_easting_northing!
 export prepare_well_data_for_pressure_scenario, create_spatial_grid_km, create_spatial_grid_latlon, create_uniform_distribution
-export reformat_pressure_grid_to_heatmap_data, get_date_bounds, get_injection_dataset_path, interpolate_cdf
+export reformat_pressure_grid_to_heatmap_data, get_date_bounds, get_injection_dataset_path, interpolate_cdf, create_bounded_uniform_distribution
 
 
 
@@ -942,6 +942,63 @@ function create_uniform_distribution(base_value::Union{Float64, Integer}, plus_m
 
     min_value = base_value - plus_minus
     max_value = base_value + plus_minus
+    return Uniform(min_value, max_value)
+end
+
+# This function will create a uniform distribution with proper bounds handling
+# parameter_type can be "strike", "dip", "azimuth", or any other parameter
+function create_bounded_uniform_distribution(base_value::Union{Float64, Integer}, uncertainty::Union{Float64, Integer}, parameter_type::String="default")
+    # Check for negative uncertainty values
+    if uncertainty < 0
+        throw(ArgumentError("Uncertainty value for $parameter_type cannot be negative."))
+    end
+    
+    # get the min and max values for the distribution before we call the uniform distribution
+    # this way we prevent skewed distributions
+    min_value = base_value - uncertainty
+    max_value = base_value + uncertainty
+    
+    # Apply the parameter-specific bounds
+    # the parameters strike, dip, and azimuth are all in degrees so we need to handle them differently
+    # for strike and azimuth angles (0-360 degrees)
+    # for dip angles (0-90 degrees)
+    # for friction coefficient (0-1)
+    # for porosity (0-1)
+    # for permeability (must be positive)
+    # TO DO: we also need to restrict the aphi value bounds (verify what the range should be)
+    if parameter_type == "strike" || parameter_type == "azimuth" || parameter_type == "Strike" || parameter_type == "max_stress_azimuth"
+        # For strike and azimuth angles (0-360 degrees)
+        # No bounds needed as we'll sample within [min, max] and handle wrapping during sampling
+        if max_value - min_value > 360.0
+            # If the range exceeds 360 degrees, just use the full 0-360 range
+            min_value = 0.0
+            max_value = 360.0
+        end
+    elseif parameter_type == "dip" || parameter_type == "Dip"
+        # For dip angles (0-90 degrees)
+        min_value = max(min_value, 0.0)
+        max_value = min(max_value, 90.0)
+    elseif parameter_type == "friction_coefficient" || parameter_type == "FrictionCoefficient"
+        # For friction coefficient (0-1)
+        min_value = max(min_value, 0.0)
+        max_value = min(max_value, 1.0)
+    elseif parameter_type == "porosity" || parameter_type == "Porosity" # we get this from the user as a fraction 
+        # For porosity (0-1)
+        min_value = max(min_value, 0.0)
+        max_value = min(max_value, 1.0)
+    elseif parameter_type == "permeability" || parameter_type == "Permeability"
+        # For permeability (must be positive)
+        min_value = max(min_value, 0.0)
+    else
+        # For other parameters, apply general constraints
+        # TO DO: check if we have any other special cases
+        # Ensure min_value is not negative for parameters that should be positive
+        if base_value > 0
+            min_value = max(min_value, 0.0)
+        end
+    end
+    
+    # Create the uniform distribution with bounded values
     return Uniform(min_value, max_value)
 end
 

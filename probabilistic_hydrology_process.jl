@@ -56,11 +56,7 @@ function run_monte_carlo_hydrology(helper::TexNetWebToolLaunchHelperJulia,
             end
         end
 
-        # if for some reason we are missing the number of iterations, set it to 750
-        # that shouldn't happen since the portal sets a default of 750 if it's missing
-        if params.n_iterations == 0 || isnothing(params.n_iterations)
-            params.n_iterations = 750
-        end
+        
 
         # check that the plus_minus values are not greater than the base values
         for (key, value) in params.plus_minus
@@ -71,19 +67,20 @@ function run_monte_carlo_hydrology(helper::TexNetWebToolLaunchHelperJulia,
                 key == "dynamic_viscosity" && value > params.dynamic_viscosity ||
                 key == "fluid_compressibility" && value > params.fluid_compressibility ||
                 key == "rock_compressibility" && value > params.rock_compressibility
-                throw(ArgumentError("plus_minus value for $key cannot be greater than the base value."))
+                add_message_with_step_index!(helper, 2, "Uncertainty +/- value ($value) for $key is greater than the base value", 2)
+                throw(ArgumentError("Uncertainty +/- value for $key is greater than the base value ($value)."))
             end
         end
 
         # create the Uniform distributions for each parameter
         distributions = Dict(
-            "aquifer_thickness" => create_uniform_distribution(params.aquifer_thickness, params.plus_minus["aquifer_thickness"]),
-            "porosity" => create_uniform_distribution(params.porosity, params.plus_minus["porosity"]),
-            "permeability" => create_uniform_distribution(params.permeability, params.plus_minus["permeability"]),
-            "fluid_density" => create_uniform_distribution(params.fluid_density, params.plus_minus["fluid_density"]),
-            "dynamic_viscosity" => create_uniform_distribution(params.dynamic_viscosity, params.plus_minus["dynamic_viscosity"]),
-            "fluid_compressibility" => create_uniform_distribution(params.fluid_compressibility, params.plus_minus["fluid_compressibility"]),
-            "rock_compressibility" => create_uniform_distribution(params.rock_compressibility, params.plus_minus["rock_compressibility"])
+            "aquifer_thickness" => create_bounded_uniform_distribution(params.aquifer_thickness, params.plus_minus["aquifer_thickness"], "aquifer_thickness"),
+            "porosity" => create_bounded_uniform_distribution(params.porosity, params.plus_minus["porosity"], "porosity"),
+            "permeability" => create_bounded_uniform_distribution(params.permeability, params.plus_minus["permeability"], "permeability"),
+            "fluid_density" => create_bounded_uniform_distribution(params.fluid_density, params.plus_minus["fluid_density"], "fluid_density"),
+            "dynamic_viscosity" => create_bounded_uniform_distribution(params.dynamic_viscosity, params.plus_minus["dynamic_viscosity"], "dynamic_viscosity"),
+            "fluid_compressibility" => create_bounded_uniform_distribution(params.fluid_compressibility, params.plus_minus["fluid_compressibility"], "fluid_compressibility"),
+            "rock_compressibility" => create_bounded_uniform_distribution(params.rock_compressibility, params.plus_minus["rock_compressibility"], "rock_compressibility")
         )
     elseif distribution_type == "gaussian" # ADITTIONAL FEATURE, NOT USED YET AND WE MIGHT NEED TO ADD A DIFFERENT DISTRIBUTION TYPE
         # create the Gaussian distributions for each parameter
@@ -120,24 +117,18 @@ function run_monte_carlo_hydrology(helper::TexNetWebToolLaunchHelperJulia,
     # Extract actual fault IDs from the input file
     fault_id_col = "FaultID" in names(fault_df) ? "FaultID" : "ID"
     if !(fault_id_col in names(fault_df))
-        # If neither FaultID nor ID exists, use a fallback column or create numeric IDs
-        if "Name" in names(fault_df)
-            fault_id_col = "Name"
-        else
-            println("Warning: No FaultID, ID, or Name column found in fault data. Using row indices as IDs.")
-            fault_df[!, :AutoID] = string.(1:num_faults)
-            fault_id_col = "AutoID"
-        end
+        error("No FaultID or ID column found in fault data while running Monte Carlo iterations for hydrology.")
     end
     
     # Extract the actual fault IDs
     fault_ids = string.(fault_df[!, fault_id_col])
-    println("Using fault IDs: $(join(fault_ids, ", "))")
+    #println("Using fault IDs: $(join(fault_ids, ", "))")
 
     # create the matrix to store the results of the Monte Carlo simulations
     ppOnFaultMC = zeros(params.n_iterations, num_faults) # rows are iterations, columns are faults
 
     # Create storage for parameter samples across all Monte Carlo iterations
+    # this will store the randomly sampled parameters for each iteration which we use to get the histogram data
     hydro_samples = Dict{String, Vector{Float64}}()
     hydro_samples["aquifer_thickness"] = Float64[]
     hydro_samples["porosity"] = Float64[]
@@ -170,14 +161,15 @@ function run_monte_carlo_hydrology(helper::TexNetWebToolLaunchHelperJulia,
     
     
     # Get unique well IDs based on data format - moved outside the loops for efficiency
+    # if we are in the injection_tool_data format, we use the API Number column
+    # otherwise (for monthly and annual injection data) we use the WellID column
     well_id_col = injection_data_type == "injection_tool_data" ? "API Number" : "WellID"
     well_ids = unique(injection_wells_df[!, well_id_col])
     
     # Pre-process well data outside the Monte Carlo loop
-    println("Starting to process $(length(well_ids)) wells for pre-processing")
     well_info = Dict{String, Dict{String, Any}}()
     for well_id in well_ids
-        println("Processing well ID: $well_id")
+        #println("Processing well ID: $well_id")
         
         if injection_data_type == "injection_tool_data"
             well_data = injection_wells_df[string.(injection_wells_df[!, well_id_col]) .== string(well_id), :]
@@ -221,8 +213,7 @@ function run_monte_carlo_hydrology(helper::TexNetWebToolLaunchHelperJulia,
                 continue
             end
             
-            println("Successfully parsed dates for well $well_id")
-            println("Minimum date: $(minimum(dates)), Maximum date: $(maximum(dates))")
+            
             
             # Convert years to integers properly
             inj_start_year = Dates.year(minimum(dates))
@@ -230,7 +221,7 @@ function run_monte_carlo_hydrology(helper::TexNetWebToolLaunchHelperJulia,
             inj_start_date = minimum(dates)
             inj_end_date = min(maximum(dates), year_of_interest_date)
             
-            println("Well $well_id: start_year=$inj_start_year ($(typeof(inj_start_year))), end_year=$inj_end_year ($(typeof(inj_end_year)))")
+            #println("Well $well_id: start_year=$inj_start_year ($(typeof(inj_start_year))), end_year=$inj_end_year ($(typeof(inj_end_year)))")
         else
             # Annual or monthly format
             well_data = injection_wells_df[string.(injection_wells_df[!, well_id_col]) .== string(well_id), :]
@@ -272,7 +263,7 @@ function run_monte_carlo_hydrology(helper::TexNetWebToolLaunchHelperJulia,
             continue
         end
         
-        # Store well information for use in Monte Carlo loop
+        # well info that is used in the Monte Carlo loop
         well_info[string(well_id)] = Dict{String, Any}(
             "lat" => well_lat,
             "lon" => well_lon,
@@ -286,13 +277,13 @@ function run_monte_carlo_hydrology(helper::TexNetWebToolLaunchHelperJulia,
     
     
 
-    # PRE-PROCESS WELL DATA WITH EXTRAPOLATION (for efficiency)
-    println("Pre-processing well injection data with extrapolation = $(extrapolate_injection_rates)...")
+   
+    #println("Pre-processing well injection data with extrapolation = $(extrapolate_injection_rates)...")
     prepared_well_data = Dict{String, Dict{String, Any}}()
     for (well_id, info) in well_info
         #println("Calling prepare_well_data_for_pressure_scenario for well $well_id")
         #println("Types: well_id=$(typeof(well_id)), inj_start_year=$(typeof(info["inj_start_year"])), inj_start_date=$(typeof(info["inj_start_date"])), inj_end_year=$(typeof(info["inj_end_year"])), actual_end_date=$(typeof(info["actual_end_date"])), injection_data_type=$(typeof(injection_data_type)), year_of_interest=$(typeof(year_of_interest)), extrapolate_injection_rates=$(typeof(extrapolate_injection_rates)), year_of_interest_date=$(typeof(year_of_interest_date))")
-        # Prepare injection data with extrapolation once
+        # Prepare injection data 
         days, rates = prepare_well_data_for_pressure_scenario(
             injection_wells_df,
             well_id,
@@ -321,7 +312,7 @@ function run_monte_carlo_hydrology(helper::TexNetWebToolLaunchHelperJulia,
     end
     
 
-    println("Running Monte Carlo simulations for hydrology with $(length(prepared_well_data)) prepared wells...")
+   
     # run the Monte Carlo simulations
     for i in 1:params.n_iterations
         # sample the parameters from the distributions
@@ -371,7 +362,7 @@ function run_monte_carlo_hydrology(helper::TexNetWebToolLaunchHelperJulia,
             
             ppOnFault = 0.0
             
-            #println("  * Processing fault ID: $fault_id")
+            
             
             # Loop over wells using PRE-PROCESSED DATA
             for (well_id, data) in prepared_well_data
@@ -419,7 +410,7 @@ function run_monte_carlo_hydrology(helper::TexNetWebToolLaunchHelperJulia,
     
     results_df = DataFrame(result_rows)
     
-    # Return both the results dataframe and the parameter samples
+    
     return results_df, hydro_samples
 end
 
@@ -445,6 +436,7 @@ function get_injection_dataset_path(helper::TexNetWebToolLaunchHelperJulia, step
     
     return nothing, nothing
 end
+
 
 """
 Calculate slip potential by combining probabilistic geomechanics CDF with deterministic hydrology
@@ -572,12 +564,12 @@ function calculate_probabilistic_slip_potential(prob_geo_cdf::DataFrame, prob_hy
     #println("Unique IDs in prob_geo_cdf: ", unique(prob_geo_cdf.ID))
 
     # print the first 10 rows of prob_hydro_cdf_data using pretty_table
-    println("prob_hydro_cdf_data (first 10 rows):")
-    pretty_table(prob_hydro_cdf_data[1:10, :])
+    #println("prob_hydro_cdf_data (first 10 rows):")
+    #pretty_table(prob_hydro_cdf_data[1:10, :])
 
     # print the first 10 rows of prob_geo_cdf using pretty_table
-    println("prob_geo_cdf (first 10 rows):")
-    pretty_table(prob_geo_cdf[1:10, :])
+    #println("prob_geo_cdf (first 10 rows):")
+    #pretty_table(prob_geo_cdf[1:10, :])
 
     #error("stop here")
     
@@ -862,6 +854,9 @@ function main()
         println("Hydrology model type not specified, defaulting to probabilistic")
     end
 
+    # TO DO: remove this (using for testing)
+    #hydro_model_type = "deterministic"
+
     # Get year of interest
     year_of_interest = get_parameter_value(helper, 5, "year_of_interest")
     if year_of_interest === nothing
@@ -885,26 +880,23 @@ function main()
    
     prob_geo_results = get_dataset_file_path(helper, 5, "prob_geomechanics_cdf_graph_data_prob_hydro")
     prob_geo_cdf = CSV.read(prob_geo_results, DataFrame)
-    println("Loaded original probabilistic geomechanics CDF data: (last 10 rows)")
-
-
-    pretty_table(prob_geo_cdf[end-10:end, :])
+    
 
     if hydro_model_type == "deterministic"
         # deterministic hydrology
         println("Running deterministic hydrology model...")
         
         # Check if we have deterministic hydrology results from step 4
-        # TO DO: verify that this properly parses that data from the previous step
+        # this dataframe holds the data for the straight blue lines that we combine with the probabilistic geomechanics CDF
         det_hydro_results = get_dataset_file_path(helper, 5, "deterministic_hydrology_results")
         det_hydro_df = CSV.read(det_hydro_results, DataFrame)
-        println("Using existing deterministic hydrology results:")
+        
         
         
 
-        # rename the 'FaultID' column to 'ID'
+        # rename the 'FaultID' column to 'ID' (the CDF from geomechanics uses the 'ID' column so they should match)
         rename!(det_hydro_df, :FaultID => :ID)
-        pretty_table(det_hydro_df)
+        #pretty_table(det_hydro_df)
         
         
         # Calculate slip potential by combining with probabilistic geomechanics CDF
@@ -919,8 +911,8 @@ function main()
         # Calculate slip potential for all years in the dataset
         deterministic_slip_potential = calculate_deterministic_slip_potential(prob_geo_cdf, det_hydro_df, nothing)
 
-        println("deterministic_slip_potential:")
-        pretty_table(deterministic_slip_potential)
+        #println("deterministic_slip_potential:")
+        #pretty_table(deterministic_slip_potential)
         
        
         
@@ -929,14 +921,50 @@ function main()
         
         # Save the year-specific slip potential results
         save_dataframe_as_parameter!(helper, 5, "prob_hydrology_cdf_graph_data", det_hydro_df)
+
+        # get the faults dataframe
+        fault_dataset_path = get_dataset_file_path(helper, 5, "faults_model_inputs_output")
+        faults_df = CSV.read(fault_dataset_path, DataFrame)
         
+        # add the fsp to the faults dataframe
+        # always recreate the column to ensure it's mutable (it's initialized in the model inputs process with missing values)
+        faults_df[!, :prob_hydro_fsp] = zeros(nrow(faults_df))
+        
+        # update 'prob_hydro_fsp' column with the fsp values
+        for row in eachrow(deterministic_slip_potential)
+            fault_id = row.ID
+            fsp = row.probability
+
+            # find the matching row in the faults_df
+            idx = findfirst(id -> string(id) == string(fault_id), faults_df.FaultID)
+            if !isnothing(idx)
+                faults_df[idx, :prob_hydro_fsp] = fsp
+            end
+        end
+
+        save_dataframe_as_parameter!(helper, 5, "faults_with_prob_hydro_fsp", faults_df)
+
+        deterministic_slip_potential.probability = round.(deterministic_slip_potential.probability, digits=2)
+        # from the 'deterministic_slip_potential' dataframe
+        # raname the 'slip_pressure' column to 'MeanPorePressure' and round it to 2 decimal places
+        rename!(deterministic_slip_potential, :slip_pressure => :MeanPorePressure)
+        deterministic_slip_potential.MeanPorePressure = round.(deterministic_slip_potential.MeanPorePressure, digits=2)
+        # rename the 'probability' column to 'SlipPotential'
+        rename!(deterministic_slip_potential, :probability => :SlipPotential)
+        # remove the 'Year' and 'Date' columns
+        deterministic_slip_potential = select(deterministic_slip_potential, Not([:Year, :Date]))
+        save_dataframe_as_parameter!(helper, 5, "slip_potential_results", deterministic_slip_potential)
 
 
         
+
+        #println("slip_potential_results:")
+        #pretty_table(deterministic_slip_potential)
         
         
         
-        # set the model run parameter (read by the summare step)
+        
+        # set the model run parameter (read by the summary step)
         set_parameter_value!(helper, 5, "model_run", 0)
        
         
@@ -967,6 +995,7 @@ function main()
         fluid_compressibility_uncertainty = get_parameter_value(helper, 5, "fluid_compressibility_uncertainty")
         rock_compressibility_uncertainty = get_parameter_value(helper, 5, "rock_compressibility_uncertainty")
 
+        #=
         println("input parameters:")
         println("aquifer_thickness: $aquifer_thickness")
         println("porosity: $porosity")
@@ -975,15 +1004,17 @@ function main()
         println("dynamic_viscosity: $dynamic_viscosity")
         println("fluid_compressibility: $fluid_compressibility")
         println("rock_compressibility: $rock_compressibility")
+        =#
 
         
         # Get number of iterations
         n_iterations = get_parameter_value(helper, 5, "hydro_mc_iterations")
         if n_iterations === nothing
             n_iterations = 750  # default
+            add_message_with_step_index!(helper, 5, "Number of MC iterations not provided, using the default value of 750", 0)
         end
         
-        # Create the parameters structure
+        
         params = HydrologyParams(
             aquifer_thickness,
             porosity,
@@ -1025,25 +1056,11 @@ function main()
         histogram_d3_data = hydro_input_distribution_histograms_to_d3(hydro_samples, nbins=25)
         
         # Save histogram data
-        # TO DO: uncomment those in production and configrue the graph in the portal
-        #CSV.write("hydro_histogram_sample_data.csv", histogram_d3_data)
         save_dataframe_as_parameter!(helper, 5, "prob_hydrology_histogram_data", histogram_d3_data)
         
         # Generate probabilistic hydrology CDF data
         prob_hydro_cdf_data = prob_hydrology_cdf(prob_hydro_results)
         save_dataframe_as_parameter!(helper, 5, "prob_hydrology_cdf_graph_data", prob_hydro_cdf_data)
-        #println("prob_hydrology_cdf_graph_data (after prob_hydrology_cdf) (last 10 rows):")
-        #pretty_table(prob_hydro_cdf_data[end-10:end, :])
-
-        # save the prob_hydro_cdf_data as a CSV in the current directory
-        #CSV.write("prob_hydro_cdf_data.csv", prob_hydro_cdf_data)
-
-
-
-        
-        
-        
-        
         
         # Calculate slip potential by combining with probabilistic geomechanics CDF
         println("calculating slip potential by combining with probabilistic geomechanics CDF...")
@@ -1073,20 +1090,22 @@ function main()
         
         
 
-        println("slip_potential:")
-        pretty_table(slip_potential)
+        #println("slip_potential:")
+        #pretty_table(slip_potential)
         
         # Save the slip potential results
         #save_dataframe_as_parameter!(helper, 5, "hydro_slip_potential_results", slip_potential)
         
         
         
-        println("\nSlip Potential Results (Probabilistic Hydrology):")
+        #println("\nSlip Potential Results (Probabilistic Hydrology):")
         # from the 'SlipPotential' column, round to 2 decimal places
         slip_potential.SlipPotential = round.(slip_potential.SlipPotential, digits=2)
-        pretty_table(slip_potential)
-        println("size of slip_potential: $(size(slip_potential))")
+        #pretty_table(slip_potential)
+        #println("size of slip_potential: $(size(slip_potential))")
         save_dataframe_as_parameter!(helper, 5, "slip_potential_results", slip_potential)
+        #println("slip_potential_results:")
+        #pretty_table(slip_potential)
         
         # Plot results (could call a function from julia_fsp_graphs.jl)
         # plot_prob_hydro_combined_cdf(prob_geo_cdf, prob_hydro_results)

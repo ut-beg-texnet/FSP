@@ -50,16 +50,7 @@ function run_mc_hydrology_time_series(
     injection_data_type::String,
     distribution_type::String="uniform"
 )
-    # Print key input parameter values for debugging
-    println("===== DEBUG: Input Parameters =====")
-    println("aquifer_thickness: ", params.aquifer_thickness)
-    println("porosity: ", params.porosity)
-    println("permeability: ", params.permeability)
-    println("fluid_density: ", params.fluid_density)
-    println("dynamic_viscosity: ", params.dynamic_viscosity)
-    println("fluid_compressibility: ", params.fluid_compressibility)
-    println("rock_compressibility: ", params.rock_compressibility)
-    println("===================================")
+    
     
     # Create distributions for MC sampling
     distributions = Dict{String, Distribution}()
@@ -138,11 +129,9 @@ function run_mc_hydrology_time_series(
     # Pre-process well data to get date boundaries
     inj_start_date, inj_end_date = Utilities.get_date_bounds(injection_wells_df)
 
-    println("Injection rate time window for all wells: inj_start_date = $inj_start_date, inj_end_date = $inj_end_date")
     
     # Find the max end date of all injections
     max_injection_year = year(inj_end_date)
-    println("Maximum injection end date: $inj_end_date (year $max_injection_year)")
     
     # Container for results
     # Structure: year -> iteration -> fault -> pressure
@@ -182,9 +171,11 @@ function run_mc_hydrology_time_series(
         STRho = (S, T, rho)
         
         # Debug print only for first iteration
+        #=
         if i == 1
             println("DEBUG: Calculated Storativity = $S, Transmissivity = $T")
         end
+        =#
         
         
         for analysis_year in years_to_analyze
