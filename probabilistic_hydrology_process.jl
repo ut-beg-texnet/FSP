@@ -854,8 +854,7 @@ function main()
         println("Hydrology model type not specified, defaulting to probabilistic")
     end
 
-    # TO DO: remove this (using for testing)
-    #hydro_model_type = "deterministic"
+    
 
     # Get year of interest
     year_of_interest = get_parameter_value(helper, 5, "year_of_interest")

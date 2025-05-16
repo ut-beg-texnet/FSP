@@ -533,13 +533,7 @@ end
 
 function main()
 
-    #=
-    To test with portal, use these on FSP
-    fault1: x=400, y=400, strike=10, dip=40, length=10
-    fault2: x=398.9400, y=400.1700, strike=20, dip=60, length=8
-
-    These correspond to the '2_faults_test_.csv' file
-    =#
+    
     
     println("\n=== Starting Deterministic Geomechanics Process ===")
     
