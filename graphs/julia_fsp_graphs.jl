@@ -1843,6 +1843,7 @@ function uncertainty_variability_inputs_to_d3(
     stress_inputs::Dict,
     fault_inputs::DataFrame
 )
+    println("stress_model_type in uncertainty_variability_inputs_to_d3: $stress_model_type")
     #println("\n====== DEBUG: Starting uncertainty_variability_inputs_to_d3 ======")
     #println("Stress Model Type: $stress_model_type")
     
@@ -1858,7 +1859,8 @@ function uncertainty_variability_inputs_to_d3(
             "max_horizontal_stress_uncertainty" => "SHmax Gradient",
             "min_horizontal_stress_uncertainty" => "SHmin Gradient"
         )
-    elseif stress_model_type == "aphi_model" && stress_inputs["min_horizontal_stress"] !== nothing
+    elseif stress_model_type == "aphi_min" || (stress_model_type == "aphi_model" && stress_inputs["min_horizontal_stress"] !== nothing)
+        #error("Aphi model with min horizontal stress detected in uncertainty_variability_inputs_to_d3")
         stress_param_mapping = Dict(
             "vertical_stress_gradient_uncertainty" => "Vert Stress Grad",
             "initial_pore_pressure_gradient_uncertainty" => "Pore Press Grad",
@@ -1866,7 +1868,8 @@ function uncertainty_variability_inputs_to_d3(
             "aphi_value_uncertainty" => "APhi Value",
             "min_horizontal_stress_uncertainty" => "SHmin Gradient"
         )
-    elseif stress_model_type == "aphi_model" && stress_inputs["min_horizontal_stress"] === nothing
+    elseif stress_model_type == "aphi_no_min" || 
+           (stress_model_type == "aphi_model" && stress_inputs["min_horizontal_stress"] === nothing)
         stress_param_mapping = Dict(
             "vertical_stress_gradient_uncertainty" => "Vert Stress Grad",
             "initial_pore_pressure_gradient_uncertainty" => "Pore Press Grad",
@@ -2060,7 +2063,8 @@ function fault_sensitivity_tornado_chart_to_d3(
             "max_horizontal_stress_uncertainty" => "SHmax Gradient",
             "min_horizontal_stress_uncertainty" => "SHmin Gradient"
         )
-    elseif stress_model_type == "aphi_model" && base_stress_inputs["min_horizontal_stress"] !== nothing
+    elseif stress_model_type == "aphi_model" || stress_model_type == "aphi_min" || 
+           (stress_model_type == "aphi_model" && base_stress_inputs["min_horizontal_stress"] !== nothing)
         stress_param_mapping = Dict(
             "vertical_stress_gradient_uncertainty" => "Vert Stress Grad",
             "initial_pore_pressure_gradient_uncertainty" => "Pore Press Grad",
@@ -2068,7 +2072,8 @@ function fault_sensitivity_tornado_chart_to_d3(
             "aphi_value_uncertainty" => "APhi Value",
             "min_horizontal_stress_uncertainty" => "SHmin Gradient"
         )
-    elseif stress_model_type == "aphi_model" && base_stress_inputs["min_horizontal_stress"] === nothing
+    elseif stress_model_type == "aphi_no_min" || 
+           (stress_model_type == "aphi_model" && base_stress_inputs["min_horizontal_stress"] === nothing)
         stress_param_mapping = Dict(
             "vertical_stress_gradient_uncertainty" => "Vert Stress Grad",
             "initial_pore_pressure_gradient_uncertainty" => "Pore Press Grad",
@@ -2478,13 +2483,12 @@ function calculate_with_direct_parameter(
     elseif uncertainty_param == "max_stress_azimuth_uncertainty"
         # For azimuth, we need to use mod to handle 0-360 wrapping properly
         # Debug the azimuth value before modifying it
-        println("  DEBUG: max_stress_azimuth before change: $(modified_stress["max_stress_azimuth"])")
-        println("  DEBUG: param_change: $param_change")
+        
         
         # Apply wrapping for azimuth (0-360 degrees)
         modified_stress["max_stress_azimuth"] = mod(modified_stress["max_stress_azimuth"] + param_change, 360.0)
         
-        println("  DEBUG: max_stress_azimuth after change: $(modified_stress["max_stress_azimuth"])")
+        
     elseif uncertainty_param == "max_horizontal_stress_uncertainty"
         modified_stress["max_horizontal_stress"] += param_change
         #println("Changed max_horizontal_stress gradient to: $(modified_stress["max_horizontal_stress"])")

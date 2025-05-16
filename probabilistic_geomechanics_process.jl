@@ -428,6 +428,8 @@ function main()
         "friction_coefficient" => get_parameter_value(helper, 2, "friction_coefficient")
     )
 
+    
+
     stress_model_type = get_parameter_value(helper, 2, "stress_model_type")
 
     #println("stress_inputs: $stress_inputs")
@@ -601,6 +603,11 @@ function main()
     # Using the first fault's friction coefficient
     #friction_coefficient = fault_inputs[1, :FrictionCoefficient]
     #stress_state_obj, initial_pressure = calculate_absolute_stresses(stress_inputs, friction_coefficient, stress_model_type)
+
+    #println("Inputs for tornado chart graph:")
+    #pretty_table(stress_inputs)
+    #pretty_table(uncertainties)
+    #pretty_table(fault_inputs)
     
     
 
@@ -664,7 +671,8 @@ function main()
                 "max_horizontal_stress_uncertainty",
                 "min_horizontal_stress_uncertainty"
             ]
-        elseif stress_model_type == "aphi_model" && local_stress_inputs["min_horizontal_stress"] !== nothing
+        elseif stress_model_type == "aphi_min" || 
+               (stress_model_type == "aphi_model" && local_stress_inputs["min_horizontal_stress"] !== nothing)
             
             stress_uncertainty_params = [
                 "vertical_stress_gradient_uncertainty",
@@ -673,7 +681,8 @@ function main()
                 "aphi_value_uncertainty",
                 "min_horizontal_stress_uncertainty"
             ]
-        elseif stress_model_type == "aphi_model" && local_stress_inputs["min_horizontal_stress"] === nothing
+        elseif stress_model_type == "aphi_no_min" || 
+              (stress_model_type == "aphi_model" && local_stress_inputs["min_horizontal_stress"] === nothing)
             
             stress_uncertainty_params = [
                 "vertical_stress_gradient_uncertainty",
