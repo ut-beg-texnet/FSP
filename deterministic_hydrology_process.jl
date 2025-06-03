@@ -2,8 +2,8 @@ using CSV
 using DataFrames 
 using Dates 
 using Statistics 
-using PrettyTables
-using Printf
+#using PrettyTables
+#using Printf
 using InlineStrings
 
 
@@ -75,9 +75,6 @@ end
 
 
 function main()
-    println("\n======================================================")
-    println("          DETERMINISTIC HYDROLOGY CALCULATION          ")
-    println("======================================================\n")
 
     
     

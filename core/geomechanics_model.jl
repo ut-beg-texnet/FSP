@@ -272,9 +272,9 @@ function calculate_fault_effective_stresses(strike::Union{Float64, Integer}, dip
     pressure, resolved normal stress on fault can become negative any of 
     the principal stresses is negative)
     """
-    # shear stress on fault plane
-    tau_normal = sqrt.(
-        n2_sq .* (s12.^2 .- (-1 .+ n2_sq) .* s22_s33.^2) .-
+    # Calculate the expression inside sqrt first to avoid domain errors
+    # sometimes this expression would yield really small negative numbers due to floating point precision and sqrt would throw domain errors
+    sqrt_argument = n2_sq .* (s12.^2 .- (-1 .+ n2_sq) .* s22_s33.^2) .-
         n1_sq .* n1_sq .* s11_s33.^2 .+
         4 .* n1_cubed .* n2 .* s12 .* (-s11_s33) .+
         2 .* n1_n2 .* s12 .* (s11 .+ s22 .- 2 .* n2_sq .* s22 .+ 2 .* (-1 .+ n2_sq) .* s33) .+
@@ -283,7 +283,13 @@ function calculate_fault_effective_stresses(strike::Union{Float64, Integer}, dip
             2 .* s11 .* (n2_sq .* s22_s33 .+ s33) .+
             s33 .* (2 .* n2_sq .* s22_s33 .+ s33)
         )
-    )
+    
+    # Ensure sqrt argument is non-negative to avoid domain errors
+    # If negative (usually due to numerical precision), clamp to zero
+    sqrt_argument = max.(sqrt_argument, 0.0)
+    
+    # shear stress on fault plane
+    tau_normal = sqrt.(sqrt_argument)
 
     # normal stress on fault plane (signed)
     sig_normal = 2 .* n1_n2 .* s12 .+ n1_sq .* s11_s33 .+ n2_sq .* s22_s33 .+ s33

@@ -1,6 +1,6 @@
 using CSV
 using DataFrames
-using PrettyTables
+#using PrettyTables
 using Distributions
 using Statistics
 using Dates

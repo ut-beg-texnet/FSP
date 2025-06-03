@@ -5,8 +5,8 @@ module HydroCalculations
 include("well_model.jl")
 include("bill_pfront.jl")
 
-using Profile
-using ProfileView
+#using Profile
+#using ProfileView
 using .WellModel
 using SpecialFunctions
 using Statistics

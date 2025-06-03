@@ -8,17 +8,17 @@ uncertainty_variability_inputs_to_d3, prob_hydrology_cdf, input_distribution_his
 #using JSON
 #using Colors
 using LinearAlgebra
-using SpecialFunctions
+#using SpecialFunctions
 using Statistics
 using Dates
-using FileIO
+#using FileIO
 using DataFrames
 using CSV
-using Printf
-using Random
-using Distributions
-using StatsBase  # Added for ecdf function
-using PrettyTables
+#using Printf
+#using Random
+#using Distributions
+using StatsBase  # ecdf function uses this
+#using PrettyTables
 include("../TexNetWebToolLauncherHelperJulia.jl")
 include("../core/geomechanics_model.jl")
 
@@ -31,6 +31,18 @@ using .GeomechanicsModel
 # For the well(s) of interest, plot the pressure vs distance graph
 # Using pressureScenario_constant_rate function for pressure calculation
 # This graph does not superimpose them
+"""
+Inputs:
+    radial_data::Vector{Tuple{String,Vector{Float64},Vector{Float64}}}
+        A vector of tuples, where each tuple contains:
+        - String: Well ID
+        - Vector{Float64}: Distance in km
+        - Vector{Float64}: Pressure in psi
+
+Outputs:
+    Graph showing the pressure vs distance for the well(s) of interest
+
+"""
 function plot_pressure_distance_graph(
     radial_data::Vector{Tuple{String,Vector{Float64},Vector{Float64}}}
 )
@@ -399,6 +411,7 @@ function mohr_diagram_data_to_d3_portal(
     return (arcsDF, slipDF, faultDF)
 end
 
+#=
 # helper function for Mohr diagram (maps color to fault proximity)
 function get_fault_color_mohr(tau, sigma, mu, min_psi_tolerance=0.0, max_psi_tolerance=4000.0)
 
@@ -429,6 +442,7 @@ function get_fault_color_mohr(tau, sigma, mu, min_psi_tolerance=0.0, max_psi_tol
     return @sprintf("#%02X%02X%02X", red, green, blue)
 
 end
+=#
 
 
 # Plots a line graph for injection well

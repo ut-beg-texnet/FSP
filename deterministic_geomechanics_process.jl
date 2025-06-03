@@ -1,11 +1,11 @@
 module GeomechanicsDriver
 
-using JSON
+#using JSON
 using ArgParse
 using LinearAlgebra
 using Base.Threads
 using DataFrames
-using Geodesy
+#using Geodesy
 using CSV
 using InlineStrings
 

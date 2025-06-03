@@ -17,16 +17,16 @@ using Distributions
 using Statistics
 using Random
 using LinearAlgebra
-using Distributed
+#using Distributed
 using SharedArrays
 #using Plots
-using ProgressMeter
+#using ProgressMeter
 using DataFrames
 using CSV
 using Base.Threads
-using PrettyTables
+#using PrettyTables
 using StatsBase  # Need this for theecdf function
-#gr()
+
 
 include("core/geomechanics_model.jl")
 #include("step2_deterministic_geomechanics.jl")
