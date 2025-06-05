@@ -44,21 +44,21 @@ function get_injection_dataset_path(helper::TexNetWebToolLaunchHelperJulia, step
         if filepath !== nothing
             if param_name == "injection_wells_annual_hydrology"
                 injection_data_type = "annual_fsp"
-                println("DEBUG: Returning filepath = $filepath, type = $(typeof(filepath)), injection_data_type = $injection_data_type")
+                #println("DEBUG: Returning filepath = $filepath, type = $(typeof(filepath)), injection_data_type = $injection_data_type")
                 return filepath, injection_data_type
             elseif param_name == "injection_wells_monthly_hydrology"
                 injection_data_type = "monthly_fsp"
-                println("DEBUG: Returning filepath = $filepath, type = $(typeof(filepath)), injection_data_type = $injection_data_type")
+                #println("DEBUG: Returning filepath = $filepath, type = $(typeof(filepath)), injection_data_type = $injection_data_type")
                 return filepath, injection_data_type
             elseif param_name == "injection_tool_data_hydrology"
                 injection_data_type = "injection_tool_data"
-                println("DEBUG: Returning filepath = $filepath, type = $(typeof(filepath)), injection_data_type = $injection_data_type")
+                #println("DEBUG: Returning filepath = $filepath, type = $(typeof(filepath)), injection_data_type = $injection_data_type")
                 return filepath, injection_data_type
             end
         end
     end
     
-    println("DEBUG: No injection dataset found, returning nothing")
+    #println("DEBUG: No injection dataset found, returning nothing")
     return nothing, nothing
 end
 
@@ -82,7 +82,7 @@ function main()
     helper = TexNetWebToolLaunchHelperJulia(scratchPath)
 
     
-    println("LOADING MODEL PARAMETERS FROM THE PORTAL...")
+    #println("LOADING MODEL PARAMETERS FROM THE PORTAL...")
     
     # Fluid compressibility (1/psi)
     beta = get_parameter_value(helper, 4, "fluid_compressibility")
@@ -176,7 +176,7 @@ function main()
     println("Year of interest: $year_of_interest")
     println("------------------------------------------------------\n")
     =#
-    println("LOADING INJECTION WELL DATA...")
+    #println("LOADING INJECTION WELL DATA...")
 
     # first we need to get the injection well data
     injection_wells_dataset_filepath, injection_data_type = get_injection_dataset_path(helper, 4)
@@ -220,7 +220,7 @@ function main()
             @warn "Error getting well IDs: $e, available columns: $(names(injection_wells_df))"
             String[]
         end
-        println("- Found $(length(well_ids)) unique wells in $(injection_data_type) format")
+        #println("- Found $(length(well_ids)) unique wells in $(injection_data_type) format")
     elseif injection_data_type == "injection_tool_data"
         
         well_ids = try 
@@ -236,7 +236,7 @@ function main()
             @warn "Error getting well IDs: $e, available columns: $(names(injection_wells_df))"
             String[]
         end
-        println("- Found $(length(well_ids)) unique wells in injection_tool_data format")
+        #println("- Found $(length(well_ids)) unique wells in injection_tool_data format")
     else
         error("Unsupported injection data type: $injection_data_type")
     end
@@ -250,15 +250,15 @@ function main()
 
 
     # Calculate storativity and transmissivity
-    println("\nCALCULATING AQUIFER PROPERTIES...")
+    #println("\nCALCULATING AQUIFER PROPERTIES...")
     S, T, rho_return = calcST(h_feet, phi, kap_md, rho, mu, 9.81, beta, alphav)
 
     # tuple for the pressureScenario function
     STRho = (S, T, rho)
-    println("- Storativity (S): $S")
-    println("- Transmissivity (T): $T m²/s")
+    #println("- Storativity (S): $S")
+    #println("- Transmissivity (T): $T m²/s")
 
-    println("LOADING FAULT DATA...")
+    #println("LOADING FAULT DATA...")
     # Load fault data
     fault_data_path = get_dataset_file_path(helper, 4, "faults")
     if fault_data_path === nothing
@@ -282,7 +282,7 @@ function main()
     
 
     # Get grid bounds from args.json if provided, otherwise calculate based on well locations
-    println("\nSETTING UP PRESSURE FIELD GRID BOUNDS...")
+    #println("\nSETTING UP PRESSURE FIELD GRID BOUNDS...")
     
     # Try to get lat/lon grid bounds from args.json
     lat_min_param = get_parameter_value(helper, 4, "grid_lat_min")
@@ -304,7 +304,7 @@ function main()
         
     else
         # Calculate grid bounds based on well lat/lon with a buffer
-        println("- Calculating lat/lon grid bounds based on well locations...")
+        #println("- Calculating lat/lon grid bounds based on well locations...")
         
         # Determine which lat/lon columns to use based on data type
         lat_column = injection_data_type == "injection_tool_data" ? "Surface Latitude" : "Latitude(WGS84)"
@@ -334,27 +334,27 @@ function main()
             lon_min = minimum(all_lons) - lon_range_buffer
             lon_max = maximum(all_lons) + lon_range_buffer
             
-            println("- Grid bounds with lattitude $(lat_range_buffer)° and longitude $(lon_range_buffer)° buffer:")
-            println("  Latitude: [$lat_min, $lat_max]")
-            println("  Longitude: [$lon_min, $lon_max]")
+            #println("- Grid bounds with lattitude $(lat_range_buffer)° and longitude $(lon_range_buffer)° buffer:")
+            #println("  Latitude: [$lat_min, $lat_max]")
+            #println("  Longitude: [$lon_min, $lon_max]")
         end
     end
 
     local number_points = 50
     
-    println("- Creating spatial grid with resolution = $number_points × $number_points points")
+    #println("- Creating spatial grid with resolution = $number_points × $number_points points")
     
     # Create the grid using lat/lon coordinates
     LAT_grid, LON_grid, lat_range, lon_range = create_spatial_grid_latlon(
         lat_min, lat_max, lon_min, lon_max, number_points
     )
     
-    println("- Grid created with size: $(size(LAT_grid))")
+    #println("- Grid created with size: $(size(LAT_grid))")
     @assert size(LAT_grid) == (50, 50) "Grid size mismatch. Expected (50,50), got $(size(LAT_grid))"
 
     
-    println("- Latitude range: [$(minimum(LAT_grid)), $(maximum(LAT_grid))]")
-    println("- Longitude range: [$(minimum(LON_grid)), $(maximum(LON_grid))]")
+    #println("- Latitude range: [$(minimum(LAT_grid)), $(maximum(LAT_grid))]")
+    #println("- Longitude range: [$(minimum(LON_grid)), $(maximum(LON_grid))]")
     
     # 2D matrix representing the pressure field
     local total_pressure_2d = zeros(size(LAT_grid))
@@ -376,14 +376,14 @@ function main()
         extrapolate_injection_rates = false
     end
 
-    println("\n------------------------------------------------------")
-    println("CALCULATING PRESSURE FIELD AND RADIAL CURVES FOR YEAR OF INTEREST: $year_of_interest")
-    println("------------------------------------------------------")
+    #println("\n------------------------------------------------------")
+    #println("CALCULATING PRESSURE FIELD AND RADIAL CURVES FOR YEAR OF INTEREST: $year_of_interest")
+    #println("------------------------------------------------------")
 
     well_count = 0
     for well_id in well_ids
         well_count += 1
-        println("\nWell $well_count of $(length(well_ids)) - ID: $well_id")
+        #println("\nWell $well_count of $(length(well_ids)) - ID: $well_id")
         
         # Get well coordinates based on data type
         if injection_data_type == "annual_fsp" || injection_data_type == "monthly_fsp"
@@ -471,7 +471,7 @@ function main()
                     inj_start_date = minimum(dates)
                     inj_end_date = min(maximum(dates), year_of_interest_date)
                     
-                    println("  * Injection period determined from dates: $inj_start_year to $inj_end_year")
+                    #println("  * Injection period determined from dates: $inj_start_year to $inj_end_year")
                 else
                     error("Error: No valid dates found in the injection tool dataset")
                     continue
@@ -492,7 +492,7 @@ function main()
         
         # Check if well hasn't started injecting yet at the year of interest
         if inj_start_date > year_of_interest_date
-            println("- Status: NOT ACTIVE before year $year_of_interest (active $inj_start_year-$inj_end_year)")
+            #println("- Status: NOT ACTIVE before year $year_of_interest (active $inj_start_year-$inj_end_year)")
             continue
         end
         
@@ -504,9 +504,9 @@ function main()
 
         # convert well_id from String3 to String
         well_id = String(well_id)
-        println("type of well_id: $(typeof(well_id))")
+        #println("type of well_id: $(typeof(well_id))")
         
-        println("- Processing well data for pressure calculation (start=$inj_start_year, end=$actual_end_year)...")
+        #println("- Processing well data for pressure calculation (start=$inj_start_year, end=$actual_end_year)...")
         days, rates = prepare_well_data_for_pressure_scenario(
             well_specific_data,
             well_id,
@@ -525,7 +525,7 @@ function main()
             continue
         end
         
-        println("- Injection history: $(length(days)) step changes over $(maximum(days)) days")
+        #println("- Injection history: $(length(days)) step changes over $(maximum(days)) days")
         
         # 1. Calculate pressure field contribution for this well
         # Calculate days from injection start to analysis date
@@ -541,19 +541,19 @@ function main()
         
         # Add to total pressure field (superposition)
         total_pressure_2d .+= pfield_this_well
-        println("- Maximum pressure contribution: $(maximum(pfield_this_well)) psi")
+        #println("- Maximum pressure contribution: $(maximum(pfield_this_well)) psi")
         
         # 2. Calculate radial curve data for this well (pressure vs distance)
         pressure_psi = pressureScenario_Rall(rates, days, collect(r_m), STRho)
         
         # Add to radial_info collection
         push!(radial_info, (well_id, collect(r_km), collect(pressure_psi)))
-        println("- Generated radial curve (max pressure: $(maximum(pressure_psi)) psi)")
+        #println("- Generated radial curve (max pressure: $(maximum(pressure_psi)) psi)")
     end
 
-    println("\n------------------------------------------------------")
-    println("PRESSURE FIELD RESULTS")
-    println("------------------------------------------------------")
+    #println("\n------------------------------------------------------")
+    #println("PRESSURE FIELD RESULTS")
+    #println("------------------------------------------------------")
     
     # 1. Calculate pressure field statistics
     min_pressure = minimum(total_pressure_2d)
@@ -587,9 +587,9 @@ function main()
     
 
     # Load fault data to calculate pressure on faults
-    println("\n------------------------------------------------------")
-    println("CALCULATING PRESSURE ON FAULTS FOR YEAR $year_of_interest")
-    println("------------------------------------------------------")
+    #println("\n------------------------------------------------------")
+    #println("CALCULATING PRESSURE ON FAULTS FOR YEAR $year_of_interest")
+    #println("------------------------------------------------------")
     
     
     num_faults = nrow(fault_df)
@@ -621,7 +621,7 @@ function main()
             string(f)
         end
         
-        println("    - Fault $fault_id: lat=$(fault_lat)°, lon=$(fault_lon)°")
+        #println("    - Fault $fault_id: lat=$(fault_lat)°, lon=$(fault_lon)°")
         
         # Process each well's contribution
         for well_id in well_ids
@@ -789,7 +789,7 @@ function main()
     
     # Save the fault pressure DataFrame as a parameter
     save_dataframe_as_parameter!(helper, 4, "deterministic_hydrology_results", fault_pressure_by_year)
-    println("- Saved fault pressure data as parameter 'deterministic_hydrology_results'")
+    #println("- Saved fault pressure data as parameter 'deterministic_hydrology_results'")
 
     
     
@@ -829,7 +829,7 @@ function main()
 
 
     # reformat the full grid to heatmap data
-    println("Reformatting full grid to heatmap data...")
+    #println("Reformatting full grid to heatmap data...")
     heatmap_data = reformat_pressure_grid_to_heatmap_data(full_grid_df, lat_range, lon_range)
     save_dataframe_as_parameter!(helper, 4, "hydrology_heatmap_data_arcgis", heatmap_data)
     #pretty_table(first(heatmap_data, 10))
@@ -841,9 +841,9 @@ function main()
 
 
 
-    println("\n------------------------------------------------------")
-    println("PROCESSING RADIAL CURVE DATA...")
-    println("------------------------------------------------------")
+    #println("\n------------------------------------------------------")
+    #println("PROCESSING RADIAL CURVE DATA...")
+    #println("------------------------------------------------------")
 
     if !isempty(radial_info)
         # Create a single DataFrame to hold all well data
@@ -860,7 +860,7 @@ function main()
                 push!(radial_df, (dist, pres, string(well_id)))
             end
             
-            println("- Added radial data for well $well_id (max pressure: $(maximum(pressures)) psi)")
+            #println("- Added radial data for well $well_id (max pressure: $(maximum(pressures)) psi)")
         end
         
        
@@ -869,16 +869,16 @@ function main()
         save_dataframe_as_parameter!(helper, 4, "radial_curves_data", radial_df)
         #println("radial curves data:")
         #pretty_table(radial_df)
-        println("- Radial curve data saved to dataset")
+        #println("- Radial curve data saved to dataset")
     else
-        println("- No wells with valid data for radial curves")
+        #println("- No wells with valid data for radial curves")
     end
 
 
     
-    println("\n------------------------------------------------------")
-    println("PREPARING MOHR DIAGRAM DATA WITH UPDATED FAULT PRESSURES")
-    println("------------------------------------------------------")
+    #println("\n------------------------------------------------------")
+    #println("PREPARING MOHR DIAGRAM DATA WITH UPDATED FAULT PRESSURES")
+    #println("------------------------------------------------------")
     
     # Load geomechanics results with original stress state
     #=
@@ -892,7 +892,7 @@ function main()
     #println("- Loaded geomechanics results with $(nrow(geo_results_df)) faults")
     
     # Extract stress state parameters from args.json or previous step
-    println("- Extracting stress state parameters...")
+    #println("- Extracting stress state parameters...")
     stress_inputs = Dict(
         "reference_depth" => get_parameter_value(helper, 2, "reference_depth"),
         "vertical_stress" => get_parameter_value(helper, 2, "vertical_stress"),
@@ -964,7 +964,7 @@ function main()
         else
             # Fall back to using the index as the ID
             string(i)
-            println("FALLBACK OPTION USED")
+            #println("FALLBACK OPTION USED")
         end
 
         
@@ -994,7 +994,7 @@ function main()
     pressure_changes = pressure_changes_vec
 
     # Process faults with updated pressure
-    println("- Processing faults with updated pressure...")
+    #println("- Processing faults with updated pressure...")
     faults_with_pressure = Vector{Dict{String, Any}}()
     for i in 1:nrow(fault_df)
         # Get the actual fault ID from the fault dataset
@@ -1138,10 +1138,10 @@ function main()
     # Save to results.json for the portal
     write_results_file(helper)
     
-    println("\nResults saved to CSV files in $(joinpath(@__DIR__, "output"))")
-    println("\n======================================================")
-    println("      DETERMINISTIC HYDROLOGY PROCESS COMPLETED        ")
-    println("======================================================\n")
+    #println("\nResults saved to CSV files in $(joinpath(@__DIR__, "output"))")
+    #println("\n======================================================")
+    #println("      DETERMINISTIC HYDROLOGY PROCESS COMPLETED        ")
+    #println("======================================================\n")
 end
 
 

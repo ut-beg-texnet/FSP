@@ -468,7 +468,7 @@ function calculate_deterministic_slip_potential(prob_geo_cdf::DataFrame, det_hyd
     filtered_hydro_pressures = det_hydro_pressures
     if !isnothing(year_of_interest) && "Date" in names(det_hydro_pressures)
         filtered_hydro_pressures = det_hydro_pressures[year.(det_hydro_pressures.Date) .== year_of_interest, :]
-        println("Filtered deterministic hydrology data to year $year_of_interest")
+        #println("Filtered deterministic hydrology data to year $year_of_interest")
     end
     
     for fault_id in fault_ids
@@ -586,7 +586,7 @@ function calculate_probabilistic_slip_potential(prob_geo_cdf::DataFrame, prob_hy
         fault_hydro_exceedance = prob_hydro_cdf_data[prob_hydro_cdf_data.ID .== fault_id, :]
         
         if isempty(fault_hydro_exceedance)
-            println("No hydrology exceedance data for fault $fault_id")
+            #println("No hydrology exceedance data for fault $fault_id")
             continue
         end
         
@@ -827,7 +827,7 @@ end
 
 function main()
 
-    println("\n=== Starting Probabilistic Hydrology Process ===")
+    #println("\n=== Starting Probabilistic Hydrology Process ===")
 
     scratchPath = ARGS[1]
 
@@ -836,7 +836,7 @@ function main()
     
     hydro_model_type = get_parameter_value(helper, 5, "hydro_model_type")
 
-    println("Hydro model type from the portal: $hydro_model_type")
+    #println("Hydro model type from the portal: $hydro_model_type")
 
     extrapolate_injection_rates = get_parameter_value(helper, 5, "extrapolate_injection_rates")
 
@@ -851,7 +851,7 @@ function main()
     # Default to probabilistic if not specified
     if hydro_model_type === nothing
         hydro_model_type = "probabilistic"  # Default to probabilistic
-        println("Hydrology model type not specified, defaulting to probabilistic")
+        #println("Hydrology model type not specified, defaulting to probabilistic")
     end
 
     
@@ -860,7 +860,7 @@ function main()
     year_of_interest = get_parameter_value(helper, 5, "year_of_interest")
     if year_of_interest === nothing
         year_of_interest = year(today())  
-        println("Year of interest not specified, defaulting to $year_of_interest")
+        #println("Year of interest not specified, defaulting to $year_of_interest")
     else
         # Check if year_of_interest is already an Int before parsing
         if isa(year_of_interest, String)
@@ -870,7 +870,7 @@ function main()
             error("Unexpected type for year_of_interest: $(typeof(year_of_interest))")
         end
         # If it's already an Int, we don't need to do anything
-        println("Year of interest: $year_of_interest")
+        #println("Year of interest: $year_of_interest")
     end
 
     year_of_interest_date = Date(year_of_interest-1, 12, 31)
@@ -883,7 +883,7 @@ function main()
 
     if hydro_model_type == "deterministic"
         # deterministic hydrology
-        println("Running deterministic hydrology model...")
+        #println("Running deterministic hydrology model...")
         
         # Check if we have deterministic hydrology results from step 4
         # this dataframe holds the data for the straight blue lines that we combine with the probabilistic geomechanics CDF
@@ -974,7 +974,7 @@ function main()
         set_parameter_value!(helper, 5, "model_run", 1)
 
         # probabilistic hydrology
-        println("Running probabilistic hydrology model...")
+        #println("Running probabilistic hydrology model...")
         
         # Get hydrology parameters from the portal
         aquifer_thickness = get_parameter_value(helper, 4, "aquifer_thickness_ft")
@@ -1062,7 +1062,7 @@ function main()
         save_dataframe_as_parameter!(helper, 5, "prob_hydrology_cdf_graph_data", prob_hydro_cdf_data)
         
         # Calculate slip potential by combining with probabilistic geomechanics CDF
-        println("calculating slip potential by combining with probabilistic geomechanics CDF...")
+        #println("calculating slip potential by combining with probabilistic geomechanics CDF...")
         slip_potential = calculate_probabilistic_slip_potential(prob_geo_cdf, prob_hydro_results)
 
         # add the fsp to the faults dataframe
@@ -1121,7 +1121,7 @@ function main()
 
     
     
-    println("=== Probabilistic Hydrology Process Completed ===\n")
+    #println("=== Probabilistic Hydrology Process Completed ===\n")
 end
 
 if abspath(PROGRAM_FILE) == @__FILE__

@@ -172,7 +172,7 @@ function calculate_absolute_stresses(stress_data::Dict, fault_data::Vector)
         sh = round(min_horizontal_gradient * reference_depth, digits=2)
         
     elseif model_type == "aphi_min" || model_type == "aphi_no_min"
-        println("\nUsing A-phi model: $(model_type)")
+        #println("\nUsing A-phi model: $(model_type)")
         # Get A-phi value and calculate n and phi
         aphi = stress_data["aphi_value"]
         n, phi = calculate_n_phi(aphi)
@@ -180,12 +180,12 @@ function calculate_absolute_stresses(stress_data::Dict, fault_data::Vector)
         
         
         if model_type == "aphi_min"
-            println("Stress model type: A-phi with min horizontal stress")
+            #println("Stress model type: A-phi with min horizontal stress")
             
             sh = stress_data["min_horizontal_stress"] * reference_depth
             sH, _ = calculate_modified_aphi_stresses(n, phi, sV, sh, p0)
         else
-            println("Stress model type: A-phi without min horizontal stress")
+            #println("Stress model type: A-phi without min horizontal stress")
             
             # Calculate both horizontal stresses using A-phi model
             sH, sh = calculate_standard_aphi_stresses(n, phi, sV, p0, μ)
@@ -412,7 +412,7 @@ function process_faults(fault_data::Vector, stress_state::GeomechanicsModel.Stre
         else
             num_iterations = n_iterations
         end
-        println("Prob geomechanics: running with $(num_iterations) iterations for each fault")
+        #println("Prob geomechanics: running with $(num_iterations) iterations for each fault")
         results = Vector{Vector{Dict{String, Any}}}(undef, num_faults)
         for i in 1:num_faults
             results[i] = Vector{Dict{String, Any}}(undef, num_iterations)
@@ -421,7 +421,7 @@ function process_faults(fault_data::Vector, stress_state::GeomechanicsModel.Stre
 
     
     if tab == "det_geo"
-        println("\nProcessing faults for deterministic geomechanics analysis...")
+        #println("\nProcessing faults for deterministic geomechanics analysis...")
         results = Vector{Dict{String, Any}}(undef, length(fault_data)) # pre-allocate results array
         
         @threads for i in eachindex(fault_data)
@@ -442,7 +442,7 @@ function process_faults(fault_data::Vector, stress_state::GeomechanicsModel.Stre
         end
 
     elseif tab == "det_hydro"
-        println("\nProcessing faults for deterministic hydrology analysis...")
+        #println("\nProcessing faults for deterministic hydrology analysis...")
         results = Vector{Dict{String, Any}}(undef, length(fault_data))  # Preallocate results array
         
         
@@ -535,7 +535,7 @@ function main()
 
     
     
-    println("\n=== Starting Deterministic Geomechanics Process ===")
+    #println("\n=== Starting Deterministic Geomechanics Process ===")
     
 
     scratchPath = ARGS[1]
@@ -545,7 +545,7 @@ function main()
     
 
     
-    println("Extracting stress state values from args.json...")
+    #println("Extracting stress state values from args.json...")
     stress_inputs = Dict(
         "reference_depth" => get_parameter_value(helper, 2, "reference_depth"),
         "vertical_stress" => get_parameter_value(helper, 2, "vertical_stress"),

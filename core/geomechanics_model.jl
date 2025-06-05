@@ -325,7 +325,7 @@ Calculate pore pressure required for fault slip using quadratic equation approac
     Output: pore_pressure_to_slip: Pore pressure required for fault slip
 """
 
-# Equivalent to Josimar's ComputeCriticalPorePressureForFailure
+# Equivalent to ComputeCriticalPorePressureForFailure
 # Currently not using this
 function calculate_slip_pressure(sig_fault::Float64, tau_fault::Float64, mu::Float64, p0::Float64, 
                                biot::Float64=1.0, nu::Float64=0.5, dp::Float64=0.0, s11::Float64=0.0, s22::Float64=0.0, s33::Float64=0.0, s12::Float64=0.0, n1::Float64=0.0, n2::Float64=0.0)
@@ -341,7 +341,7 @@ function calculate_slip_pressure(sig_fault::Float64, tau_fault::Float64, mu::Flo
     # Coefficients of quadratic equation A*dp^2 + B*dp + C = 0
     # such that the mobilized friction coefficient on fault = mu
     # solving for chnage in pp that makes the fault point intersect with frictional slip line
-    # ASK RALL ABOUT THIS
+    
     C = -4 * (1 + mu^2) * n1^3 * n2 * s12 * (s11 - s33) -
         (1 + mu^2) * n1^4 * (s11 - s33)^2 -
         (1 + mu^2) * n2^4 * (s22 - s33)^2 -
@@ -521,23 +521,7 @@ function analyze_fault(strike::Float64, dip::Float64, friction::Float64,
     # Calculate Shear Capacity Utilization using total stress
     scu = calculate_scu(sig_fault, tau_fault, friction)
 
-    # REMOVE THIS
-    #=
-    if strike == 30.0 && dip == 75.0
-        println("Fault1 sig_fault: ", sig_fault)
-        println("Fault1 tau_fault: ", tau_fault)
-        println("Fault1 slip_pressure: ", slip_pressure)
-        println("Fault1 slip_tendency: ", slip_tendency)
-        println("Fault1 cff: ", cff)
-        println("Fault1 scu: ", scu)
-    end
-    =#
-
-    # print the slip pressure, slip tendency, cff, and scu for each fault
-    #println("slip pressure: ", slip_pressure)
-    #println("slip tendency: ", slip_tendency)
-    #println("cff: ", cff)
-    #println("scu: ", scu)
+    
 
     
     return Dict(

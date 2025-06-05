@@ -117,7 +117,7 @@ function get_parameter_value(helper::TexNetWebToolLaunchHelperJulia, step_index:
 
         # if the value is an empty string or explicitly nothing, return nothing
         if isa(value, AbstractString) && isempty(strip(value)) || value === nothing
-            println("parameter $param_name not found in step $step_index")
+            #println("parameter $param_name not found in step $step_index")
             return nothing
         end
 
@@ -133,7 +133,7 @@ function get_parameter_value(helper::TexNetWebToolLaunchHelperJulia, step_index:
         end
         
     end
-    println("parameter $param_name not found in step $step_index")
+    #println("parameter $param_name not found in step $step_index")
     return nothing
 end
 
@@ -155,7 +155,7 @@ function get_dataset_file_path(helper::TexNetWebToolLaunchHelperJulia, step_inde
             path = dataset_paths[tryparse(Int, key_str)]
             return isa(path, AbstractString) ? path : string(path)
         else
-            println("DEBUG: DatasetPaths does not contain key '$key_str'. Available keys: $dataset_paths. Param_value: $param_value")
+            #println("DEBUG: DatasetPaths does not contain key '$key_str'. Available keys: $dataset_paths. Param_value: $param_value")
             error("DatasetPaths does not contain key '$key_str'. Available keys: $(keys(dataset_paths))")
         end
     end
@@ -263,7 +263,7 @@ function set_success_for_step_index!(helper::TexNetWebToolLaunchHelperJulia, ste
         step = helper.args_data["SessionState"]["StepState"][step_index]
         step["Success"] = new_success_state
 
-        println("DEBUG: Step $step_index success state set to $new_success_state")
+        #println("DEBUG: Step $step_index success state set to $new_success_state")
     else
         error("Step index $step_index not found")
     end

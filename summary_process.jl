@@ -43,7 +43,7 @@ Pre-process well data to avoid expensive operations in Monte Carlo loops
 Returns a dictionary with well_id as key and processed well info as value
 """
 function preprocess_well_data(injection_wells_df::DataFrame, well_id_col::String, injection_data_type::String)
-    println("Pre-processing well data for optimization...")
+    #println("Pre-processing well data for optimization...")
     
     # Determine column names once
     lat_col = injection_data_type == "injection_tool_data" ? "Surface Latitude" : "Latitude(WGS84)"
@@ -127,7 +127,7 @@ function preprocess_well_data(injection_wells_df::DataFrame, well_id_col::String
         )
     end
     
-    println("Pre-processed $(length(well_info)) wells successfully")
+    #println("Pre-processed $(length(well_info)) wells successfully")
     return well_info
 end
 
@@ -146,7 +146,7 @@ function run_mc_hydrology_time_series(
     distribution_type::String="uniform"
 )
     
-    println("Running Monte Carlo simulations with $(nthreads()) threads")
+    #println("Running Monte Carlo simulations with $(nthreads()) threads")
     
     # Create distributions for MC sampling
     distributions = Dict{String, Distribution}()
@@ -612,7 +612,7 @@ function get_injection_dataset_path_summary_step(helper::TexNetWebToolLaunchHelp
                 return filepath, injection_data_type
             end
         else
-            println("$param_name not found")
+            #println("$param_name not found")
         end
     end
             
@@ -717,15 +717,15 @@ function run_deterministic_hydrology_time_series(
     injection_data_type::String
 )
     # Print key input parameter values for debugging
-    println("===== DEBUG: Input Parameters for Deterministic Hydrology =====")
-    println("aquifer_thickness: ", aquifer_thickness)
-    println("porosity: ", porosity)
-    println("permeability: ", permeability)
-    println("fluid_density: ", fluid_density)
-    println("dynamic_viscosity: ", dynamic_viscosity)
-    println("fluid_compressibility: ", fluid_compressibility)
-    println("rock_compressibility: ", rock_compressibility)
-    println("===================================")
+    #println("===== DEBUG: Input Parameters for Deterministic Hydrology =====")
+    #println("aquifer_thickness: ", aquifer_thickness)
+    #println("porosity: ", porosity)
+    #println("permeability: ", permeability)
+    #println("fluid_density: ", fluid_density)
+    #println("dynamic_viscosity: ", dynamic_viscosity)
+    #println("fluid_compressibility: ", fluid_compressibility)
+    #println("rock_compressibility: ", rock_compressibility)
+    #println("===================================")
     
     # Calculate storativity and transmissivity
     S, T, rho = HydroCalculations.calcST(
@@ -740,7 +740,7 @@ function run_deterministic_hydrology_time_series(
     )
     
     STRho = (S, T, rho)
-    println("DEBUG: Calculated Storativity = $S, Transmissivity = $T")
+    #println("DEBUG: Calculated Storativity = $S, Transmissivity = $T")
     
     # Get well IDs
     well_id_col = injection_data_type == "injection_tool_data" ? "API Number" : "WellID"
@@ -775,7 +775,7 @@ function run_deterministic_hydrology_time_series(
     
     # Pre-process well data to get date boundaries
     inj_start_date, inj_end_date = Utilities.get_date_bounds(injection_wells_df)
-    println("Injection rate time window for all wells: inj_start_date = $inj_start_date, inj_end_date = $inj_end_date")
+    #println("Injection rate time window for all wells: inj_start_date = $inj_start_date, inj_end_date = $inj_end_date")
     
     # Container for results
     # Structure: year -> fault -> pressure
@@ -788,7 +788,7 @@ function run_deterministic_hydrology_time_series(
     
     # Find the max end date of all injections - we'll set the evaluation date to this for pressure diffusion
     max_injection_year = year(inj_end_date)
-    println("Maximum injection end date: $inj_end_date (year $max_injection_year)")
+    #println("Maximum injection end date: $inj_end_date (year $max_injection_year)")
     
     # Process each year
     for analysis_year in years_to_analyze
@@ -853,7 +853,7 @@ function run_deterministic_hydrology_time_series(
                 # For years after injection has stopped, evaluation date should use the current year
                 # to properly model pressure diffusion over time
                 if analysis_year > max_injection_year
-                    println("Calculating pressure diffusion for year $analysis_year (after injection end)")
+                    #println("Calculating pressure diffusion for year $analysis_year (after injection end)")
                 end
                 
                 # Calculate pressure contribution from this well
@@ -901,7 +901,7 @@ function main()
     # Start timing the entire script execution
     script_start_time = time()
     
-    println("\n=== Starting FSP Summary Process ===")
+    #println("\n=== Starting FSP Summary Process ===")
 
     # 1) Get the inputs from the args.json file
     scratchPath = ARGS[1]
@@ -946,8 +946,8 @@ function main()
     model_run = get_parameter_value(helper, 6, "model_run_summary")
     if model_run === nothing
         # Default to probabilistic if not specified
-        model_run = 1
-        println("Model run type not specified, defaulting to probabilistic")
+        model_run = 1   
+        #println("Model run type not specified, defaulting to probabilistic")
     end
     
     #println("Using model type: $model_run")
@@ -973,7 +973,7 @@ function main()
         error("Probabilistic geomechanics CDF data not found.")
     end
     prob_geo_cdf = CSV.read(prob_geo_cdf_path, DataFrame, types=Dict("ID" => String), pool=false)
-    println("Loaded probabilistic geomechanics data (first 10 rows) out of $(nrow(prob_geo_cdf)) rows:")
+    #println("Loaded probabilistic geomechanics data (first 10 rows) out of $(nrow(prob_geo_cdf)) rows:")
     
     #pretty_table(prob_geo_cdf[1:10, :])
 
@@ -1054,7 +1054,7 @@ function main()
 
     # Depending on model_run, either run deterministic or probabilistic hydrology
     if model_run == 0
-        println("\nRunning deterministic hydrology calculation for all years...")
+        #println("\nRunning deterministic hydrology calculation for all years...")
         pressure_through_time_results = run_deterministic_hydrology_time_series(
             aquifer_thickness,
             porosity,
@@ -1081,14 +1081,14 @@ function main()
         pressure_through_time_results_aggregated[!, :Pressure] = round.(pressure_through_time_results_aggregated.Pressure, digits=2)
         
         # Calculate fault slip potential
-        println("\nCalculating fault slip potential...")
+        #println("\nCalculating fault slip potential...")
         
         fsp_through_time = calculate_deterministic_fault_slip_potential(prob_geo_cdf, pressure_through_time_results_aggregated, years_to_analyze)
     elseif model_run == 1
         # Probabilistic model
-        println("\nRunning probabilistic hydrology Monte Carlo simulation for all years...")
+        #println("\nRunning probabilistic hydrology Monte Carlo simulation for all years...")
         
-        # Add timing measurement
+        # Add timing measurement (use only in performance testing)
         start_time = time()
         pressure_through_time_results = run_mc_hydrology_time_series(
             params, 
@@ -1123,7 +1123,7 @@ function main()
         pressure_through_time_results_aggregated[!, :Pressure] = round.(pressure_through_time_results_aggregated.Pressure, digits=2)
 
         # Calculate fault slip potential using probabilistic approach
-        println("\nCalculating fault slip potential...")
+        #println("\nCalculating fault slip potential...")
         fsp_through_time = calculate_fault_slip_potential(prob_geo_cdf, pressure_through_time_results)
         
         # Round FSP values to 2 decimal places
@@ -1183,7 +1183,8 @@ function main()
     set_success_for_step_index!(helper, 6, true)
     write_results_file(helper)
     
-    # Print performance metrics if we ran the probabilistic model
+    # Print performance metrics if we ran the probabilistic model (USE ONLY IN PERFORMANCE TESTING)
+    
     if model_run == 1
         println("\n=== Performance Metrics ===")
         println("Monte Carlo simulation completed in $(round(mc_elapsed_seconds, digits=2)) seconds ($(round(mc_elapsed_seconds/60, digits=2)) minutes)")
@@ -1192,9 +1193,13 @@ function main()
         println("==========================")
     end
     
+
+
     # Calculate total script execution time
     script_end_time = time()
     total_execution_time = script_end_time - script_start_time
+    
+    # Print performance metrics (USE ONLY IN PERFORMANCE TESTING)
     
     println("\n=== Total Script Execution Summary ===")
     println("Total execution time: $(round(total_execution_time, digits=2)) seconds ($(round(total_execution_time/60, digits=2)) minutes)")
@@ -1204,7 +1209,7 @@ function main()
     end
     println("======================================")
     
-    println("=== FSP Summary Process Completed ===\n")
+    #println("=== FSP Summary Process Completed ===\n")
 end
 
 if abspath(PROGRAM_FILE) == @__FILE__

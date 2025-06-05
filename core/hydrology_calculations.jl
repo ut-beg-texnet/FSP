@@ -314,7 +314,7 @@ function pfieldcalc_all_rates(
     # Output distance statistics (min/max values)
     min_distance = minimum(R_meters)
     max_distance = maximum(R_meters)
-    println("  * Distance range: $min_distance m to $max_distance m from well")
+    #println("  * Distance range: $min_distance m to $max_distance m from well")
 
     # 3) Flatten the matrix
     R_meters_flattened = vec(R_meters)

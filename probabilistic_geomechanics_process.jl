@@ -318,7 +318,7 @@ function run_monte_carlo(stress_inputs::Dict, fault_inputs::DataFrame, uncertain
                 pps_to_slip[fault_idx, i] = pp_to_slip
             catch e
                 
-                println("Warning: Error calculating slip pressure for fault $(fault_idx) in simulation $(i): $(e)")
+                #println("Warning: Error calculating slip pressure for fault $(fault_idx) in simulation $(i): $(e)")
                 error("Error calculating slip pressure for fault $(fault_idx) within MC simulation $(i): $(e)")
                 
             end
@@ -409,14 +409,14 @@ function main()
     
     scratchPath = ARGS[1]
 
-    println("Scratch path: $scratchPath")
+    #println("Scratch path: $scratchPath")
 
     helper = TexNetWebToolLaunchHelperJulia(scratchPath)
 
     # get the optional random_seed user input
     random_seed = get_parameter_value(helper, 3, "random_seed")
 
-    println("Extracting stress state values from args.json...")
+    #println("Extracting stress state values from args.json...")
     stress_inputs = Dict(
         "reference_depth" => get_parameter_value(helper, 2, "reference_depth"),
         "vertical_stress" => get_parameter_value(helper, 2, "vertical_stress"),
@@ -435,7 +435,7 @@ function main()
     #println("stress_inputs: $stress_inputs")
 
     
-    println("stress_model_type: $stress_model_type")
+    #println("stress_model_type: $stress_model_type")
     
     # create uncertainties dictionary
     uncertainties = Dict()
@@ -487,7 +487,7 @@ function main()
 
     #println("uncertainties from the portal: $uncertainties")
 
-    println("Extracting fault parameters from args.json...")
+    #println("Extracting fault parameters from args.json...")
     fault_inputs_filepath = get_dataset_file_path(helper, 3, "faults")
     fault_inputs = CSV.read(fault_inputs_filepath, DataFrame)
     # Require FaultID column in faults table
@@ -502,8 +502,8 @@ function main()
     n_sims = get_parameter_value(helper, 3, "mc_iterations")
 
     
-    println("Running Monte Carlo simulation with $(Threads.nthreads()) threads for $n_sims iterations")
-    println("stress_model_type (after we distinguish between aphi_min and aphi_no_min): $stress_model_type")
+    #println("Running Monte Carlo simulation with $(Threads.nthreads()) threads for $n_sims iterations")
+    #println("stress_model_type (after we distinguish between aphi_min and aphi_no_min): $stress_model_type")
 
     # create the shared array for the results (optimized for parallel processing)
     mc_pp_results, stress_param_values, fault_param_values = run_monte_carlo(stress_inputs, fault_inputs, uncertainties, n_sims, stress_model_type, random_seed)
@@ -720,7 +720,7 @@ function main()
     end
     
     # Create and save the combined tornado chart data as a parameter
-    println("Creating combined tornado chart data for all faults...")
+    #println("Creating combined tornado chart data for all faults...")
     
     # Create vector to hold individual dataframes with fault_id added
     dfs_with_fault_id = []
@@ -777,7 +777,7 @@ function main()
     
     # If no matches were found (or very few), try a different approach
     if non_nan_count < nrow(combined_tornado_df) / 8 # Less than 1/8th of rows have matches
-        println("Few matches found. Trying alternative approach...")
+        #println("Few matches found. Trying alternative approach...")
         
         # Initialize column with NaN
         combined_tornado_df.det_slip_pressure .= NaN
@@ -789,13 +789,13 @@ function main()
         for fault_id in unique_ids
             if haskey(det_slip_pressures, string(fault_id))
                 combined_tornado_df[combined_tornado_df.id .== fault_id, :det_slip_pressure] .= det_slip_pressures[string(fault_id)]
-                println("Set slip pressure $(det_slip_pressures[string(fault_id)]) for fault $fault_id")
+                #println("Set slip pressure $(det_slip_pressures[string(fault_id)]) for fault $fault_id")
             end
         end
         
         # Count how many non-NaN values after alternative approach
         non_nan_count_after = count(!isnan, combined_tornado_df.det_slip_pressure)
-        println("After alternative approach: $(non_nan_count_after) non-NaN values")
+        #println("After alternative approach: $(non_nan_count_after) non-NaN values")
     end
     
     # Now remove the redundant fault_id column
@@ -829,7 +829,7 @@ function main()
     write_results_file(helper)
     
 
-    println("Probabilistic geomechanics process completed successfully.")
+    #println("Probabilistic geomechanics process completed successfully.")
 end
 
 
