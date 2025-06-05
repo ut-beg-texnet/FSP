@@ -1,16 +1,16 @@
 {
     "Messages": [],
     "DatasetPaths": {
-        "10236": ".\\scrath_path\\10236.csv",
-        "10126": ".\\scrath_path\\10126.csv",
-        "10229": ".\\scrath_path\\10229.csv",
-        "10232": ".\\scrath_path\\10232.csv",
-        "10231": ".\\scrath_path\\10231.csv",
-        "10234": ".\\scrath_path\\10234.csv",
-        "7023": ".\\scrath_path\\7023.csv",
-        "10230": ".\\scrath_path\\10230.csv",
-        "10233": ".\\scrath_path\\10233.csv",
-        "10241": ".\\scrath_path\\10241.csv"
+        "10236": "C:\\texnetwebtools\\tools\\FSP\\scratch_path\\10236.csv",
+        "10126": "C:\\texnetwebtools\\tools\\FSP\\scratch_path\\10126.csv",
+        "10229": "C:\\texnetwebtools\\tools\\FSP\\scratch_path\\10229.csv",
+        "10232": "C:\\texnetwebtools\\tools\\FSP\\scratch_path\\10232.csv",
+        "10231": "C:\\texnetwebtools\\tools\\FSP\\scratch_path\\10231.csv",
+        "10234": "C:\\texnetwebtools\\tools\\FSP\\scratch_path\\10234.csv",
+        "7023": "C:\\texnetwebtools\\tools\\FSP\\scratch_path\\7023.csv",
+        "10230": "C:\\texnetwebtools\\tools\\FSP\\scratch_path\\10230.csv",
+        "10233": "C:\\texnetwebtools\\tools\\FSP\\scratch_path\\10233.csv",
+        "10241": "C:\\texnetwebtools\\tools\\FSP\\scratch_path\\10241.csv"
     },
     "Success": false,
     "SessionState": {
