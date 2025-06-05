@@ -898,6 +898,9 @@ function run_deterministic_hydrology_time_series(
 end
 
 function main()
+    # Start timing the entire script execution
+    script_start_time = time()
+    
     println("\n=== Starting FSP Summary Process ===")
 
     # 1) Get the inputs from the args.json file
@@ -915,7 +918,7 @@ function main()
     =#
 
     # print the number of threads used 
-    add_message_with_step_index!(helper, 6, "Number of threads used: $(nthreads())", 0)
+    #add_message_with_step_index!(helper, 6, "Number of threads used: $(nthreads())", 0)
     
     #year_of_interest_date = Date(year_of_interest - 1, 12, 31)
 
@@ -1188,6 +1191,18 @@ function main()
         println("Using $(nthreads()) threads")
         println("==========================")
     end
+    
+    # Calculate total script execution time
+    script_end_time = time()
+    total_execution_time = script_end_time - script_start_time
+    
+    println("\n=== Total Script Execution Summary ===")
+    println("Total execution time: $(round(total_execution_time, digits=2)) seconds ($(round(total_execution_time/60, digits=2)) minutes)")
+    println("Number of threads used: $(nthreads())")
+    if model_run == 1
+        println("Monte Carlo portion: $(round(mc_elapsed_seconds, digits=2)) seconds ($(round(100 * mc_elapsed_seconds / total_execution_time, digits=1))% of total time)")
+    end
+    println("======================================")
     
     println("=== FSP Summary Process Completed ===\n")
 end
