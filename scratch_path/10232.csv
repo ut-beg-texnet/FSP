@@ -1,0 +1,4 @@
+label,centerX,centerY,radius,stress_regime,start_angle,end_angle,labelPosX,labelPosY
+σH,5791.5,0.0,2898.5,Strike-Slip,0.0,3.141592653589793,8990.0,0.0
+σV,5131.5,0.0,2238.5,Strike-Slip,0.0,3.141592653589793,7670.0,0.0
+σh,8030.0,0.0,660.0,Strike-Slip,0.0,3.141592653589793,3193.0,0.0
