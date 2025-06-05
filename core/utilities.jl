@@ -73,15 +73,16 @@ function latlon_to_wkt(faults_df::DataFrame,
         strike_rad = deg2rad(90 - strike) # Convert from azimuth to math angle
         
         # Calculate half length for extending in both directions
+        # we do this because for the 2D faults, the user provides the midpoint coordinates and a length
         half_length_km = length_km / 2.0
         
         # Create a local ENU coordinate system centered at the fault midpoint
         # This gives us a more accurate way to extend the fault in the proper direction
-        enu_transform = ENUfromLLA(center_point, wgs84)
+        #enu_transform = ENUfromLLA(center_point, wgs84)
         lla_transform = LLAfromENU(center_point, wgs84)
         
-        # Calculate the endpoints in the local ENU frame
-        # In ENU, x is East, y is North, so we need to use the strike angle correctly
+        # Calculate the endpoints
+        # In ENU, x is East, y is North
         dx = sin(strike_rad) * half_length_km * 1000.0  # Convert km to meters
         dy = cos(strike_rad) * half_length_km * 1000.0  # Convert km to meters
         
