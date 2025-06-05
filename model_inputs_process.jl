@@ -67,7 +67,7 @@ end
 
 function main()
 
-    println("\n=== Starting Deterministic Geomechanics Process ===")
+    #println("\n=== Starting Deterministic Geomechanics Process ===")
 
     
 
@@ -77,7 +77,7 @@ function main()
 
 
     
-    println("Extracting fault data from the scratch path...")
+    #println("Extracting fault data from the scratch path...")
     # get file path for faults dataset using the helper
     faults_csv_filepath = get_dataset_file_path(helper, 1, "faults")
     if faults_csv_filepath !== nothing
@@ -128,7 +128,7 @@ function main()
     
 
     # read injection wells CSV into a DataFrame
-    println("Extracting injection well data from the CSV at the scratch path...")
+    #println("Extracting injection well data from the CSV at the scratch path...")
     injection_wells_csv_filepath, injection_data_type = get_injection_dataset_path(helper, 1)
     if injection_wells_csv_filepath !== nothing
         
@@ -141,9 +141,9 @@ function main()
         else
             injection_wells_df = CSV.read(injection_wells_csv_filepath, DataFrame, types=Dict("WellID" => String), pool=false)
             #=
-            println("column types:")
+            #println("column types:")
             for col in names(injection_wells_df)
-                println("$col: $(eltype(injection_wells_df[!, col]))")
+                #println("$col: $(eltype(injection_wells_df[!, col]))")
             end
             =#
         end
@@ -224,7 +224,7 @@ function main()
 
 
 
-            println("DEBUG: Saved injection tool data for visualization")
+            #println("DEBUG: Saved injection tool data for visualization")
         end
         
     else
@@ -251,7 +251,7 @@ function main()
 
     write_results_file(helper)
 
-    println("Model Inputs process: Completed successfully.")
+    #println("Model Inputs process: Completed successfully.")
 
 
 

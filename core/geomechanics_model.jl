@@ -524,12 +524,12 @@ function analyze_fault(strike::Float64, dip::Float64, friction::Float64,
     # REMOVE THIS
     #=
     if strike == 30.0 && dip == 75.0
-        println("Fault1 sig_fault: ", sig_fault)
-        println("Fault1 tau_fault: ", tau_fault)
-        println("Fault1 slip_pressure: ", slip_pressure)
-        println("Fault1 slip_tendency: ", slip_tendency)
-        println("Fault1 cff: ", cff)
-        println("Fault1 scu: ", scu)
+        #println("Fault1 sig_fault: ", sig_fault)
+        #println("Fault1 tau_fault: ", tau_fault)
+        #println("Fault1 slip_pressure: ", slip_pressure)
+        #println("Fault1 slip_tendency: ", slip_tendency)
+        #println("Fault1 cff: ", cff)
+        #println("Fault1 scu: ", scu)
     end
     =#
 

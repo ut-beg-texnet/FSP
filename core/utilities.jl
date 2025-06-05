@@ -106,7 +106,7 @@ end
 
 
 function convert_easting_northing_to_latlon(easting::Float64, northing::Float64)
-    println("lat: $(wgs84(easting, northing).lat), lon: $(wgs84(easting, northing).lon)")
+    #println("lat: $(wgs84(easting, northing).lat), lon: $(wgs84(easting, northing).lon)")
     return wgs84(easting, northing)
 end
 
@@ -193,8 +193,8 @@ function convert_latlon_to_easting_northing!(df::DataFrame, lat_col::String, lon
                 zones[i] = "$(zone)$(hemisphere ? 'N' : 'S')"
                 
             catch e
-                println("\nError processing row $i:")
-                println(sprint(showerror, e))
+                #println("\nError processing row $i:")
+                #println(sprint(showerror, e))
                 throw(ArgumentError("Error converting coordinates for row $i: $e"))
             end
         end
@@ -210,8 +210,8 @@ function convert_latlon_to_easting_northing!(df::DataFrame, lat_col::String, lon
         return df
         
     catch e
-        println("\nFatal error in coordinate conversion:")
-        println(sprint(showerror, e))
+        #println("\nFatal error in coordinate conversion:")
+        #println(sprint(showerror, e))
         rethrow(e)
     end
 end
@@ -396,7 +396,7 @@ function prepare_annual_fsp_data(
     # Use the provided end_year (already calculated as min(inj_end_year, year_of_interest))
     # If well starts after end year, return empty arrays
     if start_year > year(year_of_interest_date)
-        println("DEBUG: Well starts after calculation end year - start_year ($start_year) > end_year ($end_year)")
+        #println("DEBUG: Well starts after calculation end year - start_year ($start_year) > end_year ($end_year)")
         return Float64[], Float64[]
     end
     
@@ -434,8 +434,8 @@ function prepare_annual_fsp_data(
     step_times = Float64[1.0, Float64(days_total)]
     step_rates = Float64[daily_rate_bbl, 0.0]
     
-    println("  * Constant injection rate: $daily_rate_bbl bbl/day for $(days_total-1) days")
-    println("  * Injection period: $(global_start_date) to $(global_end_date) ($(days_total) days)")
+    #println("  * Constant injection rate: $daily_rate_bbl bbl/day for $(days_total-1) days")
+    #println("  * Injection period: $(global_start_date) to $(global_end_date) ($(days_total) days)")
     
     return step_times, step_rates
 end
@@ -461,7 +461,7 @@ function prepare_monthly_fsp_data(
     
     # If well starts after end_year, return empty arrays
     if start_year > year(year_of_interest_date)
-        println("DEBUG: Well starts after calculation end year - start_year ($start_year) > end_year ($end_year)")
+        #println("DEBUG: Well starts after calculation end year - start_year ($start_year) > end_year ($end_year)")
         return Float64[], Float64[]
     end
     
@@ -491,7 +491,7 @@ function prepare_monthly_fsp_data(
     missing_cols = filter(col -> !(col in names(well_data)), required_cols)
     
     if !isempty(missing_cols)
-        println("DEBUG: Missing required columns: $(join(missing_cols, ", "))")
+        #println("DEBUG: Missing required columns: $(join(missing_cols, ", "))")
         
         # Try alternative column names for "InjectionRate(bbl/month)"
         if "InjectionRate(bbl/month)" in missing_cols
@@ -500,7 +500,7 @@ function prepare_monthly_fsp_data(
             
             for alt_col in alt_rate_cols
                 if alt_col in names(well_data)
-                    println("DEBUG: Using alternative column '$alt_col' for injection rate")
+                    #println("DEBUG: Using alternative column '$alt_col' for injection rate")
                     rename!(well_data, alt_col => "InjectionRate(bbl/month)")
                     found_alt = true
                     missing_cols = filter(col -> !(col in names(well_data)), required_cols)
@@ -509,14 +509,14 @@ function prepare_monthly_fsp_data(
             end
             
             if !found_alt
-                println("DEBUG: No suitable monthly injection rate column found")
+                #println("DEBUG: No suitable monthly injection rate column found")
                 return Float64[], Float64[]
             end
         end
         
         # If still missing required columns, return empty
         if !isempty(missing_cols)
-            println("DEBUG: Still missing required columns after attempting alternatives: $(join(missing_cols, ", "))")
+            #println("DEBUG: Still missing required columns after attempting alternatives: $(join(missing_cols, ", "))")
             return Float64[], Float64[]
         end
     end
@@ -530,10 +530,10 @@ function prepare_monthly_fsp_data(
     
     # Print out all well data rows for debugging
     #=
-    println("DEBUG: Well data rows (first 5 rows max):")
+    #println("DEBUG: Well data rows (first 5 rows max):")
     for (i, row) in enumerate(eachrow(well_data))
         if i <= 5
-            println("DEBUG: Row $i: Year=$(row.Year), Month=$(row.Month), Rate=$(row["InjectionRate(bbl/month)"])")
+            #println("DEBUG: Row $i: Year=$(row.Year), Month=$(row.Month), Rate=$(row["InjectionRate(bbl/month)"])")
         else
             break
         end
@@ -584,7 +584,7 @@ function prepare_monthly_fsp_data(
             end
         elseif extrapolate && !isnothing(current_rate) && current_rate > 0
             # Keep using current rate if extrapolating
-            println("DEBUG: Extrapolating using current rate $current_rate for month $y-$m")
+            #println("DEBUG: Extrapolating using current rate $current_rate for month $y-$m")
         else
             # No data for this month and not extrapolating
             # If current rate is non-zero, step down to zero
@@ -593,9 +593,9 @@ function prepare_monthly_fsp_data(
                 push!(step_times, Float64(days_since_start))
                 push!(step_rates, 0.0)
                 current_rate = 0.0
-                println("DEBUG: Added step down to zero: day=$(days_since_start) for month $y-$m (no data)")
+                #println("DEBUG: Added step down to zero: day=$(days_since_start) for month $y-$m (no data)")
             else
-                println("DEBUG: No data for month $y-$m, current rate already zero")
+                #println("DEBUG: No data for month $y-$m, current rate already zero")
             end
         end
         
@@ -620,10 +620,10 @@ function prepare_monthly_fsp_data(
     
     # Print summary of steps
     #=
-    println("DEBUG: Created $(length(step_times)) injection rate step changes")
-    println("DEBUG: step_times: $(step_times)")
-    println("DEBUG: step_rates: $(step_rates)")
-    println("===== END DEBUG prepare_monthly_fsp_data =====\n")
+    #println("DEBUG: Created $(length(step_times)) injection rate step changes")
+    #println("DEBUG: step_times: $(step_times)")
+    #println("DEBUG: step_rates: $(step_rates)")
+    #println("===== END DEBUG prepare_monthly_fsp_data =====\n")
     =#
     
     return step_times, step_rates
@@ -650,7 +650,7 @@ function prepare_injection_tool_data(
 )
     # If well starts after calculation end year, return empty arrays
     if inj_start_date > year_of_interest_date
-        println("DEBUG: Well starts after calculation end year - start_year ($start_year) > end_year ($end_year)")
+        #println("DEBUG: Well starts after calculation end year - start_year ($start_year) > end_year ($end_year)")
         return Float64[], Float64[]
     end
     
@@ -875,7 +875,7 @@ function create_spatial_grid_latlon(df::DataFrame, lat_column::String, lon_colum
     lon_min = minimum(df[!, lon_column])
     lon_max = maximum(df[!, lon_column])
     
-    println("DEBUG: Input bounds: Lat [$lat_min, $lat_max], Lon [$lon_min, $lon_max]")
+    #println("DEBUG: Input bounds: Lat [$lat_min, $lat_max], Lon [$lon_min, $lon_max]")
     
     # Validate input coordinates
     if isnan(lat_min) || isnan(lat_max) || isnan(lon_min) || isnan(lon_max)
@@ -889,7 +889,7 @@ function create_spatial_grid_latlon(df::DataFrame, lat_column::String, lon_colum
     lon_min -= buffer_deg
     lon_max += buffer_deg
     
-    println("DEBUG: Bounds with buffer (buffer is 0.01 degrees): Lat [$lat_min, $lat_max], Lon [$lon_min, $lon_max]")
+    #println("DEBUG: Bounds with buffer (buffer is 0.01 degrees): Lat [$lat_min, $lat_max], Lon [$lon_min, $lon_max]")
     
     # Create 1D ranges for latitude and longitude
     lat_range = range(lat_min, stop=lat_max, length=num_points)
@@ -904,7 +904,7 @@ end
 # Direct bounds version - takes lat/lon bounds directly
 # This is the version that is used in the deterministic hydrology process
 function create_spatial_grid_latlon(lat_min::Float64, lat_max::Float64, lon_min::Float64, lon_max::Float64, num_points::Int=50)
-    println("DEBUG: Input bounds: Lat [$lat_min, $lat_max], Lon [$lon_min, $lon_max]")
+    #println("DEBUG: Input bounds: Lat [$lat_min, $lat_max], Lon [$lon_min, $lon_max]")
     
     # Validate input coordinates
     if isnan(lat_min) || isnan(lat_max) || isnan(lon_min) || isnan(lon_max)
@@ -919,7 +919,7 @@ function create_spatial_grid_latlon(lat_min::Float64, lat_max::Float64, lon_min:
     # Create 2D meshgrids
     LAT_grid, LON_grid = meshgrid(lon_range, lat_range) 
     
-    println("DEBUG: Created lat/lon grid with size: $(size(LAT_grid))")
+    #println("DEBUG: Created lat/lon grid with size: $(size(LAT_grid))")
 
     
     return LAT_grid, LON_grid, lat_range, lon_range
