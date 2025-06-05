@@ -584,7 +584,7 @@ function prepare_monthly_fsp_data(
             end
         elseif extrapolate && !isnothing(current_rate) && current_rate > 0
             # Keep using current rate if extrapolating
-            println("DEBUG: Extrapolating using current rate $current_rate for month $y-$m")
+            #println("DEBUG: Extrapolating using current rate $current_rate for month $y-$m")
         else
             # No data for this month and not extrapolating
             # If current rate is non-zero, step down to zero
@@ -593,9 +593,9 @@ function prepare_monthly_fsp_data(
                 push!(step_times, Float64(days_since_start))
                 push!(step_rates, 0.0)
                 current_rate = 0.0
-                println("DEBUG: Added step down to zero: day=$(days_since_start) for month $y-$m (no data)")
+                #println("DEBUG: Added step down to zero: day=$(days_since_start) for month $y-$m (no data)")
             else
-                println("DEBUG: No data for month $y-$m, current rate already zero")
+                #println("DEBUG: No data for month $y-$m, current rate already zero")
             end
         end
         

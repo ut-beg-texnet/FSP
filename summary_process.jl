@@ -1179,9 +1179,9 @@ function main()
     =#
 
     # Finalize
-    write_final_args_file(helper, joinpath(helper.scratch_path, ARGS_FILE_NAME))
-    set_success_for_step_index!(helper, 6, true)
-    write_results_file(helper)
+    #write_final_args_file(helper, joinpath(helper.scratch_path, ARGS_FILE_NAME))
+    #set_success_for_step_index!(helper, 6, true)
+    #write_results_file(helper)
     
     # Print performance metrics if we ran the probabilistic model
     if model_run == 1
