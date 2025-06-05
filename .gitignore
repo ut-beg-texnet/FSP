@@ -5,8 +5,6 @@ output/
 
 # Exclude file types
 *.png
-*.csv
-*.json
 *.mat
 *.m
 

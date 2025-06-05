@@ -904,7 +904,7 @@ function main()
     println("\n=== Starting FSP Summary Process ===")
 
     # 1) Get the inputs from the args.json file
-    scratchPath = ARGS[1]
+    scratchPath = "./scratch_path"
     helper = TexNetWebToolLaunchHelperJulia(scratchPath)
 
     # Get year of interest
