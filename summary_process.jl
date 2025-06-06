@@ -915,7 +915,7 @@ function main()
     =#
 
     # print the number of threads used 
-    add_message_with_step_index!(helper, 6, "Number of threads used: $(nthreads())", 0)
+    #add_message_with_step_index!(helper, 6, "Number of threads used: $(nthreads())", 0)
     
     #year_of_interest_date = Date(year_of_interest - 1, 12, 31)
 
