@@ -79,7 +79,7 @@ function main()
     df_with_easting_northing = convert_latlon_to_easting_northing(df)
 
     # Print the dataframe
-    println(df_with_easting_northing)
+    #println(df_with_easting_northing)
 end
 
 if abspath(PROGRAM_FILE) == @__FILE__

@@ -1,9 +1,9 @@
-using JSON
+#using JSON
 using CSV
 using DataFrames
-using Shapefile
+#using Shapefile
 using Geodesy 
-using PrettyTables
+#using PrettyTables
 using InlineStrings
 
 
@@ -67,7 +67,9 @@ end
 
 function main()
 
-    println("\n=== Starting Deterministic Geomechanics Process ===")
+    #println("\n=== Starting Deterministic Geomechanics Process ===")
+
+    
 
     scratchPath = ARGS[1]
 
@@ -75,7 +77,7 @@ function main()
 
 
     
-    println("Extracting fault data from the scratch path...")
+    #println("Extracting fault data from the scratch path...")
     # get file path for faults dataset using the helper
     faults_csv_filepath = get_dataset_file_path(helper, 1, "faults")
     if faults_csv_filepath !== nothing
@@ -126,7 +128,7 @@ function main()
     
 
     # read injection wells CSV into a DataFrame
-    println("Extracting injection well data from the CSV at the scratch path...")
+    #println("Extracting injection well data from the CSV at the scratch path...")
     injection_wells_csv_filepath, injection_data_type = get_injection_dataset_path(helper, 1)
     if injection_wells_csv_filepath !== nothing
         
@@ -138,10 +140,12 @@ function main()
             injection_wells_df = CSV.read(injection_wells_csv_filepath, DataFrame; types=Dict("API Number" => String))
         else
             injection_wells_df = CSV.read(injection_wells_csv_filepath, DataFrame, types=Dict("WellID" => String), pool=false)
-            println("column types:")
+            #=
+            #println("column types:")
             for col in names(injection_wells_df)
-                println("$col: $(eltype(injection_wells_df[!, col]))")
+                #println("$col: $(eltype(injection_wells_df[!, col]))")
             end
+            =#
         end
 
         
@@ -162,7 +166,7 @@ function main()
             #injection_rate_data = injection_rate_data_to_d3(injection_wells_df, injection_data_type)
             injection_rate_data = injection_rate_data_to_d3_bbl_day(injection_wells_df, injection_data_type)
             save_dataframe_as_parameter!(helper, 1, "injection_rate_d3_data", injection_rate_data)
-            println("DEBUG: Saved annual injection rate data for visualization")
+            #println("DEBUG: Saved annual injection rate data for visualization")
             save_dataframe_as_parameter!(helper, 1, "injection_wells_annual_output", injection_wells_df)
         elseif injection_data_type == "monthly_fsp"
 
@@ -178,13 +182,11 @@ function main()
             #injection_rate_data = injection_rate_data_to_d3(injection_wells_df, injection_data_type)
             injection_rate_data = injection_rate_data_to_d3_bbl_day(injection_wells_df, injection_data_type)
             save_dataframe_as_parameter!(helper, 1, "injection_rate_d3_data", injection_rate_data)
-            println("DEBUG: Saved monthly injection rate data for visualization")
+            #println("DEBUG: Saved monthly injection rate data for visualization")
 
             # print the type of each column in the injection_rate_data dataframe
-            println("Type of each column in the injection_rate_data dataframe:")
-            for col in names(injection_rate_data)
-                println("$col: $(eltype(injection_rate_data[!, col]))")
-            end
+            #println("Type of each column in the injection_rate_data dataframe:")
+            
 
 
             save_dataframe_as_parameter!(helper, 1, "injection_wells_monthly_output", injection_wells_df)
@@ -222,7 +224,7 @@ function main()
 
 
 
-            println("DEBUG: Saved injection tool data for visualization")
+            #println("DEBUG: Saved injection tool data for visualization")
         end
         
     else
@@ -249,7 +251,7 @@ function main()
 
     write_results_file(helper)
 
-    println("Model Inputs process: Completed successfully.")
+    #println("Model Inputs process: Completed successfully.")
 
 
 

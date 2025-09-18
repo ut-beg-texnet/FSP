@@ -19,8 +19,8 @@ include("summary_process.jl")
 
 function main(args)
     if length(args) != 1
-        println("Usage: fsp3_wrapper.jl <driver_file>")
-        println("Available driver files: model_inputs, deterministic_geomechanics, probabilistic_geomechanics, deterministic_hydrology, probabilistic_hydrology, summary")
+        #println("Usage: fsp3_wrapper.jl <driver_file>")
+        #println("Available driver files: model_inputs, deterministic_geomechanics, probabilistic_geomechanics, deterministic_hydrology, probabilistic_hydrology, summary")
         return
     end
 
@@ -42,8 +42,8 @@ function main(args)
     elseif driver_file == "summary"
         main(driver_args)
     else
-        println("Invalid driver file: $driver_file")
-        println("Available driver files: model_inputs, deterministic_geomechanics, probabilistic_geomechanics, deterministic_hydrology, probabilistic_hydrology, summary")
+        #println("Invalid driver file: $driver_file")
+        #println("Available driver files: model_inputs, deterministic_geomechanics, probabilistic_geomechanics, deterministic_hydrology, probabilistic_hydrology, summary")
     end
 
     main(ARGS)

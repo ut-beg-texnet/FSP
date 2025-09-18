@@ -7,11 +7,12 @@ include("graphs/julia_fsp_graphs.jl")
 using DataFrames
 using CSV
 using Dates
-using PrettyTables
+#using PrettyTables
 using Statistics
 using Interpolations
 using Random
 using Distributions
+using Base.Threads  # Add Threads for parallelization
 
 using .Utilities
 using .HydroCalculations
@@ -38,8 +39,102 @@ struct HydrologyParams
 end
 
 """
+Pre-process well data to avoid expensive operations in Monte Carlo loops
+Returns a dictionary with well_id as key and processed well info as value
+"""
+function preprocess_well_data(injection_wells_df::DataFrame, well_id_col::String, injection_data_type::String)
+    #println("Pre-processing well data for optimization...")
+    
+    # Determine column names once
+    lat_col = injection_data_type == "injection_tool_data" ? "Surface Latitude" : "Latitude(WGS84)"
+    lon_col = injection_data_type == "injection_tool_data" ? "Surface Longitude" : "Longitude(WGS84)"
+    
+    # Group wells by ID and extract all needed info
+    well_info = Dict{String, NamedTuple}()
+    
+    for well_id in unique(injection_wells_df[!, well_id_col])
+        well_id_str = string(well_id)
+        
+        # Filter once per well (not millions of times)
+        well_data = injection_wells_df[string.(injection_wells_df[!, well_id_col]) .== well_id_str, :]
+        
+        if isempty(well_data)
+            continue
+        end
+        
+        # Extract coordinates once
+        well_lat = first(well_data[!, lat_col])
+        well_lon = first(well_data[!, lon_col])
+        
+        # Process dates once based on injection type
+        if injection_data_type == "annual_fsp"
+            inj_start_year = first(well_data[!, "StartYear"])
+            inj_start_date = Date(inj_start_year, 1, 1)
+            inj_end_year = first(well_data[!, "EndYear"])
+            inj_end_date = Date(inj_end_year-1, 12, 31)
+            
+        elseif injection_data_type == "monthly_fsp"
+            inj_start_year = minimum(well_data[!, "Year"])
+            inj_start_month = minimum(well_data[well_data[!, "Year"] .== inj_start_year, "Month"])
+            inj_start_date = Date(inj_start_year, inj_start_month, 1)
+            inj_end_year = maximum(well_data[!, "Year"])
+            inj_end_month = maximum(well_data[well_data[!, "Year"] .== inj_end_year, "Month"])
+            inj_end_date = Date(inj_end_year, inj_end_month, 1)
+            inj_end_date = lastdayofmonth(inj_end_date)
+            
+        elseif injection_data_type == "injection_tool_data"
+            # Parse dates once
+            dates = []
+            if eltype(well_data[!, "Date of Injection"]) <: Date
+                dates = well_data[!, "Date of Injection"]
+            else
+                # Try parsing with different formats
+                try
+                    dates = Date.(well_data[!, "Date of Injection"], dateformat"y-m-d")
+                catch
+                    try
+                        dates = Date.(well_data[!, "Date of Injection"], dateformat"m/d/y")
+                    catch
+                        try
+                            dates = Date.(well_data[!, "Date of Injection"], dateformat"m/d/yyyy")
+                        catch e
+                            @warn "Could not parse dates for well $well_id_str: $e"
+                            continue
+                        end
+                    end
+                end
+            end
+            
+            if isempty(dates)
+                continue
+            end
+            
+            inj_start_date = minimum(dates)
+            inj_end_date = maximum(dates)
+        else
+            error("Unsupported injection data type: $injection_data_type")
+        end
+        
+        # Store all processed info
+        well_info[well_id_str] = (
+            data = well_data,
+            latitude = well_lat,
+            longitude = well_lon,
+            start_date = inj_start_date,
+            end_date = inj_end_date,
+            start_year = year(inj_start_date),
+            end_year = year(inj_end_date)
+        )
+    end
+    
+    #println("Pre-processed $(length(well_info)) wells successfully")
+    return well_info
+end
+
+"""
 Run Monte Carlo hydrology simulations for all years up to year_of_interest
 Returns a DataFrame with fault ID, pressure, and year columns
+Uses multi-threading with a ReentrantLock to avoid race conditions
 """
 function run_mc_hydrology_time_series(
     params::HydrologyParams,
@@ -50,16 +145,8 @@ function run_mc_hydrology_time_series(
     injection_data_type::String,
     distribution_type::String="uniform"
 )
-    # Print key input parameter values for debugging
-    println("===== DEBUG: Input Parameters =====")
-    println("aquifer_thickness: ", params.aquifer_thickness)
-    println("porosity: ", params.porosity)
-    println("permeability: ", params.permeability)
-    println("fluid_density: ", params.fluid_density)
-    println("dynamic_viscosity: ", params.dynamic_viscosity)
-    println("fluid_compressibility: ", params.fluid_compressibility)
-    println("rock_compressibility: ", params.rock_compressibility)
-    println("===================================")
+    
+    #println("Running Monte Carlo simulations with $(nthreads()) threads")
     
     # Create distributions for MC sampling
     distributions = Dict{String, Distribution}()
@@ -98,29 +185,14 @@ function run_mc_hydrology_time_series(
         end
     end
     
-    # When we work with data from the injection reporting tool, always treat the well ID as a string
-    # They are API Number so we need to preserve leading/trailing zeros
-    well_ids = string.(unique(injection_wells_df[!, well_id_col]))
-    
-    # Debug - print well IDs and dataframe columns
-    #=
-    println("===== DEBUG: Well Data =====")
-    println("Well ID column: ", well_id_col)
-    println("Number of wells: ", length(well_ids))
-    println("Well IDs: ", well_ids)
-    println("Injection data columns: ", names(injection_wells_df))
-    =#
+    # PRE-PROCESS WELL DATA FOR OPTIMIZATION
+    well_info = preprocess_well_data(injection_wells_df, well_id_col, injection_data_type)
+    well_ids = collect(keys(well_info))  # Use pre-processed well IDs
     
     # For injection tool data format, verify date column
-    # We should expect them to already be Date objects, but we'll check
     if injection_data_type == "injection_tool_data"
         if !("Date of Injection" in names(injection_wells_df))
-            #println("WARNING: 'Date of Injection' column not found in injection data")
             error("'Date of Injection' column not found in injection well data")
-        else
-            date_col = "Date of Injection"
-            #println("Date column type: ", eltype(injection_wells_df[!, date_col]))
-            
         end
     end
     
@@ -137,25 +209,36 @@ function run_mc_hydrology_time_series(
     
     # Pre-process well data to get date boundaries
     inj_start_date, inj_end_date = Utilities.get_date_bounds(injection_wells_df)
-
-    println("Injection rate time window for all wells: inj_start_date = $inj_start_date, inj_end_date = $inj_end_date")
     
     # Find the max end date of all injections
     max_injection_year = year(inj_end_date)
-    println("Maximum injection end date: $inj_end_date (year $max_injection_year)")
     
-    # Container for results
+    
     # Structure: year -> iteration -> fault -> pressure
     results = Dict{Int, Dict{Int, Dict{String, Float64}}}()
     
-    # Create years to analyze
+    # Create range of years to analyze
     if isempty(years_to_analyze)
         years_to_analyze = year(inj_start_date):year_of_interest
     end
     
+    # Initialize the results structure to avoid race conditions during parallel writing
+    for analysis_year in years_to_analyze
+        results[analysis_year] = Dict{Int, Dict{String, Float64}}()
+        for i in 1:params.n_iterations
+            results[analysis_year][i] = Dict{String, Float64}()
+        end
+    end
     
-    # Main Monte Carlo loop
-    for i in 1:params.n_iterations
+    # We'll use a mutex to prevent race conditions when updating the results
+    # this allows only one thread/process to update the results at a time
+    results_lock = ReentrantLock()
+    
+    # Prepare iteration indices for parallelization
+    iterations = collect(1:params.n_iterations)
+    
+    # Process Monte Carlo iterations in parallel
+    @threads for i in iterations
         # Sample parameters from distributions
         sampled_params = Dict(
             "aquifer_thickness" => rand(distributions["aquifer_thickness"]),
@@ -181,23 +264,13 @@ function run_mc_hydrology_time_series(
         
         STRho = (S, T, rho)
         
-        # Debug print only for first iteration
-        if i == 1
-            println("DEBUG: Calculated Storativity = $S, Transmissivity = $T")
-        end
-        
-        
+        # Process each year for this iteration
         for analysis_year in years_to_analyze
             # Set up year cutoff date (Dec 31 of the analysis year)
             cutoff_date = Date(analysis_year, 12, 31)
             
-            # Initialize year results if needed
-            if !haskey(results, analysis_year)
-                results[analysis_year] = Dict{Int, Dict{String, Float64}}()
-            end
-            
-            # Initialize iteration results
-            results[analysis_year][i] = Dict{String, Float64}()
+            # Local results for this iteration and year
+            local_results = Dict{String, Float64}()
             
             # Process each fault
             for f in 1:num_faults
@@ -211,85 +284,29 @@ function run_mc_hydrology_time_series(
                 # Process each well's contribution
                 for well_id in well_ids
                     
-                    # filter the injection wells df for the well id
-                    well_data = injection_wells_df[string.(injection_wells_df[!, well_id_col]) .== string(well_id), :]
-                    
-                    if isempty(well_data)
-                        continue
-                    end
-                    
-                    # Get well coordinates
-                    # if it's injection tool data, we need to use the 'Surface Latitude' and 'Surface Longitude' columns
-                    # otherwise, we can use the 'Latitude(WGS84)' and 'Longitude(WGS84)' columns
-                    lat_col = injection_data_type == "injection_tool_data" ? "Surface Latitude" : "Latitude(WGS84)"
-                    lon_col = injection_data_type == "injection_tool_data" ? "Surface Longitude" : "Longitude(WGS84)"
-                    
-                    well_lat = first(well_data[!, lat_col])
-                    well_lon = first(well_data[!, lon_col])
-                    
-                    # Get injection period
-                    if injection_data_type == "annual_fsp"
-                        inj_start_year = first(well_data[!, "StartYear"])
-                        inj_start_date = Date(inj_start_year, 1, 1)
-                        inj_end_year = first(well_data[!, "EndYear"])
-                        inj_end_date = Date(inj_end_year-1, 12, 31)
-                    elseif injection_data_type == "monthly_fsp"
-                        inj_start_year = minimum(well_data[!, "Year"])
-                        inj_start_month = minimum(well_data[well_data[!, "Year"] .== inj_start_year, "Month"])
-                        inj_start_date = Date(inj_start_year, inj_start_month, 1)
-                        inj_end_year = maximum(well_data[!, "Year"])
-                        inj_end_month = maximum(well_data[well_data[!, "Year"] .== inj_end_year, "Month"])
-                        inj_end_date = Date(inj_end_year, inj_end_month, 1)
-                        inj_end_date = lastdayofmonth(inj_end_date)
-                    elseif injection_data_type == "injection_tool_data"
-                        dates = []
-                        # Check if dates are already Date objects
-                        if eltype(well_data[!, "Date of Injection"]) <: Date
-                            dates = well_data[!, "Date of Injection"]
-                        else
-                            # Need to parse from strings
-                            try
-                                dates = Date.(well_data[!, "Date of Injection"], dateformat"y-m-d")
-                            catch
-                                try
-                                    dates = Date.(well_data[!, "Date of Injection"], dateformat"m/d/y")
-                                catch
-                                    try
-                                        dates = Date.(well_data[!, "Date of Injection"], dateformat"m/d/yyyy")
-                                    catch e
-                                        @warn "Could not parse dates for well $well_id: $e"
-                                        continue
-                                    end
-                                end
-                            end
-                        end
-                        
-                        if isempty(dates)
-                            continue
-                        end
-                        
-                        inj_start_year = year(minimum(dates))
-                        inj_end_year = year(maximum(dates))
-                        inj_start_date = minimum(dates)
-                        inj_end_date = maximum(dates)
-                    else
-                        error("Unsupported injection data type: $injection_data_type")
-                    end
+                    # Use pre-processed well data (OPTIMIZED)
+                    well = well_info[well_id]
                     
                     # Skip if the well hasn't started injecting by the analysis year
-                    if year(inj_start_date) > analysis_year
+                    if well.start_year > analysis_year
                         continue
                     end
+                    
+                    # Use pre-processed coordinates and dates
+                    well_lat = well.latitude
+                    well_lon = well.longitude
+                    inj_start_date = well.start_date
+                    inj_end_date = well.end_date
                     
                     # Limit end date to the analysis year cutoff
                     actual_end_date = min(inj_end_date, cutoff_date)
                     actual_end_year = year(actual_end_date)
                     
-                    # Prepare injection data
+                    # Prepare injection data using pre-processed well data
                     days, rates = Utilities.prepare_well_data_for_pressure_scenario(
-                        well_data,
+                        well.data,  # Use pre-filtered DataFrame
                         String(well_id),
-                        inj_start_year,
+                        well.start_year,  # Use pre-processed start year
                         inj_start_date,
                         actual_end_year,
                         actual_end_date,
@@ -306,12 +323,6 @@ function run_mc_hydrology_time_series(
                     # Calculate days from injection start to analysis date
                     evaluation_days_from_start = Float64((cutoff_date - inj_start_date).value + 1)
                     
-                    # For years after injection has stopped, evaluation date should use the current year
-                    # to properly model pressure diffusion over time
-                    if analysis_year > max_injection_year && i == 1
-                        println("Calculating pressure diffusion for year $analysis_year (after injection end)")
-                    end
-                    
                     # Calculate pressure contribution from this well
                     pressure_contribution = HydroCalculations.pfieldcalc_all_rates(
                         fault_lon, #fault longitude
@@ -323,8 +334,6 @@ function run_mc_hydrology_time_series(
                         well_lat, #well latitude
                         evaluation_days_from_start #days from injection start to evaluation date
                     )
-
-                    
                     
                     # Add to total pressure for this fault
                     total_pressure += pressure_contribution
@@ -334,7 +343,14 @@ function run_mc_hydrology_time_series(
                 total_pressure = max(0.0, total_pressure)
                 
                 # Store result for this fault and iteration
-                results[analysis_year][i][fault_id] = total_pressure
+                local_results[fault_id] = total_pressure
+            end
+            
+            # We update the results dictionary using a lock to avoid race conditions
+            lock(results_lock) do
+                for (fault_id, pressure) in local_results
+                    results[analysis_year][i][fault_id] = pressure
+                end
             end
         end
     end
@@ -596,7 +612,7 @@ function get_injection_dataset_path_summary_step(helper::TexNetWebToolLaunchHelp
                 return filepath, injection_data_type
             end
         else
-            println("$param_name not found")
+            #println("$param_name not found")
         end
     end
             
@@ -701,15 +717,15 @@ function run_deterministic_hydrology_time_series(
     injection_data_type::String
 )
     # Print key input parameter values for debugging
-    println("===== DEBUG: Input Parameters for Deterministic Hydrology =====")
-    println("aquifer_thickness: ", aquifer_thickness)
-    println("porosity: ", porosity)
-    println("permeability: ", permeability)
-    println("fluid_density: ", fluid_density)
-    println("dynamic_viscosity: ", dynamic_viscosity)
-    println("fluid_compressibility: ", fluid_compressibility)
-    println("rock_compressibility: ", rock_compressibility)
-    println("===================================")
+    #println("===== DEBUG: Input Parameters for Deterministic Hydrology =====")
+    #println("aquifer_thickness: ", aquifer_thickness)
+    #println("porosity: ", porosity)
+    #println("permeability: ", permeability)
+    #println("fluid_density: ", fluid_density)
+    #println("dynamic_viscosity: ", dynamic_viscosity)
+    #println("fluid_compressibility: ", fluid_compressibility)
+    #println("rock_compressibility: ", rock_compressibility)
+    #println("===================================")
     
     # Calculate storativity and transmissivity
     S, T, rho = HydroCalculations.calcST(
@@ -724,7 +740,7 @@ function run_deterministic_hydrology_time_series(
     )
     
     STRho = (S, T, rho)
-    println("DEBUG: Calculated Storativity = $S, Transmissivity = $T")
+    #println("DEBUG: Calculated Storativity = $S, Transmissivity = $T")
     
     # Get well IDs
     well_id_col = injection_data_type == "injection_tool_data" ? "API Number" : "WellID"
@@ -743,7 +759,9 @@ function run_deterministic_hydrology_time_series(
         end
     end
     
-    well_ids = string.(unique(injection_wells_df[!, well_id_col]))
+    # PRE-PROCESS WELL DATA FOR OPTIMIZATION (deterministic version)
+    well_info = preprocess_well_data(injection_wells_df, well_id_col, injection_data_type)
+    well_ids = collect(keys(well_info))  # Use pre-processed well IDs
     
     # Get fault IDs
     num_faults = nrow(fault_df)
@@ -757,7 +775,7 @@ function run_deterministic_hydrology_time_series(
     
     # Pre-process well data to get date boundaries
     inj_start_date, inj_end_date = Utilities.get_date_bounds(injection_wells_df)
-    println("Injection rate time window for all wells: inj_start_date = $inj_start_date, inj_end_date = $inj_end_date")
+    #println("Injection rate time window for all wells: inj_start_date = $inj_start_date, inj_end_date = $inj_end_date")
     
     # Container for results
     # Structure: year -> fault -> pressure
@@ -770,7 +788,7 @@ function run_deterministic_hydrology_time_series(
     
     # Find the max end date of all injections - we'll set the evaluation date to this for pressure diffusion
     max_injection_year = year(inj_end_date)
-    println("Maximum injection end date: $inj_end_date (year $max_injection_year)")
+    #println("Maximum injection end date: $inj_end_date (year $max_injection_year)")
     
     # Process each year
     for analysis_year in years_to_analyze
@@ -793,83 +811,29 @@ function run_deterministic_hydrology_time_series(
             
             # Process each well's contribution
             for well_id in well_ids
-                # Filter the injection wells df for the well id
-                well_data = injection_wells_df[string.(injection_wells_df[!, well_id_col]) .== string(well_id), :]
-                
-                if isempty(well_data)
-                    continue
-                end
-                
-                # Get well coordinates
-                lat_col = injection_data_type == "injection_tool_data" ? "Surface Latitude" : "Latitude(WGS84)"
-                lon_col = injection_data_type == "injection_tool_data" ? "Surface Longitude" : "Longitude(WGS84)"
-                
-                well_lat = first(well_data[!, lat_col])
-                well_lon = first(well_data[!, lon_col])
-                
-                # Get injection period
-                if injection_data_type == "annual_fsp"
-                    inj_start_year = first(well_data[!, "StartYear"])
-                    inj_start_date = Date(inj_start_year, 1, 1)
-                    inj_end_year = first(well_data[!, "EndYear"])
-                    inj_end_date = Date(inj_end_year-1, 12, 31)
-                elseif injection_data_type == "monthly_fsp"
-                    inj_start_year = minimum(well_data[!, "Year"])
-                    inj_start_month = minimum(well_data[well_data[!, "Year"] .== inj_start_year, "Month"])
-                    inj_start_date = Date(inj_start_year, inj_start_month, 1)
-                    inj_end_year = maximum(well_data[!, "Year"])
-                    inj_end_month = maximum(well_data[well_data[!, "Year"] .== inj_end_year, "Month"])
-                    inj_end_date = Date(inj_end_year, inj_end_month, 1)
-                    inj_end_date = lastdayofmonth(inj_end_date)
-                elseif injection_data_type == "injection_tool_data"
-                    dates = []
-                    # Check if dates are already Date objects
-                    if eltype(well_data[!, "Date of Injection"]) <: Date
-                        dates = well_data[!, "Date of Injection"]
-                    else
-                        # Need to parse from strings
-                        try
-                            dates = Date.(well_data[!, "Date of Injection"], dateformat"y-m-d")
-                        catch
-                            try
-                                dates = Date.(well_data[!, "Date of Injection"], dateformat"m/d/y")
-                            catch
-                                try
-                                    dates = Date.(well_data[!, "Date of Injection"], dateformat"m/d/yyyy")
-                                catch e
-                                    @warn "Could not parse dates for well $well_id: $e"
-                                    continue
-                                end
-                            end
-                        end
-                    end
-                    
-                    if isempty(dates)
-                        continue
-                    end
-                    
-                    inj_start_year = year(minimum(dates))
-                    inj_end_year = year(maximum(dates))
-                    inj_start_date = minimum(dates)
-                    inj_end_date = maximum(dates)
-                else
-                    error("Unsupported injection data type: $injection_data_type")
-                end
+                # Use pre-processed well data (OPTIMIZED - deterministic)
+                well = well_info[well_id]
                 
                 # Skip if the well hasn't started injecting by the analysis year
-                if year(inj_start_date) > analysis_year
+                if well.start_year > analysis_year
                     continue
                 end
+                
+                # Use pre-processed coordinates and dates
+                well_lat = well.latitude
+                well_lon = well.longitude
+                inj_start_date = well.start_date
+                inj_end_date = well.end_date
                 
                 # Limit end date to the analysis year cutoff
                 actual_end_date = min(inj_end_date, cutoff_date)
                 actual_end_year = year(actual_end_date)
                 
-                # Prepare injection data
+                # Prepare injection data using pre-processed well data
                 days, rates = Utilities.prepare_well_data_for_pressure_scenario(
-                    well_data,
+                    well.data,  # Use pre-filtered DataFrame
                     well_id,
-                    inj_start_year,
+                    well.start_year,  # Use pre-processed start year
                     inj_start_date,
                     actual_end_year,
                     actual_end_date,
@@ -889,7 +853,7 @@ function run_deterministic_hydrology_time_series(
                 # For years after injection has stopped, evaluation date should use the current year
                 # to properly model pressure diffusion over time
                 if analysis_year > max_injection_year
-                    println("Calculating pressure diffusion for year $analysis_year (after injection end)")
+                    #println("Calculating pressure diffusion for year $analysis_year (after injection end)")
                 end
                 
                 # Calculate pressure contribution from this well
@@ -934,7 +898,7 @@ function run_deterministic_hydrology_time_series(
 end
 
 function main()
-    println("\n=== Starting FSP Summary Process ===")
+    #println("\n=== Starting FSP Summary Process ===")
 
     # 1) Get the inputs from the args.json file
     scratchPath = ARGS[1]
@@ -949,6 +913,9 @@ function main()
         year_of_interest = parse(Int, year_of_interest)
     end
     =#
+
+    # print the number of threads used 
+    #add_message_with_step_index!(helper, 6, "Number of threads used: $(nthreads())", 0)
     
     #year_of_interest_date = Date(year_of_interest - 1, 12, 31)
 
@@ -977,7 +944,7 @@ function main()
     if model_run === nothing
         # Default to probabilistic if not specified
         model_run = 1
-        println("Model run type not specified, defaulting to probabilistic")
+        #println("Model run type not specified, defaulting to probabilistic")
     end
     
     #println("Using model type: $model_run")
@@ -1003,7 +970,7 @@ function main()
         error("Probabilistic geomechanics CDF data not found.")
     end
     prob_geo_cdf = CSV.read(prob_geo_cdf_path, DataFrame, types=Dict("ID" => String), pool=false)
-    println("Loaded probabilistic geomechanics data (first 10 rows) out of $(nrow(prob_geo_cdf)) rows:")
+    #println("Loaded probabilistic geomechanics data (first 10 rows) out of $(nrow(prob_geo_cdf)) rows:")
     
     #pretty_table(prob_geo_cdf[1:10, :])
 
@@ -1084,7 +1051,7 @@ function main()
 
     # Depending on model_run, either run deterministic or probabilistic hydrology
     if model_run == 0
-        println("\nRunning deterministic hydrology calculation for all years...")
+        #println("\nRunning deterministic hydrology calculation for all years...")
         pressure_through_time_results = run_deterministic_hydrology_time_series(
             aquifer_thickness,
             porosity,
@@ -1111,12 +1078,15 @@ function main()
         pressure_through_time_results_aggregated[!, :Pressure] = round.(pressure_through_time_results_aggregated.Pressure, digits=2)
         
         # Calculate fault slip potential
-        println("\nCalculating fault slip potential...")
+        #println("\nCalculating fault slip potential...")
         
         fsp_through_time = calculate_deterministic_fault_slip_potential(prob_geo_cdf, pressure_through_time_results_aggregated, years_to_analyze)
     elseif model_run == 1
         # Probabilistic model
-        println("\nRunning probabilistic hydrology Monte Carlo simulation for all years...")
+        #println("\nRunning probabilistic hydrology Monte Carlo simulation for all years...")
+        
+        # Add timing measurement
+        start_time = time()
         pressure_through_time_results = run_mc_hydrology_time_series(
             params, 
             fault_df, 
@@ -1125,6 +1095,12 @@ function main()
             nothing,
             injection_data_type
         )
+        end_time = time()
+        elapsed_seconds = end_time - start_time
+        
+        # Store timing information for later output
+        mc_elapsed_seconds = elapsed_seconds
+        mc_total_iterations = params.n_iterations * length(collect(years_to_analyze)) * nrow(fault_df)
 
         # print the pressure_through_time results, without omitting any rows
         #println("pressure_through_time_results: ")
@@ -1144,7 +1120,7 @@ function main()
         pressure_through_time_results_aggregated[!, :Pressure] = round.(pressure_through_time_results_aggregated.Pressure, digits=2)
 
         # Calculate fault slip potential using probabilistic approach
-        println("\nCalculating fault slip potential...")
+        #println("\nCalculating fault slip potential...")
         fsp_through_time = calculate_fault_slip_potential(prob_geo_cdf, pressure_through_time_results)
         
         # Round FSP values to 2 decimal places
@@ -1204,7 +1180,16 @@ function main()
     set_success_for_step_index!(helper, 6, true)
     write_results_file(helper)
     
-    println("=== FSP Summary Process Completed ===\n")
+    # Print performance metrics if we ran the probabilistic model
+    if model_run == 1
+        #println("\n=== Performance Metrics ===")
+        #println("Monte Carlo simulation completed in $(round(mc_elapsed_seconds, digits=2)) seconds ($(round(mc_elapsed_seconds/60, digits=2)) minutes)")
+        #println("Processed $(mc_total_iterations) simulation points at $(round(mc_total_iterations/mc_elapsed_seconds, digits=2)) points/second")
+        #println("Using $(nthreads()) threads")
+        #println("==========================")
+    end
+    
+    #println("=== FSP Summary Process Completed ===\n")
 end
 
 if abspath(PROGRAM_FILE) == @__FILE__

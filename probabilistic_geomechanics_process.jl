@@ -17,16 +17,16 @@ using Distributions
 using Statistics
 using Random
 using LinearAlgebra
-using Distributed
+#using Distributed
 using SharedArrays
 #using Plots
-using ProgressMeter
+#using ProgressMeter
 using DataFrames
 using CSV
 using Base.Threads
-using PrettyTables
+#using PrettyTables
 using StatsBase  # Need this for theecdf function
-#gr()
+
 
 include("core/geomechanics_model.jl")
 #include("step2_deterministic_geomechanics.jl")
@@ -162,7 +162,38 @@ function run_monte_carlo(stress_inputs::Dict, fault_inputs::DataFrame, uncertain
                     
                     # Only apply randomization if uncertainty is greater than 0
                     if uncertainty > 0.0
-                        sim_stress[stress_param] = base_value + rand(local_rng, Uniform(-uncertainty, uncertainty))
+                        # Special handling for max_stress_azimuth to wrap around 0-360 degrees
+                        if stress_param == "max_stress_azimuth"
+                            # Handle azimuth with proper bounded sampling
+                            min_azimuth = mod(base_value - uncertainty, 360.0)
+                            max_azimuth = mod(base_value + uncertainty, 360.0)
+
+                            # Special handling for ranges that cross the 0/360 boundary
+                            if min_azimuth > max_azimuth
+                                # The range crosses the 0/360 boundary - use two-step sampling
+                                if rand(local_rng) < (360.0 - min_azimuth) / (360.0 - min_azimuth + max_azimuth)
+                                    # Sample from [min_azimuth, 360]
+                                    sim_stress[stress_param] = rand(local_rng, Uniform(min_azimuth, 360.0))
+                                else
+                                    # Sample from [0, max_azimuth]
+                                    sim_stress[stress_param] = rand(local_rng, Uniform(0.0, max_azimuth))
+                                end
+                            else
+                                # Normal sampling between min and max
+                                sim_stress[stress_param] = rand(local_rng, Uniform(min_azimuth, max_azimuth))
+                            end
+                        else
+                            # For other stress parameters (handle positivity constraints where needed)
+                            min_value = base_value - uncertainty
+                            max_value = base_value + uncertainty
+                            
+                            # Ensure minimum value is not negative for parameters that should be positive
+                            if base_value > 0
+                                min_value = max(min_value, 0.0)
+                            end
+                            
+                            sim_stress[stress_param] = rand(local_rng, Uniform(min_value, max_value))
+                        end
                     else
                         sim_stress[stress_param] = base_value
                     end
@@ -192,7 +223,40 @@ function run_monte_carlo(stress_inputs::Dict, fault_inputs::DataFrame, uncertain
                         
                         # Only apply randomization if uncertainty is greater than 0
                         if uncertainty > 0.0
-                            sim_fault[fault_param] += rand(local_rng, Uniform(-uncertainty, uncertainty))
+                            # Apply randomization with boundary handling for angular parameters
+                            if fault_param == "Strike" 
+                                # Pre-compute the boundaries for strike angles (0-360 degrees)
+                                min_strike = mod(fault[fault_param] - uncertainty, 360.0)
+                                max_strike = mod(fault[fault_param] + uncertainty, 360.0)
+                                
+                                # Special handling for ranges that cross the 0/360 boundary
+                                if min_strike > max_strike
+                                    # The range crosses the 0/360 boundary - use two-step sampling
+                                    if rand(local_rng) < (360.0 - min_strike) / (360.0 - min_strike + max_strike)
+                                        # Sample from [min_strike, 360]
+                                        sim_fault[fault_param] = rand(local_rng, Uniform(min_strike, 360.0))
+                                    else
+                                        # Sample from [0, max_strike]
+                                        sim_fault[fault_param] = rand(local_rng, Uniform(0.0, max_strike))
+                                    end
+                                else
+                                    # Normal sampling between min and max
+                                    sim_fault[fault_param] = rand(local_rng, Uniform(min_strike, max_strike))
+                                end
+                            elseif fault_param == "Dip"
+                                # Pre-clamp dip angles to valid range (0-90 degrees)
+                                min_dip = max(fault[fault_param] - uncertainty, 0.0)
+                                max_dip = min(fault[fault_param] + uncertainty, 90.0)
+                                
+                                # Sample uniformly between the clamped bounds
+                                sim_fault[fault_param] = rand(local_rng, Uniform(min_dip, max_dip))
+                            else
+                                # Standard randomization for friction coefficient
+                                # Ensure the friction coefficient is positive
+                                min_value = max(fault[fault_param] - uncertainty, 0.0)
+                                max_value = fault[fault_param] + uncertainty
+                                sim_fault[fault_param] = rand(local_rng, Uniform(min_value, max_value))
+                            end
                         end
                         
                         # Store the randomized value
@@ -254,7 +318,7 @@ function run_monte_carlo(stress_inputs::Dict, fault_inputs::DataFrame, uncertain
                 pps_to_slip[fault_idx, i] = pp_to_slip
             catch e
                 
-                println("Warning: Error calculating slip pressure for fault $(fault_idx) in simulation $(i): $(e)")
+                #println("Warning: Error calculating slip pressure for fault $(fault_idx) in simulation $(i): $(e)")
                 error("Error calculating slip pressure for fault $(fault_idx) within MC simulation $(i): $(e)")
                 
             end
@@ -345,14 +409,14 @@ function main()
     
     scratchPath = ARGS[1]
 
-    println("Scratch path: $scratchPath")
+    #println("Scratch path: $scratchPath")
 
     helper = TexNetWebToolLaunchHelperJulia(scratchPath)
 
     # get the optional random_seed user input
     random_seed = get_parameter_value(helper, 3, "random_seed")
 
-    println("Extracting stress state values from args.json...")
+    #println("Extracting stress state values from args.json...")
     stress_inputs = Dict(
         "reference_depth" => get_parameter_value(helper, 2, "reference_depth"),
         "vertical_stress" => get_parameter_value(helper, 2, "vertical_stress"),
@@ -364,12 +428,14 @@ function main()
         "friction_coefficient" => get_parameter_value(helper, 2, "friction_coefficient")
     )
 
+    
+
     stress_model_type = get_parameter_value(helper, 2, "stress_model_type")
 
     #println("stress_inputs: $stress_inputs")
 
     
-    println("stress_model_type: $stress_model_type")
+    #println("stress_model_type: $stress_model_type")
     
     # create uncertainties dictionary
     uncertainties = Dict()
@@ -421,7 +487,7 @@ function main()
 
     #println("uncertainties from the portal: $uncertainties")
 
-    println("Extracting fault parameters from args.json...")
+    #println("Extracting fault parameters from args.json...")
     fault_inputs_filepath = get_dataset_file_path(helper, 3, "faults")
     fault_inputs = CSV.read(fault_inputs_filepath, DataFrame)
     # Require FaultID column in faults table
@@ -436,8 +502,8 @@ function main()
     n_sims = get_parameter_value(helper, 3, "mc_iterations")
 
     
-    println("Running Monte Carlo simulation with $(Threads.nthreads()) threads for $n_sims iterations")
-    println("stress_model_type (after we distinguish between aphi_min and aphi_no_min): $stress_model_type")
+    #println("Running Monte Carlo simulation with $(Threads.nthreads()) threads for $n_sims iterations")
+    #println("stress_model_type (after we distinguish between aphi_min and aphi_no_min): $stress_model_type")
 
     # create the shared array for the results (optimized for parallel processing)
     mc_pp_results, stress_param_values, fault_param_values = run_monte_carlo(stress_inputs, fault_inputs, uncertainties, n_sims, stress_model_type, random_seed)
@@ -537,6 +603,11 @@ function main()
     # Using the first fault's friction coefficient
     #friction_coefficient = fault_inputs[1, :FrictionCoefficient]
     #stress_state_obj, initial_pressure = calculate_absolute_stresses(stress_inputs, friction_coefficient, stress_model_type)
+
+    #println("Inputs for tornado chart graph:")
+    #pretty_table(stress_inputs)
+    #pretty_table(uncertainties)
+    #pretty_table(fault_inputs)
     
     
 
@@ -586,18 +657,6 @@ function main()
         # Make sure all stress uncertainties are defined according to stress_model_type
         local_uncertainties = copy(uncertainties)
  
-        # Print the uncertainties to debug
-        println("\nUncertainties for Fault #$fault_id:")
-        for (key, value) in local_uncertainties
-            println("  - $key: $value")
-        end
-
-        # Specifically check if max_stress_azimuth_uncertainty exists and has a non-zero value
-        if haskey(local_uncertainties, "max_stress_azimuth_uncertainty")
-            println("  * max_stress_azimuth_uncertainty exists with value: $(local_uncertainties["max_stress_azimuth_uncertainty"])")
-        else
-            println("  * max_stress_azimuth_uncertainty is missing!")
-        end
 
         # Initialize the array for stress uncertainty parameters
         stress_uncertainty_params = String[]
@@ -612,7 +671,8 @@ function main()
                 "max_horizontal_stress_uncertainty",
                 "min_horizontal_stress_uncertainty"
             ]
-        elseif stress_model_type == "aphi_model" && local_stress_inputs["min_horizontal_stress"] !== nothing
+        elseif stress_model_type == "aphi_min" || 
+               (stress_model_type == "aphi_model" && local_stress_inputs["min_horizontal_stress"] !== nothing)
             
             stress_uncertainty_params = [
                 "vertical_stress_gradient_uncertainty",
@@ -621,7 +681,8 @@ function main()
                 "aphi_value_uncertainty",
                 "min_horizontal_stress_uncertainty"
             ]
-        elseif stress_model_type == "aphi_model" && local_stress_inputs["min_horizontal_stress"] === nothing
+        elseif stress_model_type == "aphi_no_min" || 
+              (stress_model_type == "aphi_model" && local_stress_inputs["min_horizontal_stress"] === nothing)
             
             stress_uncertainty_params = [
                 "vertical_stress_gradient_uncertainty",
@@ -659,7 +720,7 @@ function main()
     end
     
     # Create and save the combined tornado chart data as a parameter
-    println("Creating combined tornado chart data for all faults...")
+    #println("Creating combined tornado chart data for all faults...")
     
     # Create vector to hold individual dataframes with fault_id added
     dfs_with_fault_id = []
@@ -716,7 +777,7 @@ function main()
     
     # If no matches were found (or very few), try a different approach
     if non_nan_count < nrow(combined_tornado_df) / 8 # Less than 1/8th of rows have matches
-        println("Few matches found. Trying alternative approach...")
+        #println("Few matches found. Trying alternative approach...")
         
         # Initialize column with NaN
         combined_tornado_df.det_slip_pressure .= NaN
@@ -728,13 +789,13 @@ function main()
         for fault_id in unique_ids
             if haskey(det_slip_pressures, string(fault_id))
                 combined_tornado_df[combined_tornado_df.id .== fault_id, :det_slip_pressure] .= det_slip_pressures[string(fault_id)]
-                println("Set slip pressure $(det_slip_pressures[string(fault_id)]) for fault $fault_id")
+                #println("Set slip pressure $(det_slip_pressures[string(fault_id)]) for fault $fault_id")
             end
         end
         
         # Count how many non-NaN values after alternative approach
         non_nan_count_after = count(!isnan, combined_tornado_df.det_slip_pressure)
-        println("After alternative approach: $(non_nan_count_after) non-NaN values")
+        #println("After alternative approach: $(non_nan_count_after) non-NaN values")
     end
     
     # Now remove the redundant fault_id column
@@ -768,7 +829,7 @@ function main()
     write_results_file(helper)
     
 
-    println("Probabilistic geomechanics process completed successfully.")
+    #println("Probabilistic geomechanics process completed successfully.")
 end
 
 

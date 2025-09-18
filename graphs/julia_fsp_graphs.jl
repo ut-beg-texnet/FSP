@@ -8,17 +8,17 @@ uncertainty_variability_inputs_to_d3, prob_hydrology_cdf, input_distribution_his
 #using JSON
 #using Colors
 using LinearAlgebra
-using SpecialFunctions
+#using SpecialFunctions
 using Statistics
 using Dates
-using FileIO
+#using FileIO
 using DataFrames
 using CSV
-using Printf
-using Random
-using Distributions
-using StatsBase  # Added for ecdf function
-using PrettyTables
+#using Printf
+#using Random
+#using Distributions
+using StatsBase  # ecdf function uses this
+#using PrettyTables
 include("../TexNetWebToolLauncherHelperJulia.jl")
 include("../core/geomechanics_model.jl")
 
@@ -31,11 +31,23 @@ using .GeomechanicsModel
 # For the well(s) of interest, plot the pressure vs distance graph
 # Using pressureScenario_constant_rate function for pressure calculation
 # This graph does not superimpose them
+"""
+Inputs:
+    radial_data::Vector{Tuple{String,Vector{Float64},Vector{Float64}}}
+        A vector of tuples, where each tuple contains:
+        - String: Well ID
+        - Vector{Float64}: Distance in km
+        - Vector{Float64}: Pressure in psi
+
+Outputs:
+    Graph showing the pressure vs distance for the well(s) of interest
+
+"""
 function plot_pressure_distance_graph(
     radial_data::Vector{Tuple{String,Vector{Float64},Vector{Float64}}}
 )
     if isempty(radial_data)
-        println("No radial data to plot. Skipping pressure-distance graph.")
+        #println("No radial data to plot. Skipping pressure-distance graph.")
         return
     end
 
@@ -55,7 +67,7 @@ function plot_pressure_distance_graph(
     end
 
     savefig(p, "pressure_distance_graph.png")
-    println("Created pressure_distance_graph.png")
+    #println("Created pressure_distance_graph.png")
 end
 
 
@@ -143,7 +155,7 @@ function plot_mohr_diagram_hydro(
     plot!(p, sigma_range, tau_line, label="Frictional Slip Line", color=:black, lw=2)
 
     savefig(p, "mohr_diagram_det_hydro.png")
-    println("Mohr diagram saved as mohr_diagram_det_hydro.png")
+    #println("Mohr diagram saved as mohr_diagram_det_hydro.png")
 
 end
 
@@ -399,6 +411,7 @@ function mohr_diagram_data_to_d3_portal(
     return (arcsDF, slipDF, faultDF)
 end
 
+#=
 # helper function for Mohr diagram (maps color to fault proximity)
 function get_fault_color_mohr(tau, sigma, mu, min_psi_tolerance=0.0, max_psi_tolerance=4000.0)
 
@@ -429,6 +442,7 @@ function get_fault_color_mohr(tau, sigma, mu, min_psi_tolerance=0.0, max_psi_tol
     return @sprintf("#%02X%02X%02X", red, green, blue)
 
 end
+=#
 
 
 # Plots a line graph for injection well
@@ -440,7 +454,7 @@ function plot_injection_rate_line_chart(
     extrapolate::Bool=false
 )
     if isempty(well_data)
-        println("No well data to plot. Skipping injection rate line chart.")
+        #println("No well data to plot. Skipping injection rate line chart.")
         return
     end
 
@@ -532,14 +546,14 @@ function plot_injection_rate_line_chart(
 
 
     # Save the plot
-    println("Saving graph as injection_rate_line_chart.png")
+    #println("Saving graph as injection_rate_line_chart.png")
     savefig(p, "injection_rate_line_chart.png")
 
     # output JSON file for D3.js module
     open("graphs/injection_rate_line_chart.json", "w") do file
         write(file, JSON.json(d3_line_graph_data))
     end
-    println("Saved D3.js data as injection_rate_line_chart.json")
+    #println("Saved D3.js data as injection_rate_line_chart.json")
 end
 
 
@@ -550,7 +564,7 @@ function injection_rate_line_chart_data_to_d3(well_data::Vector{Dict{String,Any}
     )
 
     if isempty(well_data)
-        println("No well data to plot. Skipping injection rate line chart.")
+        #println("No well data to plot. Skipping injection rate line chart.")
         return
     end
 
@@ -661,7 +675,7 @@ function plot_fault_surface_map(
 
     # save plot
     output_path = joinpath(graph_output_dir, "fault_surface_map.png")
-    println("Saving fault surface map to $output_path")
+    #println("Saving fault surface map to $output_path")
     savefig(p, output_path)
 
     # save D3 module data
@@ -669,7 +683,7 @@ function plot_fault_surface_map(
     open(d3_output_path, "w") do file
         write(file, JSON.json(d3_fault_surface_map_data))
     end
-    println("Saved D3.js data as $d3_output_path")
+    #println("Saved D3.js data as $d3_output_path")
 
 end
 
@@ -856,7 +870,7 @@ function injection_rate_data_to_d3(well_df::DataFrame, injection_data_type::Stri
             
 
             for (i, row) in enumerate(eachrow(well_df))
-                println("Iterating over rows...")
+                #println("Iterating over rows...")
                 
                 try
                     well_id = string(row["WellID"])
@@ -924,7 +938,7 @@ function injection_rate_data_to_d3(well_df::DataFrame, injection_data_type::Stri
                         end
                     end
                     
-                    println("Processed well: $well_id, converted daily rate $injection_rate_daily to monthly for $start_year-$end_year")
+                    #println("Processed well: $well_id, converted daily rate $injection_rate_daily to monthly for $start_year-$end_year")
                     
                 catch e
                     error("Error processing well $i: $(sprint(showerror, e))")
@@ -938,7 +952,7 @@ function injection_rate_data_to_d3(well_df::DataFrame, injection_data_type::Stri
         # monthly injection rates (FSP format)
         elseif injection_data_type == "monthly_fsp"
 
-            println("we have fsp monthly injection data in injection_rate_data_to_d3")
+            #println("we have fsp monthly injection data in injection_rate_data_to_d3")
 
             # well data for each row
             wells_reformatted = DataFrame(
@@ -1019,7 +1033,7 @@ function injection_rate_data_to_d3(well_df::DataFrame, injection_data_type::Stri
             unique_api_numbers = unique(string.(well_df[!, "API Number"]))
 
             # print the unique api numbers
-            println("Unique API numbers: $unique_api_numbers")
+            #println("Unique API numbers: $unique_api_numbers")
             
             
             # well data for each row
@@ -1034,7 +1048,7 @@ function injection_rate_data_to_d3(well_df::DataFrame, injection_data_type::Stri
 
             # Process each well separately to calculate monthly averages
             for (i, well_id) in enumerate(unique_api_numbers)
-                println("Processing well $well_id...")
+                #println("Processing well $well_id...")
                 
                 try
                     # Filter data for this well
@@ -1091,7 +1105,7 @@ function injection_rate_data_to_d3(well_df::DataFrame, injection_data_type::Stri
                         ))
                     end
                     
-                    println("Processed well $well_id with $(nrow(monthly_totals)) monthly data points")
+                    #println("Processed well $well_id with $(nrow(monthly_totals)) monthly data points")
                     
                 catch e
                     error("Error processing well $well_id: $(sprint(showerror, e))")
@@ -1597,7 +1611,7 @@ function injection_rate_data_to_d3_bbl_day(well_df::DataFrame, injection_data_ty
                         end
                     end
                     
-                    println("Processed well $well_id with $(length(processed_months)) monthly data points")
+                    #println("Processed well $well_id with $(length(processed_months)) monthly data points")
                     
                 catch e
                     error("Error processing well $well_id: $(sprint(showerror, e))")
@@ -1605,9 +1619,9 @@ function injection_rate_data_to_d3_bbl_day(well_df::DataFrame, injection_data_ty
             end
 
             # print the type of each column in the wells_reformatted dataframe
-            println("Type of each column in wells_reformatted:")
+            #println("Type of each column in wells_reformatted:")
             for col in names(wells_reformatted)
-                println("$col: $(eltype(wells_reformatted[!, col]))")
+                #println("$col: $(eltype(wells_reformatted[!, col]))")
             end
             
             return wells_reformatted
@@ -1665,7 +1679,7 @@ function plot_cdf_det_hydro(prob_geo_values, det_hydro_values)
     end
     
     savefig("graphs/cdf_det_hydro.png")
-    println("Prob hydrology CDF saved as cdf_det_hydro.png")
+    #println("Prob hydrology CDF saved as cdf_det_hydro.png")
 end
 
 
@@ -1687,7 +1701,7 @@ function plot_prob_hydro_combined_cdf(prob_geo_values, prob_hydro_results)
             probabilities = range(0, stop=1, length=length(pressures))
             plot!(pressures, probabilities, label="Hydrology - Fault $(fault_idx+1)", lw=2, linestyle=:solid)
         else
-            println("Warning: Skipping fault $(fault_idx+1) as hydrology data is not a vector.")
+            #println("Warning: Skipping fault $(fault_idx+1) as hydrology data is not a vector.")
         end
     end
 
@@ -1843,6 +1857,7 @@ function uncertainty_variability_inputs_to_d3(
     stress_inputs::Dict,
     fault_inputs::DataFrame
 )
+    #println("stress_model_type in uncertainty_variability_inputs_to_d3: $stress_model_type")
     #println("\n====== DEBUG: Starting uncertainty_variability_inputs_to_d3 ======")
     #println("Stress Model Type: $stress_model_type")
     
@@ -1858,7 +1873,8 @@ function uncertainty_variability_inputs_to_d3(
             "max_horizontal_stress_uncertainty" => "SHmax Gradient",
             "min_horizontal_stress_uncertainty" => "SHmin Gradient"
         )
-    elseif stress_model_type == "aphi_model" && stress_inputs["min_horizontal_stress"] !== nothing
+    elseif stress_model_type == "aphi_min" || (stress_model_type == "aphi_model" && stress_inputs["min_horizontal_stress"] !== nothing)
+        #error("Aphi model with min horizontal stress detected in uncertainty_variability_inputs_to_d3")
         stress_param_mapping = Dict(
             "vertical_stress_gradient_uncertainty" => "Vert Stress Grad",
             "initial_pore_pressure_gradient_uncertainty" => "Pore Press Grad",
@@ -1866,7 +1882,8 @@ function uncertainty_variability_inputs_to_d3(
             "aphi_value_uncertainty" => "APhi Value",
             "min_horizontal_stress_uncertainty" => "SHmin Gradient"
         )
-    elseif stress_model_type == "aphi_model" && stress_inputs["min_horizontal_stress"] === nothing
+    elseif stress_model_type == "aphi_no_min" || 
+           (stress_model_type == "aphi_model" && stress_inputs["min_horizontal_stress"] === nothing)
         stress_param_mapping = Dict(
             "vertical_stress_gradient_uncertainty" => "Vert Stress Grad",
             "initial_pore_pressure_gradient_uncertainty" => "Pore Press Grad",
@@ -1899,15 +1916,15 @@ function uncertainty_variability_inputs_to_d3(
     id_counter = 1
     
     for (uncertainty_param, display_name) in parameter_mapping
-        println("\nProcessing parameter: $uncertainty_param => $display_name")
+        
         
         if !haskey(uncertainties, uncertainty_param) || isnothing(uncertainties[uncertainty_param]) || uncertainties[uncertainty_param] == 0
-            println("  SKIPPING: Uncertainty not defined or is 0")
+            #println("  SKIPPING: Uncertainty not defined or is 0")
             continue  # Skip if uncertainty is not defined or is 0
         end
         
         uncertainty_value = uncertainties[uncertainty_param]
-        println("  Uncertainty value: $uncertainty_value")
+        
         
         # Get the base parameter value for min/max calculation
         base_value = 0.0
@@ -1933,21 +1950,21 @@ function uncertainty_variability_inputs_to_d3(
                 if haskey(fault_inputs[1, :], "Strike")
                     base_value = mean(fault_inputs[:, "Strike"])
                 else
-                    println("  WARNING: 'Strike' column not found in fault_inputs")
+                    #println("  WARNING: 'Strike' column not found in fault_inputs")
                     base_value = 0.0
                 end
             elseif uncertainty_param == "dip_angles_uncertainty"
                 if haskey(fault_inputs[1, :], "Dip")
                     base_value = mean(fault_inputs[:, "Dip"])
                 else
-                    println("  WARNING: 'Dip' column not found in fault_inputs")
+                    #println("  WARNING: 'Dip' column not found in fault_inputs")
                     base_value = 0.0
                 end
             elseif uncertainty_param == "friction_coefficient_uncertainty"
                 if haskey(fault_inputs[1, :], "FrictionCoefficient")
                     base_value = mean(fault_inputs[:, "FrictionCoefficient"])
                 else
-                    println("  WARNING: 'FrictionCoefficient' column not found in fault_inputs")
+                    #println("  WARNING: 'FrictionCoefficient' column not found in fault_inputs")
                     base_value = 0.0
                 end
             end
@@ -1955,7 +1972,7 @@ function uncertainty_variability_inputs_to_d3(
         
         # Skip if base value is 0 to avoid division by zero
         if base_value == 0.0
-            println("  SKIPPING: Base value is zero, cannot calculate percentage")
+            #println("  SKIPPING: Base value is zero, cannot calculate percentage")
             continue
         end
         
@@ -1994,7 +2011,7 @@ function uncertainty_variability_inputs_to_d3(
         min_percent = round(min_percent, digits=2)
         max_percent = round(max_percent, digits=2)
         
-        println("  Calculated percentage deviation: min=$min_percent%, max=$max_percent%")
+        
         
         # Add to DataFrame with negative and positive percentage deviations
         push!(uncertainty_df, (
@@ -2060,7 +2077,8 @@ function fault_sensitivity_tornado_chart_to_d3(
             "max_horizontal_stress_uncertainty" => "SHmax Gradient",
             "min_horizontal_stress_uncertainty" => "SHmin Gradient"
         )
-    elseif stress_model_type == "aphi_model" && base_stress_inputs["min_horizontal_stress"] !== nothing
+    elseif stress_model_type == "aphi_model" || stress_model_type == "aphi_min" || 
+           (stress_model_type == "aphi_model" && base_stress_inputs["min_horizontal_stress"] !== nothing)
         stress_param_mapping = Dict(
             "vertical_stress_gradient_uncertainty" => "Vert Stress Grad",
             "initial_pore_pressure_gradient_uncertainty" => "Pore Press Grad",
@@ -2068,7 +2086,8 @@ function fault_sensitivity_tornado_chart_to_d3(
             "aphi_value_uncertainty" => "APhi Value",
             "min_horizontal_stress_uncertainty" => "SHmin Gradient"
         )
-    elseif stress_model_type == "aphi_model" && base_stress_inputs["min_horizontal_stress"] === nothing
+    elseif stress_model_type == "aphi_no_min" || 
+           (stress_model_type == "aphi_model" && base_stress_inputs["min_horizontal_stress"] === nothing)
         stress_param_mapping = Dict(
             "vertical_stress_gradient_uncertainty" => "Vert Stress Grad",
             "initial_pore_pressure_gradient_uncertainty" => "Pore Press Grad",
@@ -2119,7 +2138,7 @@ function fault_sensitivity_tornado_chart_to_d3(
     else
         # Fallback to calculating absolute stresses from gradients
         # This is the original behavior
-        println("Absolute stresses not provided, calculating from gradients")
+        #println("Absolute stresses not provided, calculating from gradients")
         
         # Calculate absolute stresses from gradients for baseline
         reference_depth = base_stress_inputs["reference_depth"]
@@ -2165,10 +2184,10 @@ function fault_sensitivity_tornado_chart_to_d3(
     
     # For each parameter, calculate slip pressure at lower and upper bounds
     for (uncertainty_param, display_name) in parameter_mapping
-        println("\nProcessing parameter: $uncertainty_param => $display_name")
+        
         
         if !haskey(uncertainties, uncertainty_param) || isnothing(uncertainties[uncertainty_param]) || uncertainties[uncertainty_param] == 0
-            println("  SKIPPING: Uncertainty not defined or is 0")
+            #println("  SKIPPING: Uncertainty not defined or is 0")
             continue  # Skip if uncertainty is not defined or is 0
         end
         
@@ -2207,7 +2226,7 @@ function fault_sensitivity_tornado_chart_to_d3(
             catch e
                 # Special handling for max_stress_azimuth_uncertainty
                 if uncertainty_param == "max_stress_azimuth_uncertainty"
-                    println("  Using special handling for SHmax Azimuth")
+                    #println("  Using special handling for SHmax Azimuth")
                     # Create copies of the stress inputs with modified azimuth values
                     lower_stress_inputs = copy(base_stress_inputs)
                     upper_stress_inputs = copy(base_stress_inputs)
@@ -2269,7 +2288,7 @@ function fault_sensitivity_tornado_chart_to_d3(
                     
                     
                 else
-                    println("  ERROR calculating slip pressure for $uncertainty_param: $e")
+                    #println("  ERROR calculating slip pressure for $uncertainty_param: $e")
                     continue
                 end
             end
@@ -2434,16 +2453,12 @@ function fault_sensitivity_tornado_chart_to_d3(
         ))
     end
     
-    # Print the final tornado dataframe
-    println("\nFinal tornado_df for fault $fault_id ($(nrow(tornado_df)) rows):")
-    for row in eachrow(tornado_df)
-        println("  $(row.label): min=$(row.min), max=$(row.max)")
-    end
+    
     
     #println("Created tornado chart data for fault ID: $fault_id with $(nrow(tornado_df)) parameters")
     #println("====== DEBUG: Ending fault_sensitivity_tornado_chart_to_d3 ======\n")
 
-    pretty_table(tornado_df)
+    
     
     return tornado_df
 end
@@ -2480,16 +2495,14 @@ function calculate_with_direct_parameter(
         modified_stress["pore_pressure"] += param_change
         #println("Changed pore_pressure gradient to: $(modified_stress["pore_pressure"])")
     elseif uncertainty_param == "max_stress_azimuth_uncertainty"
-        
+        # For azimuth, we need to use mod to handle 0-360 wrapping properly
         # Debug the azimuth value before modifying it
-        println("  DEBUG: max_stress_azimuth before change: $(modified_stress["max_stress_azimuth"])")
-        println("  DEBUG: param_change: $param_change")
         
-        # since this is in degrees, we need to wrap it around 360 degrees
+        
+        # Apply wrapping for azimuth (0-360 degrees)
         modified_stress["max_stress_azimuth"] = mod(modified_stress["max_stress_azimuth"] + param_change, 360.0)
         
-        println("  DEBUG: max_stress_azimuth after change: $(modified_stress["max_stress_azimuth"])")
-        #println("Changed max_stress_azimuth to: $(modified_stress["max_stress_azimuth"])")
+        
     elseif uncertainty_param == "max_horizontal_stress_uncertainty"
         modified_stress["max_horizontal_stress"] += param_change
         #println("Changed max_horizontal_stress gradient to: $(modified_stress["max_horizontal_stress"])")
@@ -2502,10 +2515,10 @@ function calculate_with_direct_parameter(
             modified_stress["aphi_value"] += param_change
             #println("Changed aphi_value to: $(modified_stress["aphi_value"])")
         else
-            println("WARNING: aphi_value not found in inputs, no change applied")
+            #println("WARNING: aphi_value not found in inputs, no change applied")
         end
     else
-        println("WARNING: Unknown parameter: $uncertainty_param")
+        #println("WARNING: Unknown parameter: $uncertainty_param")
     end
 
     # Get the friction coefficient from the fault
@@ -2627,8 +2640,8 @@ function mohr_diagram_hydro_data_to_d3_portal(
             tau_fault = tau_effective[i]
             fault_slip_pressure = slip_pressure[i]
             
-            println("Using calculated stresses for fault: $(fault_id)")
-            println("  sig_fault: $(sig_fault), tau_fault: $(tau_fault)")
+            #println("Using calculated stresses for fault: $(fault_id)")
+            #println("  sig_fault: $(sig_fault), tau_fault: $(tau_fault)")
             
             # Create a new row for this fault with updated coordinates
             new_row = Dict(name => geo_faults_df[i, name] for name in names(geo_faults_df))
@@ -2644,10 +2657,10 @@ function mohr_diagram_hydro_data_to_d3_portal(
         
         # Return dataframes with consistent structure
         #=
-        println("MODIFIED DATAFRAMES FOR SHIFTED MOHR DIAGRAM:")
-        println("arcsDF: ")
+        #println("MODIFIED DATAFRAMES FOR SHIFTED MOHR DIAGRAM:")
+        #println("arcsDF: ")
         pretty_table(arcsDF)
-        println("faultsDF: ")
+        #println("faultsDF: ")
         pretty_table(faultsDF)
         =#
         
@@ -2657,7 +2670,7 @@ function mohr_diagram_hydro_data_to_d3_portal(
         # ...
         error("No geomechanics dataframes provided for the hydrology Mohr diagram, cannot calculate from scratch")
         # Return all three DataFrames
-        println("Created hydrology Mohr diagram data from scratch with mean dp = $(dp_mean) psi")
+        #println("Created hydrology Mohr diagram data from scratch with mean dp = $(dp_mean) psi")
         return (arcsDF, slipDF, faultDF)
     end
 end

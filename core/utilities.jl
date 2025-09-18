@@ -20,7 +20,7 @@ import Proj: CRS # explicitly
 
 export latlon_to_wkt, convert_easting_northing_to_latlon, convert_latlon_to_easting_northing!
 export prepare_well_data_for_pressure_scenario, create_spatial_grid_km, create_spatial_grid_latlon, create_uniform_distribution
-export reformat_pressure_grid_to_heatmap_data, get_date_bounds, get_injection_dataset_path, interpolate_cdf
+export reformat_pressure_grid_to_heatmap_data, get_date_bounds, get_injection_dataset_path, interpolate_cdf, create_bounded_uniform_distribution
 
 
 
@@ -73,15 +73,16 @@ function latlon_to_wkt(faults_df::DataFrame,
         strike_rad = deg2rad(90 - strike) # Convert from azimuth to math angle
         
         # Calculate half length for extending in both directions
+        # we do this because for the 2D faults, the user provides the midpoint coordinates and a length
         half_length_km = length_km / 2.0
         
         # Create a local ENU coordinate system centered at the fault midpoint
         # This gives us a more accurate way to extend the fault in the proper direction
-        enu_transform = ENUfromLLA(center_point, wgs84)
+        #enu_transform = ENUfromLLA(center_point, wgs84)
         lla_transform = LLAfromENU(center_point, wgs84)
         
-        # Calculate the endpoints in the local ENU frame
-        # In ENU, x is East, y is North, so we need to use the strike angle correctly
+        # Calculate the endpoints
+        # In ENU, x is East, y is North
         dx = sin(strike_rad) * half_length_km * 1000.0  # Convert km to meters
         dy = cos(strike_rad) * half_length_km * 1000.0  # Convert km to meters
         
@@ -105,7 +106,7 @@ end
 
 
 function convert_easting_northing_to_latlon(easting::Float64, northing::Float64)
-    println("lat: $(wgs84(easting, northing).lat), lon: $(wgs84(easting, northing).lon)")
+    #println("lat: $(wgs84(easting, northing).lat), lon: $(wgs84(easting, northing).lon)")
     return wgs84(easting, northing)
 end
 
@@ -192,8 +193,8 @@ function convert_latlon_to_easting_northing!(df::DataFrame, lat_col::String, lon
                 zones[i] = "$(zone)$(hemisphere ? 'N' : 'S')"
                 
             catch e
-                println("\nError processing row $i:")
-                println(sprint(showerror, e))
+                #println("\nError processing row $i:")
+                #println(sprint(showerror, e))
                 throw(ArgumentError("Error converting coordinates for row $i: $e"))
             end
         end
@@ -209,8 +210,8 @@ function convert_latlon_to_easting_northing!(df::DataFrame, lat_col::String, lon
         return df
         
     catch e
-        println("\nFatal error in coordinate conversion:")
-        println(sprint(showerror, e))
+        #println("\nFatal error in coordinate conversion:")
+        #println(sprint(showerror, e))
         rethrow(e)
     end
 end
@@ -395,7 +396,7 @@ function prepare_annual_fsp_data(
     # Use the provided end_year (already calculated as min(inj_end_year, year_of_interest))
     # If well starts after end year, return empty arrays
     if start_year > year(year_of_interest_date)
-        println("DEBUG: Well starts after calculation end year - start_year ($start_year) > end_year ($end_year)")
+        #println("DEBUG: Well starts after calculation end year - start_year ($start_year) > end_year ($end_year)")
         return Float64[], Float64[]
     end
     
@@ -433,8 +434,8 @@ function prepare_annual_fsp_data(
     step_times = Float64[1.0, Float64(days_total)]
     step_rates = Float64[daily_rate_bbl, 0.0]
     
-    println("  * Constant injection rate: $daily_rate_bbl bbl/day for $(days_total-1) days")
-    println("  * Injection period: $(global_start_date) to $(global_end_date) ($(days_total) days)")
+    #println("  * Constant injection rate: $daily_rate_bbl bbl/day for $(days_total-1) days")
+    #println("  * Injection period: $(global_start_date) to $(global_end_date) ($(days_total) days)")
     
     return step_times, step_rates
 end
@@ -460,7 +461,7 @@ function prepare_monthly_fsp_data(
     
     # If well starts after end_year, return empty arrays
     if start_year > year(year_of_interest_date)
-        println("DEBUG: Well starts after calculation end year - start_year ($start_year) > end_year ($end_year)")
+        #println("DEBUG: Well starts after calculation end year - start_year ($start_year) > end_year ($end_year)")
         return Float64[], Float64[]
     end
     
@@ -490,7 +491,7 @@ function prepare_monthly_fsp_data(
     missing_cols = filter(col -> !(col in names(well_data)), required_cols)
     
     if !isempty(missing_cols)
-        println("DEBUG: Missing required columns: $(join(missing_cols, ", "))")
+        #println("DEBUG: Missing required columns: $(join(missing_cols, ", "))")
         
         # Try alternative column names for "InjectionRate(bbl/month)"
         if "InjectionRate(bbl/month)" in missing_cols
@@ -499,7 +500,7 @@ function prepare_monthly_fsp_data(
             
             for alt_col in alt_rate_cols
                 if alt_col in names(well_data)
-                    println("DEBUG: Using alternative column '$alt_col' for injection rate")
+                    #println("DEBUG: Using alternative column '$alt_col' for injection rate")
                     rename!(well_data, alt_col => "InjectionRate(bbl/month)")
                     found_alt = true
                     missing_cols = filter(col -> !(col in names(well_data)), required_cols)
@@ -508,14 +509,14 @@ function prepare_monthly_fsp_data(
             end
             
             if !found_alt
-                println("DEBUG: No suitable monthly injection rate column found")
+                #println("DEBUG: No suitable monthly injection rate column found")
                 return Float64[], Float64[]
             end
         end
         
         # If still missing required columns, return empty
         if !isempty(missing_cols)
-            println("DEBUG: Still missing required columns after attempting alternatives: $(join(missing_cols, ", "))")
+            #println("DEBUG: Still missing required columns after attempting alternatives: $(join(missing_cols, ", "))")
             return Float64[], Float64[]
         end
     end
@@ -529,10 +530,10 @@ function prepare_monthly_fsp_data(
     
     # Print out all well data rows for debugging
     #=
-    println("DEBUG: Well data rows (first 5 rows max):")
+    #println("DEBUG: Well data rows (first 5 rows max):")
     for (i, row) in enumerate(eachrow(well_data))
         if i <= 5
-            println("DEBUG: Row $i: Year=$(row.Year), Month=$(row.Month), Rate=$(row["InjectionRate(bbl/month)"])")
+            #println("DEBUG: Row $i: Year=$(row.Year), Month=$(row.Month), Rate=$(row["InjectionRate(bbl/month)"])")
         else
             break
         end
@@ -583,7 +584,7 @@ function prepare_monthly_fsp_data(
             end
         elseif extrapolate && !isnothing(current_rate) && current_rate > 0
             # Keep using current rate if extrapolating
-            println("DEBUG: Extrapolating using current rate $current_rate for month $y-$m")
+            #println("DEBUG: Extrapolating using current rate $current_rate for month $y-$m")
         else
             # No data for this month and not extrapolating
             # If current rate is non-zero, step down to zero
@@ -592,9 +593,9 @@ function prepare_monthly_fsp_data(
                 push!(step_times, Float64(days_since_start))
                 push!(step_rates, 0.0)
                 current_rate = 0.0
-                println("DEBUG: Added step down to zero: day=$(days_since_start) for month $y-$m (no data)")
+                #println("DEBUG: Added step down to zero: day=$(days_since_start) for month $y-$m (no data)")
             else
-                println("DEBUG: No data for month $y-$m, current rate already zero")
+                #println("DEBUG: No data for month $y-$m, current rate already zero")
             end
         end
         
@@ -619,10 +620,10 @@ function prepare_monthly_fsp_data(
     
     # Print summary of steps
     #=
-    println("DEBUG: Created $(length(step_times)) injection rate step changes")
-    println("DEBUG: step_times: $(step_times)")
-    println("DEBUG: step_rates: $(step_rates)")
-    println("===== END DEBUG prepare_monthly_fsp_data =====\n")
+    #println("DEBUG: Created $(length(step_times)) injection rate step changes")
+    #println("DEBUG: step_times: $(step_times)")
+    #println("DEBUG: step_rates: $(step_rates)")
+    #println("===== END DEBUG prepare_monthly_fsp_data =====\n")
     =#
     
     return step_times, step_rates
@@ -649,7 +650,7 @@ function prepare_injection_tool_data(
 )
     # If well starts after calculation end year, return empty arrays
     if inj_start_date > year_of_interest_date
-        println("DEBUG: Well starts after calculation end year - start_year ($start_year) > end_year ($end_year)")
+        #println("DEBUG: Well starts after calculation end year - start_year ($start_year) > end_year ($end_year)")
         return Float64[], Float64[]
     end
     
@@ -874,7 +875,7 @@ function create_spatial_grid_latlon(df::DataFrame, lat_column::String, lon_colum
     lon_min = minimum(df[!, lon_column])
     lon_max = maximum(df[!, lon_column])
     
-    println("DEBUG: Input bounds: Lat [$lat_min, $lat_max], Lon [$lon_min, $lon_max]")
+    #println("DEBUG: Input bounds: Lat [$lat_min, $lat_max], Lon [$lon_min, $lon_max]")
     
     # Validate input coordinates
     if isnan(lat_min) || isnan(lat_max) || isnan(lon_min) || isnan(lon_max)
@@ -888,7 +889,7 @@ function create_spatial_grid_latlon(df::DataFrame, lat_column::String, lon_colum
     lon_min -= buffer_deg
     lon_max += buffer_deg
     
-    println("DEBUG: Bounds with buffer (buffer is 0.01 degrees): Lat [$lat_min, $lat_max], Lon [$lon_min, $lon_max]")
+    #println("DEBUG: Bounds with buffer (buffer is 0.01 degrees): Lat [$lat_min, $lat_max], Lon [$lon_min, $lon_max]")
     
     # Create 1D ranges for latitude and longitude
     lat_range = range(lat_min, stop=lat_max, length=num_points)
@@ -903,7 +904,7 @@ end
 # Direct bounds version - takes lat/lon bounds directly
 # This is the version that is used in the deterministic hydrology process
 function create_spatial_grid_latlon(lat_min::Float64, lat_max::Float64, lon_min::Float64, lon_max::Float64, num_points::Int=50)
-    println("DEBUG: Input bounds: Lat [$lat_min, $lat_max], Lon [$lon_min, $lon_max]")
+    #println("DEBUG: Input bounds: Lat [$lat_min, $lat_max], Lon [$lon_min, $lon_max]")
     
     # Validate input coordinates
     if isnan(lat_min) || isnan(lat_max) || isnan(lon_min) || isnan(lon_max)
@@ -918,7 +919,7 @@ function create_spatial_grid_latlon(lat_min::Float64, lat_max::Float64, lon_min:
     # Create 2D meshgrids
     LAT_grid, LON_grid = meshgrid(lon_range, lat_range) 
     
-    println("DEBUG: Created lat/lon grid with size: $(size(LAT_grid))")
+    #println("DEBUG: Created lat/lon grid with size: $(size(LAT_grid))")
 
     
     return LAT_grid, LON_grid, lat_range, lon_range
@@ -942,6 +943,63 @@ function create_uniform_distribution(base_value::Union{Float64, Integer}, plus_m
 
     min_value = base_value - plus_minus
     max_value = base_value + plus_minus
+    return Uniform(min_value, max_value)
+end
+
+# This function will create a uniform distribution with proper bounds handling
+# parameter_type can be "strike", "dip", "azimuth", or any other parameter
+function create_bounded_uniform_distribution(base_value::Union{Float64, Integer}, uncertainty::Union{Float64, Integer}, parameter_type::String="default")
+    # Check for negative uncertainty values
+    if uncertainty < 0
+        throw(ArgumentError("Uncertainty value for $parameter_type cannot be negative."))
+    end
+    
+    # get the min and max values for the distribution before we call the uniform distribution
+    # this way we prevent skewed distributions
+    min_value = base_value - uncertainty
+    max_value = base_value + uncertainty
+    
+    # Apply the parameter-specific bounds
+    # the parameters strike, dip, and azimuth are all in degrees so we need to handle them differently
+    # for strike and azimuth angles (0-360 degrees)
+    # for dip angles (0-90 degrees)
+    # for friction coefficient (0-1)
+    # for porosity (0-1)
+    # for permeability (must be positive)
+    # TO DO: we also need to restrict the aphi value bounds (verify what the range should be)
+    if parameter_type == "strike" || parameter_type == "azimuth" || parameter_type == "Strike" || parameter_type == "max_stress_azimuth"
+        # For strike and azimuth angles (0-360 degrees)
+        # No bounds needed as we'll sample within [min, max] and handle wrapping during sampling
+        if max_value - min_value > 360.0
+            # If the range exceeds 360 degrees, just use the full 0-360 range
+            min_value = 0.0
+            max_value = 360.0
+        end
+    elseif parameter_type == "dip" || parameter_type == "Dip"
+        # For dip angles (0-90 degrees)
+        min_value = max(min_value, 0.0)
+        max_value = min(max_value, 90.0)
+    elseif parameter_type == "friction_coefficient" || parameter_type == "FrictionCoefficient"
+        # For friction coefficient (0-1)
+        min_value = max(min_value, 0.0)
+        max_value = min(max_value, 1.0)
+    elseif parameter_type == "porosity" || parameter_type == "Porosity" # we get this from the user as a fraction 
+        # For porosity (0-1)
+        min_value = max(min_value, 0.0)
+        max_value = min(max_value, 1.0)
+    elseif parameter_type == "permeability" || parameter_type == "Permeability"
+        # For permeability (must be positive)
+        min_value = max(min_value, 0.0)
+    else
+        # For other parameters, apply general constraints
+        # TO DO: check if we have any other special cases
+        # Ensure min_value is not negative for parameters that should be positive
+        if base_value > 0
+            min_value = max(min_value, 0.0)
+        end
+    end
+    
+    # Create the uniform distribution with bounded values
     return Uniform(min_value, max_value)
 end
 
