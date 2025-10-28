@@ -86,10 +86,10 @@ function main()
 
         #get all the unique faults from the FaultID column
         unique_faults_num = unique(faults_df[!, "FaultID"])
-        if length(unique_faults_num) > 500
-            add_message_with_step_index!(helper, 1, "Number of faults provided is greater than 500. Please provide a smaller number of faults.", 2)
+        if length(unique_faults_num) > 1000
+            add_message_with_step_index!(helper, 1, "Number of faults provided is greater than 1000. Please provide a smaller number of faults.", 2)
 
-            error("Number of faults provided is greater than 500. Please provide a smaller number of faults.")
+            error("Number of faults provided is greater than 1000. Please provide a smaller number of faults.")
             
         end
 
