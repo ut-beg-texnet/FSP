@@ -70,7 +70,9 @@ function latlon_to_wkt(faults_df::DataFrame,
         center_point = LLA(lat, lon, 0.0)
         
         # Convert strike to radians (strike is measured clockwise from north)
-        strike_rad = deg2rad(90 - strike) # Convert from azimuth to math angle
+        # In ENU coordinates: East = sin(azimuth), North = cos(azimuth)
+        strike_rad = deg2rad(strike)
+        
         
         # Calculate half length for extending in both directions
         # we do this because for the 2D faults, the user provides the midpoint coordinates and a length

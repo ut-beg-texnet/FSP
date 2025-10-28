@@ -98,18 +98,23 @@ end
 
 
 
-function calculate_n_phi(aphi::Float64)
-    if aphi >= 0 && aphi < 1
+function calculate_n_phi(aphi::Union{Float64, Int64})
+    println("APhi value provided: $aphi")
+    
+    aphi_float = Float64(aphi)  # Convert to Float64 for calculations
+    println("APhi value converted to Float64: $aphi_float")
+    if aphi_float >= 0 && aphi_float < 1
         n = 0
-    elseif aphi >= 1 && aphi < 2
+    elseif aphi_float >= 1 && aphi_float < 2
         n = 1
-    elseif aphi >= 2 && aphi <= 3
+    elseif aphi_float >= 2 && aphi_float <= 3
         n = 2
     else
-        error("APhi value must be in range [0,3]. Got: $aphi")
+        error("APhi value must be in range [0,3]. Got: $aphi_float")
     end
     
-    phi = (aphi - (n + 0.5))/(-1)^n + 0.5
+    phi = (aphi_float - (n + 0.5))/(-1)^n + 0.5
+    
     
     return n, phi
 end
@@ -364,8 +369,18 @@ function calculate_slip_pressure(sig_fault::Float64, tau_fault::Float64, mu::Flo
     
     Bsq_minus_4AC = B^2 - 4 * A * C
 
+    # TO DO: check that this won't break anything else
+    #=
+    Here we had:
     ppfail1 = (-B - sqrt(Bsq_minus_4AC)) / (2 * A)
     ppfail2 = (-B + sqrt(Bsq_minus_4AC)) / (2 * A)
+
+    However, Bsq_minus_4AC can be negative in some cases,
+    which would cause the sqrt to throw an error. 
+
+    Moved those two lines to the 'else' block below
+
+    =#
 
     
 
@@ -375,6 +390,9 @@ function calculate_slip_pressure(sig_fault::Float64, tau_fault::Float64, mu::Flo
         ppfail_horiz_dist = sig_fault - tau_fault / mu
         ppfail1 = -ppfail_horiz_dist
         ppfail2 = ppfail_horiz_dist
+    else
+        ppfail1 = (-B - sqrt(Bsq_minus_4AC)) / (2 * A)
+        ppfail2 = (-B + sqrt(Bsq_minus_4AC)) / (2 * A)
     end
 
     # Select appropriate solution based on mobilized friction

@@ -952,12 +952,11 @@ function main()
     # 3) Read fault data
     fault_data_path = get_dataset_file_path(helper, 6, "faults")
     if fault_data_path === nothing
-        error("Required fault dataset not found or accessible.")
+        error("Required fault dataset not found.")
     end
     fault_df = CSV.read(fault_data_path, DataFrame, types=Dict("FaultID" => String), pool=false)
 
-    # check the type of the FaultID column
-    #println("DEBUG: FaultID column type = $(typeof(fault_df[!, "FaultID"]))")
+    
 
    
     
@@ -1037,7 +1036,7 @@ function main()
     
     
 
-    # 6) Get injection date bounds and determine years to analyze
+    # 6) Get injection date bounds and find years to analyze
     inj_start_date, inj_end_date = Utilities.get_date_bounds(injection_wells_df)
     start_year = year(inj_start_date)
     end_year = (year(inj_end_date) + 1) #since we evaluate up to the end of the last year, we need to add 1 to include the last year

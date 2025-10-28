@@ -84,17 +84,17 @@ function main()
     
     #println("LOADING MODEL PARAMETERS FROM THE PORTAL...")
     
-    # Fluid compressibility (1/psi)
+    # Fluid compressibility (Pa^-1)
     beta = get_parameter_value(helper, 4, "fluid_compressibility")
     if beta === nothing
-        add_message_with_step_index!(helper, 4, "Fluid compressibility was not provided, using the default value of 3.6e-10 1/psi", 0)
+        add_message_with_step_index!(helper, 4, "Fluid compressibility was not provided, using the default value of 3.6e-10 Pa^-1", 0)
         beta = 3.6e-10
     end
     
-    # Rock compressibility (1/psi)
+    # Rock compressibility (Pa^-1)
     alphav = get_parameter_value(helper, 4, "rock_compressibility")
     if alphav === nothing
-        add_message_with_step_index!(helper, 4, "Rock compressibility was not provided, using the default value of 1.08e-09 1/psi", 0)
+        add_message_with_step_index!(helper, 4, "Rock compressibility was not provided, using the default value of 1.08e-09 Pa^-1", 0)
         alphav = 1.08e-09 
     end
     

@@ -182,6 +182,14 @@ function run_monte_carlo(stress_inputs::Dict, fault_inputs::DataFrame, uncertain
                                 # Normal sampling between min and max
                                 sim_stress[stress_param] = rand(local_rng, Uniform(min_azimuth, max_azimuth))
                             end
+
+                        # A-Phi value should be sampled within the range of 0-3 after we apply the +/- uncertainty
+                        elseif stress_param == "aphi_value"
+                            min_aphi_value = max(base_value - uncertainty, 0.0)
+                            max_aphi_value = min(base_value + uncertainty, 3.0)
+                            sim_stress[stress_param] = rand(local_rng, Uniform(min_aphi_value, max_aphi_value))
+
+                        
                         else
                             # For other stress parameters (handle positivity constraints where needed)
                             min_value = base_value - uncertainty
@@ -797,6 +805,7 @@ function main()
         non_nan_count_after = count(!isnan, combined_tornado_df.det_slip_pressure)
         #println("After alternative approach: $(non_nan_count_after) non-NaN values")
     end
+  
     
     # Now remove the redundant fault_id column
     select!(combined_tornado_df, Not(:fault_id))
@@ -827,6 +836,7 @@ function main()
     set_success_for_step_index!(helper, 3, true)
 
     write_results_file(helper)
+    
     
 
     #println("Probabilistic geomechanics process completed successfully.")

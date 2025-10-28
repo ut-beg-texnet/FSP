@@ -42,24 +42,7 @@ function parse_commandline()
     return parse_args(s)
 end
 
-"""
-Calculate n and Phi values from APhi
-Following MATLAB implementation in getHorFromAPhi.m
-"""
-function calculate_n_phi(aphi::Float64)
-    if aphi >= 0 && aphi < 1
-        n = 0
-    elseif aphi >= 1 && aphi < 2
-        n = 1
-    elseif aphi >= 2 && aphi <= 3
-        n = 2
-    else
-        error("APhi value must be in range [0,3]. Got: $aphi")
-    end
-    
-    phi = (aphi - (n + 0.5))/(-1)^n + 0.5
-    return n, phi
-end
+
 
 """
 Calculate horizontal stresses using Modified A-Phi model
@@ -567,6 +550,8 @@ function main()
 
     # if both aphi_value and max_horizontal_stress are not nothing, then we need to throw an error
     if stress_inputs["aphi_value"] !== nothing && stress_inputs["max_horizontal_stress"] !== nothing
+        println("Aphi provided: $(stress_inputs["aphi_value"])")
+        println("Max Horizontal Stress Gradient provided: $(stress_inputs["max_horizontal_stress"])")
         add_message_with_step_index!(helper, 2, "Aphi value and Max Horizontal Stress Gradient cannot both be provided", 2)
         throw(ErrorException("Error: Aphi value and Max Horizontal Stress Gradient cannot both be provided"))
     end

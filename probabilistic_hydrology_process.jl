@@ -101,7 +101,7 @@ function run_monte_carlo_hydrology(helper::TexNetWebToolLaunchHelperJulia,
     fault_data_path = get_dataset_file_path(helper, 5, "faults_model_inputs_output")
     #fault_data_path = get_dataset_file_path(helper, 2, "det_geomechanics_results")
     if fault_data_path === nothing
-        error("Required fault dataset not found or accessible.")
+        error("Required fault dataset not found.")
     end
 
     fault_df = CSV.read(fault_data_path, DataFrame)
