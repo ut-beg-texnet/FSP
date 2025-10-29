@@ -665,7 +665,7 @@ function main()
 
     #add_message_with_step_index!(helper, 2, "step2_faults_output: $(step2_faults_output)", 0)
 
-    # extract tau and sigme effective from results (to use in the Mohr diagram)
+    # extract tau and sigma effective stresses from results (to use in the Mohr diagram)
     tau_effective_faults = [result["shear_stress"] for result in results]
     sigma_effective_faults = [result["normal_stress"] for result in results]
     slip_pressure_faults = [result["slip_pressure"] for result in results]
