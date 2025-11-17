@@ -17,3 +17,6 @@ output/
 *.tmp  # Temporary files
 *.bak  # Backup files
 .DS_Store  # macOS-specific files
+
+# exclude GIST regression
+regression_tests/GISTRegressionTests.ipynb

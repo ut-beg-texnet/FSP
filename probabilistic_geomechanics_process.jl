@@ -99,9 +99,29 @@ function run_monte_carlo(stress_inputs::Dict, fault_inputs::DataFrame, uncertain
         "dip_angles_uncertainty" => "Dip",
         "friction_coefficient_uncertainty" => "FrictionCoefficient"
     )
+
+    # add a 'FrictionCoefficient' (Float64) column to the fault_inputs dataframe (if it doesn't exist)
+    if !hasproperty(fault_inputs, :FrictionCoefficient)
+        fault_inputs[!, :FrictionCoefficient] = zeros(nrow(fault_inputs))
+    end
+    # populate the 'FrictionCoefficient' column with the friction coefficient from the stress_inputs
+    fault_inputs[!, :FrictionCoefficient] .= stress_inputs["friction_coefficient"]
+
+
+    
     
     # Pre-convert DataFrame to array of dictionaries
     fault_dicts = [Dict(name => row[name] for name in names(fault_inputs)) for row in eachrow(fault_inputs)]
+
+    
+
+    # only print the column names of the fault_dicts
+    column_names = collect(keys(fault_dicts[1]))
+    #println("column names of the fault_dicts: $(column_names)")
+    # also print all the values from the FrictionCoefficient column
+    #println("values from the FrictionCoefficient column: $(fault_inputs[!, :FrictionCoefficient])")
+    
+    
     
     # Store the actual fault IDs if present in the input dataframe (not index values)
     actual_fault_ids = []
@@ -443,6 +463,8 @@ function main()
     #println("stress_inputs: $stress_inputs")
 
     
+
+    
     #println("stress_model_type: $stress_model_type")
     
     # create uncertainties dictionary
@@ -566,6 +588,10 @@ function main()
     
     # prepare the data for the d3.js CDF plot
     d3_cdf_data = prob_geomechanics_cdf(mc_pp_results, deterministic_results_df)
+
+    # print number of rows in the d3_cdf_data dataframe
+    #println("number of rows in the d3_cdf_data dataframe: $(nrow(d3_cdf_data))")
+    #error("Stop here")
 
     
 

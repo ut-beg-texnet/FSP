@@ -1157,8 +1157,10 @@ function injection_rate_data_to_d3_bbl_day(well_df::DataFrame, injection_data_ty
                     end_year = row["EndYear"]
                     
                     # Calculate the dates for the start and end of the injection period
+                    # EndYear means injection stops at the beginning of that year (Jan 1, 12:01 AM)
+                    # So the last day of injection is Dec 31 of (EndYear - 1)
                     start_date = Date(start_year, 1, 1)
-                    end_date = Date(end_year, 12, 31)
+                    end_date = Date(end_year-1, 12, 31)
                     
                     # Add a data point just before the start date with 0 rate (for step visualization)
                     one_day_before = start_date - Dates.Day(1)
@@ -1174,18 +1176,12 @@ function injection_rate_data_to_d3_bbl_day(well_df::DataFrame, injection_data_ty
                         timestamp_before
                     ))
                     
-                    # For each year in the range
-                    for year in start_year:end_year
+                    # For each year in the range (up to but not including end_year)
+                    for year in start_year:(end_year-1)
                         # For each month in the year
                         for month in 1:12
                             # Define the date for the start of the month
                             month_start_date = Date(year, month, 1)
-
-                            # Skip months before start date if it's the first year
-                            # or after end date if it's the last year
-                            if year < start_year || year > end_year
-                                continue
-                            end
 
                             # Get end date of the month
                             month_end_date = next_month_date(month_start_date)
@@ -1220,7 +1216,8 @@ function injection_rate_data_to_d3_bbl_day(well_df::DataFrame, injection_data_ty
                     end
                     
                     # Add a data point just after the end date with 0 rate (for step visualization)
-                    one_day_after = Date(end_year, 12, 31) + Dates.Day(1)
+                    # Since injection stops at the start of end_year, this is Jan 1 of end_year
+                    one_day_after = Date(end_year, 1, 1)
                     date_string_after = Dates.format(one_day_after, "m/d/Y")
                     timestamp_after = date_to_js_timestamp(one_day_after)
                     
@@ -1767,9 +1764,18 @@ function prob_geomechanics_cdf(mc_results_df::DataFrame, det_geomechanics_result
         # Get sorted pressure values for creating the CDF points
         sorted_pressure_values = sort(fault_data_float)
         
-        # Evaluate the ECDF function at each sorted pressure value
+        # Remove duplicate pressure values to avoid interpolation warnings
+        unique_pressure_values = unique(sorted_pressure_values)
+        
+        # Skip if only 1 unique value (can't create a meaningful CDF curve)
+        if length(unique_pressure_values) < 2
+            @warn "Fault $fault_id has only 1 unique pressure value in geomechanics, skipping CDF generation"
+            continue
+        end
+        
+        # Evaluate the ECDF function at each unique sorted pressure value
         # Note: StatsBase's ecdf returns probabilities in [0,1]
-        for pressure in sorted_pressure_values
+        for pressure in unique_pressure_values
             probability = ecdf_func(pressure)
             push!(points_df, (pressure, probability, fault_id, det_slip_pressure))
         end
@@ -1834,9 +1840,18 @@ function prob_hydrology_cdf(prob_hydro_results_df::DataFrame)
         # sort the values so we can create the exceedance curve
         sorted_pressure_values = sort(fault_data_float)
         
+        # Remove duplicate pressure values to avoid interpolation warnings
+        # The ecdf_func still uses all original data, so probabilities are correct
+        unique_pressure_values = unique(sorted_pressure_values)
+        
+        # Skip if only 1 unique value (can't create a meaningful CDF curve)
+        if length(unique_pressure_values) < 2
+            @warn "Fault $fault_id has only 1 unique pressure value, skipping CDF generation"
+            continue
+        end
         
         # Note: StatsBase's ecdf returns probabilities in [0,1]
-        for pressure in sorted_pressure_values
+        for pressure in unique_pressure_values
             # Convert CDF to exceedance probability (1-CDF)
             exceedance_probability = (1.0 - ecdf_func(pressure)) 
             push!(points_df, (pressure, exceedance_probability, fault_id))

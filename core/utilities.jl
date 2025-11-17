@@ -14,13 +14,17 @@ using CSV
 using Interpolations
 using .TexNetWebToolLauncherHelperJulia
 
+#using GeoInterface
 
 
 import Proj: CRS # explicitly 
 
+
+
 export latlon_to_wkt, convert_easting_northing_to_latlon, convert_latlon_to_easting_northing!
 export prepare_well_data_for_pressure_scenario, create_spatial_grid_km, create_spatial_grid_latlon, create_uniform_distribution
 export reformat_pressure_grid_to_heatmap_data, get_date_bounds, get_injection_dataset_path, interpolate_cdf, create_bounded_uniform_distribution
+export shapefile_to_fsp_csv
 
 
 
@@ -45,6 +49,97 @@ function get_injection_dataset_path(helper::TexNetWebToolLaunchHelperJulia, step
     end
     
     return nothing, nothing
+end
+
+
+# helper function to parse the multilinestring
+function parse_multilinestring(wkt::String)
+    wkt = strip(wkt, '"') # remove quotes
+    if !startswith(wkt, "MULTILINESTRING")
+        throw(ArgumentError("Shapefile CSV column 'SHAPE' does not start with 'MULTILINESTRING'"))
+    end
+    wkt = replace(wkt, "MULTILINESTRING ((" => "") # replace the multilinestring keyword and the opening parenthesis with an empty string
+    wkt = replace(wkt, "))" => "") # replace the closing parenthesis with an empty string
+    coords_string = split(wkt, ",") # split the coordinates string by commas
+    points = Tuple{Float64, Float64}[]
+    for coord in coords_string
+        coord = strip(coord) # remove whitespace
+        if !isempty(coord)
+            nums = split(coord)
+            if length(nums) == 2
+                lon = parse(Float64, nums[1])
+                lat = parse(Float64, nums[2])
+                push!(points, (lon, lat))
+            end
+        end
+    end
+    if length(points) < 2
+        return []
+    end
+    return [points]
+end
+
+
+
+# The web tools portal converts the Shapefiles into a CSV format.
+# This function turn this CSV into a DataFrame that the rest of the Julia code can use.
+function shapefile_to_fsp_csv(filename::String)
+    shapefile_csv = CSV.read(filename, DataFrame)
+    fsp_csv = DataFrame(
+        "FaultID" => String[],
+        "Longitude(WGS84)" => Float64[],
+        "Latitude(WGS84)" => Float64[],
+        "Strike" => Float64[],
+        "Dip" => Int64[],
+        "LengthKm" => Float64[]
+    )
+
+    for row in eachrow(shapefile_csv)
+        fid = row.FID 
+        dip = ismissing(row.dip) ? 0 : row.dip # default to 0 if dip is missing (even though it should not happen)
+        shape = row.SHAPE 
+        lines = parse_multilinestring(shape)
+        segment_count = 1
+        for points in lines
+            for i in 1:length(points)-1
+                start_lon, start_lat = points[i]
+                end_lon, end_lat = points[i+1]
+                mid_lon = (start_lon + end_lon) / 2
+                mid_lat = (start_lat + end_lat) / 2
+                
+                #great circle distance between start and end points
+                start_lla = LLA(start_lat, start_lon, 0.0)
+                end_lla = LLA(end_lat, end_lon, 0.0)
+                length_m = euclidean_distance(start_lla, end_lla, wgs84)
+                length_km = length_m / 1000.0
+                
+                # Calculate bearing (azimuth) between two lat/lon points for strike
+                lat1_rad = deg2rad(start_lat)
+                lat2_rad = deg2rad(end_lat)
+                dlon_rad = deg2rad(end_lon - start_lon)
+                
+                # Calculate bearing using standard formula
+                x = cos(lat2_rad) * sin(dlon_rad)
+                y = cos(lat1_rad) * sin(lat2_rad) - sin(lat1_rad) * cos(lat2_rad) * cos(dlon_rad)
+                bearing = rad2deg(atan(x, y))
+                
+                # Normalize to 0-360 range (bearing is already clockwise from North)
+                strike = Float64(mod(bearing + 360, 360))
+                
+                fault_id = "$(fid)Segment-$(segment_count)"
+                push!(fsp_csv, (
+                    fault_id,
+                    mid_lon,
+                    mid_lat,
+                    strike,
+                    dip,
+                    length_km
+                ))
+                segment_count += 1
+            end
+        end
+    end
+    return fsp_csv
 end
 
 
@@ -1240,6 +1335,18 @@ function interpolate_cdf(x_values::Vector{Float64}, y_values::Vector{Float64}, x
     # Use only the unique x values and their corresponding y values
     if length(unique_indices) < length(y_values_copy)
         y_values_copy = y_values_copy[unique_indices]
+    end
+    
+    # Handle case where we only have 1 unique point (can't interpolate)
+    if length(x_values_copy) == 1
+        # Return the y-value if x matches, otherwise return 0 if below or 1 if above
+        if x < x_values_copy[1]
+            return 0.0
+        elseif x > x_values_copy[1]
+            return y_values_copy[1]
+        else
+            return y_values_copy[1]
+        end
     end
     
     # Create interpolation object with flat extrapolation behavior

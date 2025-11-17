@@ -1,3 +1,4 @@
+
 include("core/utilities.jl")
 include("core/hydrology_calculations.jl")
 include("TexNetWebToolLauncherHelperJulia.jl")
@@ -266,8 +267,10 @@ function run_mc_hydrology_time_series(
         
         # Process each year for this iteration
         for analysis_year in years_to_analyze
-            # Set up year cutoff date (Dec 31 of the analysis year)
-            cutoff_date = Date(analysis_year, 12, 31)
+            # Set up year cutoff date (Dec 31 of the year BEFORE analysis year)
+            # This matches MATLAB's behavior: evaluate pressure at Jan 1, 12:00 AM of analysis year
+            # which means include injection up to Dec 31 of the previous year
+            cutoff_date = Date(analysis_year - 1, 12, 31)
             
             # Local results for this iteration and year
             local_results = Dict{String, Float64}()
@@ -298,6 +301,11 @@ function run_mc_hydrology_time_series(
                     inj_start_date = well.start_date
                     inj_end_date = well.end_date
                     
+                    # Skip if injection hasn't started by the cutoff date
+                    if inj_start_date > cutoff_date
+                        continue
+                    end
+                    
                     # Limit end date to the analysis year cutoff
                     actual_end_date = min(inj_end_date, cutoff_date)
                     actual_end_year = year(actual_end_date)
@@ -313,7 +321,7 @@ function run_mc_hydrology_time_series(
                         injection_data_type,
                         analysis_year,
                         false,  # Don't extrapolate
-                        cutoff_date # December 31 of the analysis year
+                        cutoff_date # December 31 of the year before analysis year (Jan 1 12:00 AM of analysis year)
                     )
                     
                     if isempty(days) || isempty(rates)
@@ -792,8 +800,10 @@ function run_deterministic_hydrology_time_series(
     
     # Process each year
     for analysis_year in years_to_analyze
-        # Set up year cutoff date (Dec 31 of the analysis year)
-        cutoff_date = Date(analysis_year, 12, 31)
+        # Set up year cutoff date (Dec 31 of the year BEFORE analysis year)
+        # This matches MATLAB's behavior: evaluate pressure at Jan 1, 12:00 AM of analysis year
+        # which means include injection up to Dec 31 of the previous year
+        cutoff_date = Date(analysis_year - 1, 12, 31)
         
         # Initialize year results if needed
         if !haskey(results, analysis_year)
@@ -825,6 +835,11 @@ function run_deterministic_hydrology_time_series(
                 inj_start_date = well.start_date
                 inj_end_date = well.end_date
                 
+                # Skip if injection hasn't started by the cutoff date
+                if inj_start_date > cutoff_date
+                    continue
+                end
+                
                 # Limit end date to the analysis year cutoff
                 actual_end_date = min(inj_end_date, cutoff_date)
                 actual_end_year = year(actual_end_date)
@@ -840,7 +855,7 @@ function run_deterministic_hydrology_time_series(
                     injection_data_type,
                     analysis_year,
                     false,  # Don't extrapolate
-                    cutoff_date # December 31 of the analysis year
+                    cutoff_date # December 31 of the year before analysis year (Jan 1 12:00 AM of analysis year)
                 )
                 
                 if isempty(days) || isempty(rates)
@@ -905,7 +920,7 @@ function main()
     helper = TexNetWebToolLaunchHelperJulia(scratchPath)
 
     # Get year of interest
-    #year_of_interest = get_parameter_value(helper, 6, "year_of_interest_summary")
+    year_of_interest = get_parameter_value(helper, 6, "year_of_interest_summary")
     #=
     if year_of_interest === nothing
         year_of_interest = Dates.year(Dates.today())
@@ -1044,6 +1059,23 @@ function main()
     end_year = end_year + 2
     
     years_to_analyze = start_year:end_year
+
+    
+    # if year of interest is not provided, use the current year
+    if year_of_interest === nothing
+        year_of_interest = Dates.year(Dates.today())
+        add_message_with_step_index!(helper, 6, "Year of interest was not provided, using ($year_of_interest) as the default value", 0)
+    # if year of interest is greater than end_year, use end_year
+    elseif year_of_interest > end_year
+        year_of_interest = end_year
+        add_message_with_step_index!(helper, 6, "Year of interest was larger than the end year, using the end year ($year_of_interest) as the default value", 0)
+    # if year of interest is smaller than start_year, use start_year
+    elseif year_of_interest < start_year
+        year_of_interest = start_year
+        add_message_with_step_index!(helper, 6, "Year of interest was smaller than the start year, using the start year ($year_of_interest) as the default value", 0)
+    end
+
+    #error("year_of_interest: $year_of_interest")
     
     #println("Injection period (for all wells): $inj_start_date to $inj_end_date")
     #println("Years to analyze: $years_to_analyze")
@@ -1149,6 +1181,69 @@ function main()
 
     sort!(pressure_through_time_results_aggregated, [:ID])
     sort!(fsp_through_time, [:ID])
+
+    
+    fault_df_with_summary = copy(fault_df) # mutable copy of fault_df so we can add the summary values to it
+    
+    # Initialize summary columns with 0.0 values (will be updated with actual values)
+    fault_df_with_summary[!, :summary_fsp] = zeros(Float64, nrow(fault_df_with_summary))
+    fault_df_with_summary[!, :summary_pressure] = zeros(Float64, nrow(fault_df_with_summary))
+    
+    # we only need to extract the rows where Year matches the year of interest
+    # print the year of interest
+    #println("year of interest: $year_of_interest")
+    
+    fsp_year_of_interest = filter(row -> row.Year == year_of_interest, fsp_through_time)
+    pressure_year_of_interest = filter(row -> row.Year == year_of_interest, pressure_through_time_results_aggregated)
+    # print the 
+    #error("Stop here")
+    
+    
+    # Populate summary_fsp and summary_pressure columns
+    for i in 1:nrow(fault_df_with_summary)
+        # Initialize fault_id outside try block to ensure proper scoping
+        local fault_id = ""
+        
+        # convert the 'FaultID' column to a string
+        try
+            fault_id = string(fault_df_with_summary[i, "FaultID"])
+        catch e
+            showerror(stderr, e)
+            println("Couldn't convert 'FaultID' column to a string at index $i, falling back to 'ID' column...")
+            try
+                fault_id = string(fault_df_with_summary[i, "ID"])
+            catch e2
+                showerror(stderr, e2)
+                println("Both 'FaultID' and 'ID' failed at index $i")
+                error("Failed to convert 'FaultID' or 'ID' column to a string at index $i")
+            end
+        end
+        
+        # Find matching FSP value
+        fsp_match = filter(row -> string(row.ID) == fault_id, fsp_year_of_interest)
+        if !isempty(fsp_match)
+            fault_df_with_summary[i, "summary_fsp"] = first(fsp_match.FSP)
+        else
+            # If no FSP data (e.g., fault had only 1 unique pressure value), set to 0.0
+            fault_df_with_summary[i, "summary_fsp"] = 0.0
+        end
+        
+        # Find matching pressure value
+        pressure_match = filter(row -> string(row.ID) == fault_id, pressure_year_of_interest)
+        if !isempty(pressure_match)
+            fault_df_with_summary[i, "summary_pressure"] = first(pressure_match.Pressure)
+        else
+            # If no pressure data, set to 0.0
+            fault_df_with_summary[i, "summary_pressure"] = 0.0
+        end
+    end
+
+    #println("fault_df_with_summary: ")
+    #pretty_table(fault_df_with_summary)
+    #error("stop here")
+    
+    # Save the updated fault dataframe with summary values
+    save_dataframe_as_parameter!(helper, 6, "faults_with_summary_fsp", fault_df_with_summary)
 
     save_dataframe_as_parameter!(helper, 6, "pressure_through_time_results", pressure_through_time_results_aggregated)
     

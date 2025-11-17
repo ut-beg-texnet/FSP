@@ -1036,6 +1036,11 @@ function main()
         
         # Run Monte Carlo simulation - updated to only receive one return value
         prob_hydro_results, hydro_samples = run_monte_carlo_hydrology(helper, params, "uniform", extrapolate_injection_rates, year_of_interest_date, year_of_interest)
+
+        # print the last 10 rows of the prob_hydro_results dataframe
+        #println("last 10 rows of the prob_hydro_results dataframe:")
+        #pretty_table(prob_hydro_results[end-10:end, :])
+        #error("Stop here")
         
 
         # save the prob_hydro_results as a CSV in the current directory
@@ -1059,6 +1064,12 @@ function main()
         
         # Generate probabilistic hydrology CDF data
         prob_hydro_cdf_data = prob_hydrology_cdf(prob_hydro_results)
+
+        # print first 10 rows of the prob_hydro_cdf_data dataframe
+        #println("first 10 rows of the prob_hydro_cdf_data dataframe:")
+        #pretty_table(prob_hydro_cdf_data[1:10, :])
+        #error("Stop here")
+        
         save_dataframe_as_parameter!(helper, 5, "prob_hydrology_cdf_graph_data", prob_hydro_cdf_data)
         
         # Calculate slip potential by combining with probabilistic geomechanics CDF

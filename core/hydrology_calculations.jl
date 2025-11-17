@@ -10,7 +10,7 @@ include("bill_pfront.jl")
 using .WellModel
 using SpecialFunctions
 using Statistics
-using PrettyTables # used to print the pressure field in a beautified table
+#using PrettyTables # used to print the pressure field in a beautified table
 using Dates
 using .BillPFront
 

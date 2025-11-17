@@ -65,6 +65,25 @@ function get_injection_dataset_path(helper::TexNetWebToolLaunchHelperJulia, step
 end
 
 
+function get_fault_dataset_path(helper::TexNetWebToolLaunchHelperJulia, step_index::Int)
+    for param_name in ["faults", "FaultDataShapefile"]
+        filepath = get_dataset_file_path(helper, step_index, param_name)
+        if filepath !== nothing
+            if param_name == "faults"
+                fault_type = "fsp_native"
+                return filepath, fault_type
+            elseif param_name == "FaultDataShapefile"
+                fault_type = "shapefile"
+                return filepath, fault_type
+            end
+        end
+    end
+    error("No fault dataset found.")
+    return nothing, nothing
+
+end
+
+
 function main()
 
     #println("\n=== Starting Deterministic Geomechanics Process ===")
@@ -75,29 +94,66 @@ function main()
 
     helper = TexNetWebToolLaunchHelperJulia(scratchPath)    
 
+    #=
+    # for testing: define the path to the faults shapefile here
+    faults_shapefile_path = "C:/Users/bakirtzisn/Desktop/FSP_dev_test/FSP_3/tests/shapefile_example.csv"
+
+    # test the shapefile_to_fsp_csv function
+    faults_df = shapefile_to_fsp_csv(faults_shapefile_path)
+    # save to a CSV file
+    CSV.write("test_shapefile_converted.csv", faults_df)
+    error("stop Here")
+    =#
+
+    faults_csv_filepath, fault_csv_type = get_fault_dataset_path(helper, 1)
+    if faults_csv_filepath !== nothing
+        if fault_csv_type == "fsp_native"
+            faults_df = CSV.read(faults_csv_filepath, DataFrame, types=Dict("FaultID" => String))
+            
+        elseif fault_csv_type == "shapefile"
+            faults_df = shapefile_to_fsp_csv(faults_csv_filepath)
+        end
+    else
+        error("No fault dataset provided.")
+    end
+
+    println("fault CSV type: $fault_csv_type")
 
     
-    #println("Extracting fault data from the scratch path...")
+
+    
+
+
     # get file path for faults dataset using the helper
-    faults_csv_filepath = get_dataset_file_path(helper, 1, "faults")
+    #faults_csv_filepath = get_dataset_file_path(helper, 1, "faults")
     if faults_csv_filepath !== nothing
-        faults_df = CSV.read(faults_csv_filepath, DataFrame, types=Dict("FaultID" => String))
+        #faults_df = CSV.read(faults_csv_filepath, DataFrame, types=Dict("FaultID" => String))
 
 
         #get all the unique faults from the FaultID column
         unique_faults_num = unique(faults_df[!, "FaultID"])
-        if length(unique_faults_num) > 1000
-            add_message_with_step_index!(helper, 1, "Number of faults provided is greater than 1000. Please provide a smaller number of faults.", 2)
+        if length(unique_faults_num) > 10000
+            add_message_with_step_index!(helper, 1, "Number of faults provided is greater than 10000. Please provide a smaller number of faults.", 2)
 
             error("Number of faults provided is greater than 1000. Please provide a smaller number of faults.")
             
         end
 
+        #=
+        # Ensure the column exists and is of the correct type
+        # we create it if it doesn't exist
+        if !("FrictionCoefficient" in names(faults_df))
+            faults_df[!, "FrictionCoefficient"] = Vector{Union{Missing, Float64}}(missing, nrow(faults_df))
+        end
+        =#
+        
+        #=
         # TO DO: make this a single input parameter from the portal
         # get friction coefficient from the first fault
         mu = faults_df[1, "FrictionCoefficient"]
         # assign this friction coefficient to all faults
         faults_df[!, "FrictionCoefficient"] .= mu
+        =#
 
         
         
