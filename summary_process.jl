@@ -1065,10 +1065,6 @@ function main()
     if year_of_interest === nothing
         year_of_interest = Dates.year(Dates.today())
         add_message_with_step_index!(helper, 6, "Year of interest was not provided, using ($year_of_interest) as the default value", 0)
-    # if year of interest is greater than end_year, use end_year
-    elseif year_of_interest > end_year
-        year_of_interest = end_year
-        add_message_with_step_index!(helper, 6, "Year of interest was larger than the end year, using the end year ($year_of_interest) as the default value", 0)
     # if year of interest is smaller than start_year, use start_year
     elseif year_of_interest < start_year
         year_of_interest = start_year
