@@ -1067,8 +1067,8 @@ function main()
         add_message_with_step_index!(helper, 6, "Year of interest was not provided, using ($year_of_interest) as the default value", 0)
     # if year of interest is smaller than start_year, use start_year
     elseif year_of_interest < start_year
-        year_of_interest = start_year
-        add_message_with_step_index!(helper, 6, "Year of interest was smaller than the start year, using the start year ($year_of_interest) as the default value", 0)
+        year_of_interest = start_year + 1
+        add_message_with_step_index!(helper, 6, "Year of interest was smaller than the first year of injection, using ($year_of_interest) as the default value", 0)
     end
 
     #error("year_of_interest: $year_of_interest")
