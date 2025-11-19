@@ -99,10 +99,10 @@ end
 
 
 function calculate_n_phi(aphi::Union{Float64, Int64})
-    println("APhi value provided: $aphi")
+    #println("APhi value provided: $aphi")
     
     aphi_float = Float64(aphi)  # Convert to Float64 for calculations
-    println("APhi value converted to Float64: $aphi_float")
+    #println("APhi value converted to Float64: $aphi_float")
     if aphi_float >= 0 && aphi_float < 1
         n = 0
     elseif aphi_float >= 1 && aphi_float < 2
