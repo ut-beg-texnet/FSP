@@ -1769,6 +1769,7 @@ function prob_geomechanics_cdf(mc_results_df::DataFrame, det_geomechanics_result
         
         # Skip if only 1 unique value (can't create a meaningful CDF curve)
         if length(unique_pressure_values) < 2
+            println("Inside prob_geomechanics_cdf function: Fault $fault_id has only 1 unique pressure value in geomechanics, skipping CDF generation")
             @warn "Fault $fault_id has only 1 unique pressure value in geomechanics, skipping CDF generation"
             continue
         end
@@ -1779,23 +1780,6 @@ function prob_geomechanics_cdf(mc_results_df::DataFrame, det_geomechanics_result
             probability = ecdf_func(pressure)
             push!(points_df, (pressure, probability, fault_id, det_slip_pressure))
         end
-        
-        #= Original implementation (commented out)
-        # Sort the values
-        sorted_pressure_values = sort(fault_data)
-
-        # Cumulative probabilities (0 to 100%)
-        number_of_points = length(sorted_pressure_values)
-        if number_of_points == 0
-            continue # Skip if no data for this fault
-        end
-        probability_values = range(0, stop=100, length=number_of_points)
-        
-        # Add points for this fault to the DataFrame
-        for (pressure, probability) in zip(sorted_pressure_values, probability_values)
-            push!(points_df, (pressure, probability, fault_id, det_slip_pressure))
-        end
-        =#
     end
 
     

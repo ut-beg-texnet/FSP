@@ -65,22 +65,38 @@ function get_injection_dataset_path(helper::TexNetWebToolLaunchHelperJulia, step
 end
 
 
-function get_fault_dataset_path(helper::TexNetWebToolLaunchHelperJulia, step_index::Int)
-    for param_name in ["faults", "FaultDataShapefile"]
-        filepath = get_dataset_file_path(helper, step_index, param_name)
-        if filepath !== nothing
-            if param_name == "faults"
-                fault_type = "fsp_native"
-                return filepath, fault_type
-            elseif param_name == "FaultDataShapefile"
-                fault_type = "shapefile"
-                return filepath, fault_type
+
+
+
+
+    
+
+
+
+
+
+
+function get_fault_dataset_path(helper::TexNetWebToolLaunchHelperJulia, step_index::Int, randomized_faults::Bool=false, num_faults::Int=20, strike_min::Float64=240.0, strike_max::Float64=330.0, dip_min::Float64=45.0, dip_max::Float64=90.0)
+    if randomized_faults
+        fault_type = "fsp_native"
+        faults_df = generate_randomized_faults_csv(num_faults, strike_min, strike_max, dip_min, dip_max)
+        return faults_df, fault_type
+    else
+        for param_name in ["faults", "FaultDataShapefile"]
+            filepath = get_dataset_file_path(helper, step_index, param_name)
+            if filepath !== nothing
+                if param_name == "faults"
+                    fault_type = "fsp_native"
+                    return filepath, fault_type
+                elseif param_name == "FaultDataShapefile"
+                    fault_type = "shapefile"
+                    return filepath, fault_type
+                end
             end
         end
+        error("No fault dataset found.")
+        return nothing, nothing
     end
-    error("No fault dataset found.")
-    return nothing, nothing
-
 end
 
 
@@ -90,34 +106,74 @@ function main()
 
     
 
+    
+
     scratchPath = ARGS[1]
 
     helper = TexNetWebToolLaunchHelperJulia(scratchPath)    
 
-    #=
-    # for testing: define the path to the faults shapefile here
-    faults_shapefile_path = "C:/Users/bakirtzisn/Desktop/FSP_dev_test/FSP_3/tests/shapefile_example.csv"
 
-    # test the shapefile_to_fsp_csv function
-    faults_df = shapefile_to_fsp_csv(faults_shapefile_path)
-    # save to a CSV file
-    CSV.write("test_shapefile_converted.csv", faults_df)
-    error("stop Here")
-    =#
+    # Check if the user requested randomized faults
+    randomize_faults = get_parameter_value(helper, 1, "randomize_faults")
+    #random_faults = true
+    println("randomize_faults: $randomize_faults")
+    if randomize_faults
+        # if the user wants to randomize the faults, we also need to read the randomization parameters from the args.json file
+        num_random_faults = get_parameter_value(helper, 1, "num_random_faults")
+        #println("Generating $num_random_faults random faults...")
+        # these if statements are being used for testing since we don't have input from the UI yet
+        # TODO: remove before pushing
+        if num_random_faults === nothing
+            num_random_faults = 10
+        end
+        random_strike_range = get_parameter_value(helper, 1, "random_strike_range")
+        if random_strike_range["min"] === nothing && random_strike_range["max"] === nothing
+            add_message_with_step_index!(helper, 1, "Strike range for random fault generation was not provided, using default value of 240.0-330.0", 1)
+            #println("random_strike_range for random fault generation is nothing, using default value of 240.0-330.0")
+            strike_min = 240.0
+            strike_max = 330.0
+        else
+            strike_min = parse(Float64, random_strike_range["min"])
+            strike_max = parse(Float64, random_strike_range["max"])
+        end
+        
+        random_dip_range = get_parameter_value(helper, 1, "random_dip_range")
+        if random_dip_range["min"] === nothing && random_dip_range["max"] === nothing
+            add_message_with_step_index!(helper, 1, "Dip range for random fault generation was not provided, using default value of 45.0-90.0", 1)
+            #println("random_dip_range for random fault generation is nothing, using default value of 45.0-90.0")
+            dip_min = 45.0
+            dip_max = 90.0
+        else
+            dip_min = parse(Float64, random_dip_range["min"])
+            dip_max = parse(Float64, random_dip_range["max"])
+            #println("random_dip_range received from the portal: $dip_min-$dip_max")
+        end
+        
+        faults_csv_filepath = nothing
+        fault_csv_type = "fsp_native"
+    else
+        faults_csv_filepath, fault_csv_type = get_fault_dataset_path(helper, 1, randomize_faults, 0)
+    end
 
-    faults_csv_filepath, fault_csv_type = get_fault_dataset_path(helper, 1)
+    #faults_csv_filepath, fault_csv_type = get_fault_dataset_path(helper, 1, random_faults)
     if faults_csv_filepath !== nothing
-        if fault_csv_type == "fsp_native"
+        if fault_csv_type == "fsp_native" && !randomize_faults
             faults_df = CSV.read(faults_csv_filepath, DataFrame, types=Dict("FaultID" => String))
             
-        elseif fault_csv_type == "shapefile"
+        elseif fault_csv_type == "shapefile" && !randomize_faults
             faults_df = shapefile_to_fsp_csv(faults_csv_filepath)
         end
+    elseif faults_csv_filepath === nothing && fault_csv_type === "fsp_native" && randomize_faults
+        faults_df = generate_randomized_faults_csv(num_random_faults, strike_min, strike_max, dip_min, dip_max)
     else
         error("No fault dataset provided.")
     end
 
-    println("fault CSV type: $fault_csv_type")
+    #println("fault CSV type: $fault_csv_type")
+    #println("faults_df: ")
+    #pretty_table(faults_df)
+    #error("stop here")
+
 
     
 
@@ -126,7 +182,7 @@ function main()
 
     # get file path for faults dataset using the helper
     #faults_csv_filepath = get_dataset_file_path(helper, 1, "faults")
-    if faults_csv_filepath !== nothing
+    if faults_csv_filepath !== nothing || randomize_faults
         #faults_df = CSV.read(faults_csv_filepath, DataFrame, types=Dict("FaultID" => String))
 
 

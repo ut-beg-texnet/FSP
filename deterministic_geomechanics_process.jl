@@ -550,8 +550,8 @@ function main()
 
     # if both aphi_value and max_horizontal_stress are not nothing, then we need to throw an error
     if stress_inputs["aphi_value"] !== nothing && stress_inputs["max_horizontal_stress"] !== nothing
-        println("Aphi provided: $(stress_inputs["aphi_value"])")
-        println("Max Horizontal Stress Gradient provided: $(stress_inputs["max_horizontal_stress"])")
+        #println("Aphi provided: $(stress_inputs["aphi_value"])")
+        #println("Max Horizontal Stress Gradient provided: $(stress_inputs["max_horizontal_stress"])")
         add_message_with_step_index!(helper, 2, "Aphi value and Max Horizontal Stress Gradient cannot both be provided", 2)
         throw(ErrorException("Error: Aphi value and Max Horizontal Stress Gradient cannot both be provided"))
     end

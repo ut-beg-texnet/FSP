@@ -61,7 +61,8 @@ function run_monte_carlo(stress_inputs::Dict, fault_inputs::DataFrame, uncertain
     # this dictionary maps the uncertainty parameters to their corresponding stress parameters
     stress_param_mapping = Dict()
     
-    # we have different parameter mappings for different stress models
+    # we have different parameter mappings for the different stress field calculate_absolute_stresses
+    # we have 1) all three gradients are provided, 2) aphi value is provided, with a min_horizontal_stress, 3) aphi value is provided, with no min_horizontal_stress
     # Case 1: all three gradients are provided
     if stress_model_type == "gradients" || stress_model_type == "all_gradients"
         stress_param_mapping = Dict(
@@ -160,7 +161,7 @@ function run_monte_carlo(stress_inputs::Dict, fault_inputs::DataFrame, uncertain
     end
     
     # Use threading to parallelize 
-    # TO DO: read the threads documentaiton and configure this properly
+    # TO DO: read the threads documentaiton and optimize this
     Threads.@threads for i in 1:n_sims
         # Create a thread-local random number generator to avoid race conditions
         local_rng = Random.MersenneTwister(base_seed + i)

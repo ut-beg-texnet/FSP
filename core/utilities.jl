@@ -24,7 +24,107 @@ import Proj: CRS # explicitly
 export latlon_to_wkt, convert_easting_northing_to_latlon, convert_latlon_to_easting_northing!
 export prepare_well_data_for_pressure_scenario, create_spatial_grid_km, create_spatial_grid_latlon, create_uniform_distribution
 export reformat_pressure_grid_to_heatmap_data, get_date_bounds, get_injection_dataset_path, interpolate_cdf, create_bounded_uniform_distribution
-export shapefile_to_fsp_csv
+export shapefile_to_fsp_csv, generate_randomized_faults_csv
+
+
+
+
+
+"""
+    offset_km_to_latlon(lat0, lon0, dx_km, dy_km)
+
+Convert local offsets in km (dx east, dy north) to lat/lon,
+using a small-distance planar approximation.
+"""
+function offset_km_to_latlon(lat0::Float64, lon0::Float64, dx_km::Float64, dy_km::Float64)
+    km_per_dg_lat = 111.0
+    dlat_deg = dy_km / km_per_dg_lat
+    # longitude degrees per km depends on latitude
+    dlon_deg = dx_km / (km_per_dg_lat * cosd(lat0))
+
+    return lat0 + dlat_deg, lon0 + dlon_deg
+end
+
+"""
+    random_points_within_radius_km(lat0, lon0, n, radius_km)
+
+Returns two vectors (latitudes, longitudes) of length `n`.
+First point is exactly (lat0, lon0). All others are within
+`radius_km` of the reference, sampled uniformly over area.
+"""
+function random_points_within_radius_km(
+    lat0::Float64,
+    lon0::Float64,
+    n::Int,
+    radius_km::Float64=15.0 # default radius is 15 km
+)
+    lats  = Vector{Float64}(undef, n)
+    lons  = Vector{Float64}(undef, n)
+
+    # First fault: fixed reference point
+    lats[1] = lat0
+    lons[1] = lon0
+
+    # Remaining faults: uniform in disk of radius `radius_km`
+    for i in 2:n
+        # uniform over area: radius = R * sqrt(u), angle = 2πv
+        r   = radius_km * sqrt(rand())
+        θ   = 2π * rand()
+        dx  = r * cos(θ)  # km east
+        dy  = r * sin(θ)  # km north
+
+        lat, lon = offset_km_to_latlon(lat0, lon0, dx, dy)
+        lats[i] = lat
+        lons[i] = lon
+    end
+
+    return lats, lons
+end
+
+
+
+
+"""
+Create a randomized faults DataFrame when the user does not supply one.
+Strike stays within 0–360°, dip within 0–90°. The LengthKm value is
+applied to all faults. The FrictionCoefficient column is created but left
+unset so it can be populated later.
+"""
+function generate_randomized_faults_csv(num_random_faults::Int, strike_min::Float64, strike_max::Float64, dip_min::Float64, dip_max::Float64, length_km::Float64=5.0)
+    strike_lower_bound = clamp(strike_min, 0.0, 360.0)
+    strike_upper_bound = clamp(strike_max, 0.0, 360.0)
+    dip_lower_bound = clamp(dip_min, 0.0, 90.0)
+    dip_upper_bound = clamp(dip_max, 0.0, 90.0)
+
+    if strike_lower_bound > strike_upper_bound
+        error("Strike lower bound is greater than strike upper bound. Current values: $strike_lower_bound (lower bound), $strike_upper_bound (upper bound)")
+    end
+    if dip_lower_bound > dip_upper_bound
+        error("Dip lower bound is greater than dip upper bound. Current values: $dip_lower_bound (lower bound), $dip_upper_bound (upper bound)")
+    end
+
+    # generate the random strikes
+    strikes = strike_lower_bound .+ (strike_upper_bound - strike_lower_bound) .* rand(num_random_faults)
+    # generate the random dips
+    dips = dip_lower_bound .+ (dip_upper_bound - dip_lower_bound) .* rand(num_random_faults)
+
+    # latitude and longitude randomization (placeholders for now)
+    latitudes, longitudes = random_points_within_radius_km(31.023892, -100.185739, num_random_faults)
+
+    df = DataFrame(
+        "FaultID" => ["Fault_$i" for i in 1:num_random_faults],
+        "Latitude(WGS84)" => latitudes,
+        "Longitude(WGS84)" => longitudes,
+        "Strike" => strikes,
+        "Dip" => dips,
+        "LengthKm" => fill(length_km, num_random_faults),
+        # Leave friction unset; future steps will populate Float64 values
+        "FrictionCoefficient" => Vector{Union{Missing, Float64}}(missing, num_random_faults)
+    )
+
+    return df
+end
+    
 
 
 
