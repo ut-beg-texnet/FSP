@@ -115,6 +115,12 @@ function main()
 
     # Check if the user requested randomized faults
     randomize_faults = get_parameter_value(helper, 1, "randomize_faults")
+
+    # (Upcoming feature) default to false since that parameter is not set up in the UI yet
+    if randomize_faults === nothing
+        randomize_faults = false
+    end
+
     #random_faults = true
     println("randomize_faults: $randomize_faults")
     if randomize_faults

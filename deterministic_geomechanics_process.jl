@@ -660,7 +660,6 @@ function main()
     # Save the updated dataframe for the next step
     step2_faults_output = step1_faults_output
 
-    
     save_dataframe_as_parameter!(helper, 2, "det_geomechanics_results", step2_faults_output)
 
     #add_message_with_step_index!(helper, 2, "step2_faults_output: $(step2_faults_output)", 0)
@@ -674,15 +673,7 @@ function main()
     fault_ids = [string(result["FaultID"]) for result in results]
     # the line above creates a vector of type Vector{InlineStrings.String7}
     # we need to convert it to a vector of type Vector{String}
-    if typeof(fault_ids[1]) == String7
-        fault_ids = String.(fault_ids)
-    elseif typeof(fault_ids[1]) == InlineStrings.String1
-        fault_ids = String.(fault_ids)
-    elseif typeof(fault_ids[1]) == InlineStrings.String3
-        fault_ids = String.(fault_ids)
-    elseif typeof(fault_ids[1]) == InlineStrings.String15
-        fault_ids = String.(fault_ids)
-    end
+    fault_ids = String.(fault_ids)
 
     # extract strikes from each fault and store in a vector
     strikes = Float64[fault["Strike"] for fault in fault_data]

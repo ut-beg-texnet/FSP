@@ -48,7 +48,8 @@ function run_monte_carlo_hydrology(helper::TexNetWebToolLaunchHelperJulia,
                                   year_of_interest_date::Date=Date(year_of_interest-1, 12, 31),
                                   year_of_interest::Int64=Dates.year(today()))
 
-    if distribution_type == "uniform"
+
+    if distribution_type == "uniform" # currently we only support Uniform distributions
         # check if we are missing the plus_minus value for a parameter, set it to 0.0
         for (key, value) in params.plus_minus
             if isnan(value)
