@@ -425,7 +425,12 @@ function calculate_statistics(results::Union{DataFrame, SharedArray{Float64, 2}}
     end
     
     # Sort by FaultID for consistency
-    sort!(stats_df, :FaultID)
+    # Try to sort numerically if possible, otherwise fall back to string sort
+    try
+        sort!(stats_df, order(:FaultID, by = x -> parse(Float64, x)))
+    catch
+        sort!(stats_df, :FaultID)
+    end
     
     return stats_df
 end
@@ -660,10 +665,10 @@ function main()
     # Save the dataframe as a parameter
     save_dataframe_as_parameter!(helper, 3, "uncertainty_variability_tornado_chart_data", uncertainty_variability_df)
 
-    # Generate tornado chart data for each fault
+    # Generate sensitivity analysis (tornado chart) data for each fault
     tornado_charts_data = Dict{String, DataFrame}()
     for (idx, row) in enumerate(eachrow(fault_inputs))
-        fault_id = string(idx)
+        fault_id = actual_fault_ids[idx]
         #println("Generating tornado chart data for Fault #$fault_id...")
         
         # Calculate absolute stresses first to ensure we have the right values for the tornado chart
@@ -787,12 +792,14 @@ function main()
             fault_id = string(findfirst(r -> r === row, eachrow(deterministic_results_df)))
         end
         
-        # Extract slip pressure - assume column is named SlipPressure
-        if "slip_pressure" in names(deterministic_results_df)
-            det_slip_pressures[fault_id] = row.slip_pressure
-        elseif "Slip_Pressure" in names(deterministic_results_df)
-            det_slip_pressures[fault_id] = row.Slip_Pressure
-        end
+    # Extract slip pressure - handle different column names
+    if "SlipPressure" in names(deterministic_results_df)
+        det_slip_pressures[fault_id] = row.SlipPressure
+    elseif "slip_pressure" in names(deterministic_results_df)
+        det_slip_pressures[fault_id] = row.slip_pressure
+    elseif "Slip_Pressure" in names(deterministic_results_df)
+        det_slip_pressures[fault_id] = row.Slip_Pressure
+    end
 
         
     end

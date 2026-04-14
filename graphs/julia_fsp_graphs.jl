@@ -2734,7 +2734,12 @@ function input_distribution_histograms_to_d3(
     for (fid, pdict) in fault_param_values
         # fault-specific parameters
         for (pname, vals) in pdict
-            h = fit(Histogram, vals, nbins=nbins)
+            # Filter out NaN and Inf values before fitting the histogram
+            clean_vals = filter(x -> !isnan(x) && isfinite(x), vals)
+            if isempty(clean_vals)
+                continue
+            end
+            h = fit(Histogram, clean_vals, nbins=nbins)
             edges = h.edges[1]; centers = [(edges[i]+edges[i+1])/2 for i in 1:length(h.weights)]
             for i in eachindex(h.weights)
                 #println("pname: $pname, centers[i]: $(centers[i])")
@@ -2752,7 +2757,12 @@ function input_distribution_histograms_to_d3(
             
             for (pname, vals) in stress_values
                 if haskey(label_map, pname)
-                    h = fit(Histogram, vals, nbins=nbins)
+                    # Filter out NaN and Inf values before fitting the histogram
+                    clean_vals = filter(x -> !isnan(x) && isfinite(x), vals)
+                    if isempty(clean_vals)
+                        continue
+                    end
+                    h = fit(Histogram, clean_vals, nbins=nbins)
                     edges = h.edges[1]; centers = [(edges[i]+edges[i+1])/2 for i in 1:length(h.weights)]
                     for i in eachindex(h.weights)
                         push!(histogram_d3_data, (
@@ -2798,7 +2808,12 @@ function hydro_input_distribution_histograms_to_d3(
     if !isempty(hydro_param_values)
         for (pname, vals) in hydro_param_values
             if haskey(label_map, pname)
-                h = fit(Histogram, vals, nbins=nbins)
+                # Filter out NaN and Inf values before fitting the histogram
+                clean_vals = filter(x -> !isnan(x) && isfinite(x), vals)
+                if isempty(clean_vals)
+                    continue
+                end
+                h = fit(Histogram, clean_vals, nbins=nbins)
                 edges = h.edges[1]; centers = [(edges[i]+edges[i+1])/2 for i in 1:length(h.weights)]
                 for i in eachindex(h.weights)
                     push!(histogram_d3_data, (
