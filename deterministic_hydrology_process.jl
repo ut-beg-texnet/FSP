@@ -380,6 +380,10 @@ function main()
     #println("CALCULATING PRESSURE FIELD AND RADIAL CURVES FOR YEAR OF INTEREST: $year_of_interest")
     #println("------------------------------------------------------")
 
+    # Caches (days, rates, lat, lon, evaluation_days_from_start) per well so the
+    # fault × well loop below can reuse them without re-filtering / re-parsing dates.
+    prepared_well_data_for_faults = Dict{String, Dict{String, Any}}()
+
     well_count = 0
     for well_id in well_ids
         well_count += 1
@@ -530,7 +534,16 @@ function main()
         # 1. Calculate pressure field contribution for this well
         # Calculate days from injection start to analysis date
         evaluation_days_from_start = Float64((year_of_interest_date - inj_start_date).value + 1)
-        
+
+        # Cache prepared data so the fault loop can reuse it (avoids N_faults × re-parsing)
+        prepared_well_data_for_faults[well_id] = Dict{String, Any}(
+            "days"                        => days,
+            "rates"                       => rates,
+            "lat"                         => well_lat,
+            "lon"                         => well_lon,
+            "evaluation_days_from_start"  => evaluation_days_from_start,
+        )
+
         pfield_this_well = pfieldcalc_all_rates(
             LON_grid, LAT_grid, STRho, days, rates,
             well_lon, well_lat, "latlon",
@@ -607,160 +620,31 @@ function main()
     # Create pressure array for faults at year_of_interest
     pressure_on_faults = zeros(num_faults)
 
-    # Calculate pressure on each fault
+    # Calculate pressure on each fault using pre-computed per-well data from the grid loop above.
+    # This avoids N_faults × re-filtering + re-parsing dates for every well.
     for f in 1:num_faults
         # Get fault coordinates
         fault_lat = fault_df[f, "Latitude(WGS84)"]
         fault_lon = fault_df[f, "Longitude(WGS84)"]
         
-        # Get the actual fault ID from the fault dataset
         fault_id = if "FaultID" in names(fault_df)
             string(fault_df[f, "FaultID"])
         else
-            # Fall back to using the index as the ID
             string(f)
         end
-        
-        #println("    - Fault $fault_id: lat=$(fault_lat)°, lon=$(fault_lon)°")
-        
-        # Process each well's contribution
-        for well_id in well_ids
-            # Skip wells with no location data
-            if !haskey(well_locations, well_id)
-                continue
-            end
 
-            
-            
-            # Get well coordinates
-            well_lat, well_lon = well_locations[well_id]
-            
-            # Filter well-specific data
-            local well_specific_data
-            if injection_data_type == "annual_fsp" || injection_data_type == "monthly_fsp"
-                well_specific_data = injection_wells_df[string.(injection_wells_df[!, "WellID"]) .== well_id, :]
-            elseif injection_data_type == "injection_tool_data"
-                if "API Number" in names(injection_wells_df)
-                    well_specific_data = injection_wells_df[string.(injection_wells_df[!, "API Number"]) .== well_id, :]
-                elseif "UIC Number" in names(injection_wells_df)
-                    well_specific_data = injection_wells_df[string.(injection_wells_df[!, "UIC Number"]) .== well_id, :]
-                else
-                    continue
-                end
-            end
-            
-            if isempty(well_specific_data)
-                continue
-            end
-            
-            # Get injection period based on data type
-            local inj_start_year, inj_end_year, inj_start_date, inj_end_date
-            
-            if injection_data_type == "annual_fsp"
-                # Get injection period
-                inj_start_year = minimum(well_specific_data[!, "StartYear"])
-                inj_start_date = Date(inj_start_year, 1, 1)
-                inj_end_year = maximum(well_specific_data[!, "EndYear"])
-                inj_end_date = Date(inj_end_year-1, 12, 31)
-            elseif injection_data_type == "monthly_fsp"
-                # Get injection period
-                inj_start_year = minimum(well_specific_data[!, "Year"])
-                inj_start_month = minimum(well_specific_data[well_specific_data[!, "Year"] .== inj_start_year, "Month"])
-                inj_start_date = Date(inj_start_year, inj_start_month, 1)
-                inj_end_year = maximum(well_specific_data[!, "Year"])
-                inj_end_month = maximum(well_specific_data[well_specific_data[!, "Year"] .== inj_end_year, "Month"])
-                inj_end_date = Date(inj_end_year, inj_end_month, 1)
-                inj_end_date = lastdayofmonth(inj_end_date)
-            elseif injection_data_type == "injection_tool_data"
-                # Get injection period from Date of Injection column
-                if "Date of Injection" in names(well_specific_data)
-                    # Parse dates to determine year range
-                    dates = Date[]
-                    
-                    # Check the type of the date values first
-                    if eltype(well_specific_data[!, "Date of Injection"]) <: Date
-                        dates = well_specific_data[!, "Date of Injection"]
-                    else
-                        # Need to parse from strings
-                        try
-                            # Try different date formats
-                            dates = Date.(well_specific_data[!, "Date of Injection"], dateformat"y-m-d")
-                        catch
-                            try
-                                dates = Date.(well_specific_data[!, "Date of Injection"], dateformat"m/d/y")
-                            catch
-                                try
-                                    dates = Date.(well_specific_data[!, "Date of Injection"], dateformat"m/d/yyyy")
-                                catch e
-                                    continue
-                                end
-                            end
-                        end
-                    end
-                    
-                    if !isempty(dates)
-                        # Extract the years using the Dates package
-                        years = year.(dates)
-                        inj_start_year = minimum(years)
-                        inj_end_year = maximum(years)
-                        
-                        # Get the start and end dates
-                        inj_start_date = minimum(dates)
-                        inj_end_date = min(maximum(dates), year_of_interest_date)
-                    else
-                        continue
-                    end
-                else
-                    continue
-                end
-            else
-                error("Unsupported data type: $injection_data_type")
-            end
-            
-            # Check if well is active before the year of interest
-            if inj_start_date > year_of_interest_date
-                continue
-            end
-            
-            # Calculate end year (limit to year_of_interest)
-            actual_end_year = min(inj_end_year, year_of_interest)
-            
-            # Prepare injection data up to year_of_interest
-            days, rates = prepare_well_data_for_pressure_scenario(
-                well_specific_data,
-                String(well_id),
-                inj_start_year,
-                inj_start_date,
-                actual_end_year,
-                inj_end_date,
-                injection_data_type,
-                year_of_interest,
-                extrapolate_injection_rates,
-                year_of_interest_date
-            )
-            
-            if isempty(days) || isempty(rates)
-                continue
-            end
-            
-            # Calculate pressure contribution from this well at the fault location
-            # Calculate days from injection start to analysis date
-            evaluation_days_from_start = Float64((year_of_interest_date - inj_start_date).value + 1)
-            
+        for (well_id, data) in prepared_well_data_for_faults
             pressure_contribution = pfieldcalc_all_rates(
-                fault_lon,  # longitude is x
-                fault_lat,  # latitude is y
+                fault_lon,
+                fault_lat,
                 STRho,
-                days,
-                rates,
-                well_lon,  # longitude is x
-                well_lat,  # latitude is y
-                evaluation_days_from_start
+                data["days"],
+                data["rates"],
+                data["lon"],
+                data["lat"],
+                data["evaluation_days_from_start"]
             )
-            
-            # Add to total pressure for this fault
             pressure_on_faults[f] += pressure_contribution
-            
         end
         
         # Add results to the DataFrame

@@ -1,6 +1,6 @@
 module BillPFront
 
-export pressureScenario_constant_rate, pressureScenario_Rall
+export pressureScenario_constant_rate, pressureScenario_Rall, pressureScenario_Rall_scalar
 
 using LinearAlgebra
 using SpecialFunctions
@@ -156,7 +156,14 @@ function pressureScenario_Rall(
     end
 
     # 4) Accumulate Theis contributions
-    tstep_sum = zeros(size(r_meters))
+    #    Preallocate buffers once to avoid per-step heap allocation inside the hot loop.
+    nr = length(r_meters)
+    tstep_sum = zeros(Float64, nr)
+    u_buf     = Vector{Float64}(undef, nr)
+    wf_buf    = Vector{Float64}(undef, nr)
+
+    inv_4T = 1.0 / (4.0 * T)
+    r2 = r_meters .^ 2  # computed once; safe because r_meters doesn't change inside the loop
 
     for i in 1:n
         dQ = step_dQ[i]
@@ -164,53 +171,106 @@ function pressureScenario_Rall(
             continue
         end
 
-        # time of this step
         t_i_sec = step_times[i] * 86400.0
         dt = t_final_sec - t_i_sec
 
         if dt <= 0
-            # final time is before this step started => no contribution
             continue
         end
 
-        # Theis dimensionless parameter: u(r) = (r^2 * S) / (4 * T * (t_final - t_i))
-        u = (r_meters .^ 2 .* S) ./ (4.0 * T * dt)
+        # Theis dimensionless parameter: u(r) = r² * S / (4 T dt)
+        coeff = S * inv_4T / dt
+        @. u_buf = r2 * coeff
 
-        well_func = expint.(u)
+        # Well function W(u) = expint(u) — computed in-place into wf_buf
+        @. wf_buf = expint(u_buf)
 
-        # Add this step's contribution: well_func * dQ
-        tstep_sum .+= well_func .* dQ
+        # Accumulate: tstep_sum += W(u) * dQ
+        @. tstep_sum += wf_buf * dQ
     end
 
-    # 5) Convert to hydraulic head => pressure => PSI
-    head_m    = tstep_sum ./ (4π * T)
-    dp_pascals = head_m .* (rho * g)
-    dp_psi     = dp_pascals ./ 6894.76
+    # 5) Convert accumulated head to PSI in-place (reuse tstep_sum as dp_psi)
+    inv_4piT        = 1.0 / (4π * T)
+    rho_g_over_psi  = rho * g / 6894.76
+    @. tstep_sum = tstep_sum * inv_4piT * rho_g_over_psi
 
-    
+    # Clean up NaN/Inf and negatives in-place
+    @inbounds for k in eachindex(tstep_sum)
+        v = tstep_sum[k]
+        tstep_sum[k] = (isfinite(v) && v > 0.0) ? v : 0.0
+    end
 
-    # Clean up NaN/Inf
-    dp_psi[.!isfinite.(dp_psi)] .= 0.0
-    
-    # Ensure no negative pressure values
-    dp_psi = max.(0.0, dp_psi)
+    dp_psi = tstep_sum
 
     # Reshape back if needed
     if reshaped
         dp_psi = reshape(dp_psi, original_size)
     end
 
-    # if any of the vallues is less than 1e-1, set it to 0
-    dp_psi[dp_psi .< 1e-1] .= 0.0
-
-    # also, round to 2 decimal places
-    dp_psi = round.(dp_psi, digits=2)
-
-
     return dp_psi
 end
 
 
+
+
+"""
+    pressureScenario_Rall_scalar(bpds, days, r_meters, STRho, evaluation_days_from_start) -> Float64
+
+Scalar specialisation of `pressureScenario_Rall` for a single radial distance.
+Avoids allocating a length-1 vector and running vector `expint` — used in the
+fault-level hydrology path (MC and deterministic) where r_meters is a plain Float64.
+"""
+function pressureScenario_Rall_scalar(
+    bpds::Vector{Float64},
+    days::Vector{Float64},
+    r_meters::Float64,
+    STRho::Tuple{Float64, Float64, Float64},
+    evaluation_days_from_start::Union{Float64, Nothing} = nothing
+) :: Float64
+
+    if isempty(bpds) || isempty(days)
+        return 0.0
+    end
+
+    S, T, rho = STRho
+    g = 9.81
+
+    t_final_sec = isnothing(evaluation_days_from_start) ?
+                  maximum(days) * 86400.0 :
+                  evaluation_days_from_start * 86400.0
+
+    n = length(bpds)
+    inv_4T   = 1.0 / (4.0 * T)
+    r2       = r_meters * r_meters
+    tstep_sum = 0.0
+
+    # dQ[1] = bpds[1] * 1.84013e-6, for i>1 dQ[i] = (bpds[i]-bpds[i-1]) * 1.84013e-6
+    prev_Q = 0.0
+    for i in 1:n
+        cur_Q = bpds[i] * 1.84013e-6
+        dQ    = cur_Q - prev_Q
+        prev_Q = cur_Q
+
+        if dQ == 0.0
+            continue
+        end
+
+        t_i_sec = days[i] * 86400.0
+        dt = t_final_sec - t_i_sec
+        if dt <= 0.0
+            continue
+        end
+
+        u = r2 * S * inv_4T / dt
+        tstep_sum += expint(u) * dQ
+    end
+
+    inv_4piT       = 1.0 / (4.0 * π * T)
+    rho_g_over_psi = rho * g / 6894.76
+    dp_psi = tstep_sum * inv_4piT * rho_g_over_psi
+
+    return (isfinite(dp_psi) && dp_psi > 0.0) ? dp_psi : 0.0
+end
 
 
 end # module

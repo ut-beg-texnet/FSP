@@ -16,7 +16,7 @@ using .BillPFront
 
 
 
-export calcST, md_to_m2, pfront, generate_datenum_barrels, pfieldcalc_constant_rates, pfieldcalc_monthly_rates, pressureScenario_variable_rate, pfieldcalc_all_rates
+export calcST, md_to_m2, pfront, generate_datenum_barrels, pfieldcalc_constant_rates, pfieldcalc_monthly_rates, pressureScenario_variable_rate, pfieldcalc_all_rates, pfieldcalc_all_rates_scalar
 
 """
 Convert permeability from millidarcy (mD) to square meters (m²)
@@ -204,42 +204,50 @@ function pressureScenario_variable_rate(
         return zeros(length(r_meters))
     end
 
-    n = length(bpds)
-    dp_psi = zeros(length(r_meters))
+    n  = length(bpds)
+    nr = length(r_meters)
+    dp_psi = zeros(Float64, nr)
 
-    # 1) Compute rate changes (dQ[i]) for each step
-    dQ = similar(bpds)
+    # 1) Compute rate changes (dQ[i]) in m³/s for each step
+    dQ = Vector{Float64}(undef, n)
     dQ[1] = bpds[1]
     for i in 2:n
         dQ[i] = bpds[i] - bpds[i-1]
     end
 
-    # 2) For each time step, superimpose the pressure changes
+    # Preallocate reusable buffers for the inner loop to avoid per-step heap allocations
+    u_buf  = Vector{Float64}(undef, nr)
+    wf_buf = Vector{Float64}(undef, nr)
+
+    inv_4T    = 1.0 / (4.0 * T)
+    inv_4piT  = 1.0 / (4.0 * pi * T)
+    rho_g_psi = rho * g / 6894.76
+    r2 = r_meters .^ 2  # computed once
+
+    # 2) Superimpose Theis contributions from each rate-change step
     for i in 1:n
         t_i_sec = days[i] * 86400.0
         dt = t_final_sec - t_i_sec
 
-        # if dt <=0 --> final time is before this injection started
         if dt <= 0
             continue
         end
 
-        # convert bbl/day -> m³/s
         dQ_m3_s = dQ[i] * 1.84013e-6
 
-        u = (r_meters .^2) .* S ./(4 * T * dt)
+        coeff = S * inv_4T / dt
+        @. u_buf  = r2 * coeff
+        @. wf_buf = expint(u_buf)
 
-        # Head from Theis: Δh(r) = (ΔQ / (4πT)) * expint(u)
-        head = (dQ_m3_s / (4 * pi * T)) .* expint.(u)
+        # Δh(r) * ρg / 6894.76 accumulated in-place as PSI directly
+        step_psi = dQ_m3_s * inv_4piT * rho_g_psi
+        @. dp_psi += wf_buf * step_psi
+    end
 
-        # head --> Pa --> PSI
-        dp_pascals = head .* (rho * g)
-        dp_tmp = dp_pascals ./ 6894.76
-
-        # Handle any infinities or NaN
-        dp_tmp[.!isfinite.(dp_tmp)] .= 0.0
-
-        dp_psi .+= dp_tmp
+    # Zero out any NaN/Inf that may arise from near-zero dt or extreme u values
+    @inbounds for k in eachindex(dp_psi)
+        v = dp_psi[k]
+        dp_psi[k] = (isfinite(v) && v > 0.0) ? v : 0.0
     end
 
     return dp_psi
@@ -395,10 +403,9 @@ end
 =#
 
 
-# pressure field calculation (Geomechanics version)
-# multiple dispatch: wehn called with faults, it uses vectors instead of matrices
-# find the distance from the well to the fault
-# call pressureScenario for this well
+# Scalar fault path: dispatches on scalar coordinates and returns a single Float64.
+# Uses pressureScenario_Rall_scalar to avoid the [R_meters] length-1 vector allocation
+# that would otherwise occur on every (iteration, fault, well) call in the MC loops.
 function pfieldcalc_all_rates(
     x_fault_deg::Union{Float64, Integer}, 
     y_fault_deg::Union{Float64, Integer}, 
@@ -410,31 +417,10 @@ function pfieldcalc_all_rates(
     evaluation_days_from_start::Union{Float64, Nothing}=nothing
     )
 
-    #println("fault coordinates: longitude = $x_fault_deg, latitude = $y_fault_deg")
-    #println("well coordinates: longitude = $xwell_deg, latitude = $ywell_deg")
+    R_km     = haversine_distance(y_fault_deg, x_fault_deg, ywell_deg, xwell_deg)
+    R_meters = Float64(R_km * 1e3)
 
-    #get distance from each well to the faul (in km)
-    #R_km = sqrt((x_fault_km - xwell_km)^2 + (y_fault_km - ywell_km)^2)
-    R_km = haversine_distance(y_fault_deg, x_fault_deg, ywell_deg, xwell_deg)
-
-
-    #println("Distance from well to fault (pfieldcalc_all_rates): $R_km km")
-
-    #convert to meters
-    R_meters = R_km * 1e3
-
-    
-    
-    # Convert R_meters to a vector since pressureScenario_Rall expects a vector
-    R_meters_vec = [R_meters]
-    pfrontResult = pressureScenario_Rall(bpds, days, R_meters_vec, STRho, evaluation_days_from_start)
-    
-    # Ensure no negative pressure values
-    pfrontResult = max.(0.0, pfrontResult)
-    
-    # Return the single value result
-    return pfrontResult[1]
-
+    return pressureScenario_Rall_scalar(bpds, days, R_meters, STRho, evaluation_days_from_start)
 end
 
 

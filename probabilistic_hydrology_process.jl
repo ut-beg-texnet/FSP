@@ -6,6 +6,8 @@ using Statistics
 using Dates
 using LinearAlgebra
 using Interpolations
+using Random
+using Base.Threads
 
 
 
@@ -125,19 +127,23 @@ function run_monte_carlo_hydrology(helper::TexNetWebToolLaunchHelperJulia,
     fault_ids = string.(fault_df[!, fault_id_col])
     #println("Using fault IDs: $(join(fault_ids, ", "))")
 
-    # create the matrix to store the results of the Monte Carlo simulations
-    ppOnFaultMC = zeros(params.n_iterations, num_faults) # rows are iterations, columns are faults
+    # rows = iterations, columns = faults; each thread writes its own row — no locking needed
+    ppOnFaultMC = zeros(params.n_iterations, num_faults)
 
-    # Create storage for parameter samples across all Monte Carlo iterations
-    # this will store the randomly sampled parameters for each iteration which we use to get the histogram data
-    hydro_samples = Dict{String, Vector{Float64}}()
-    hydro_samples["aquifer_thickness"] = Float64[]
-    hydro_samples["porosity"] = Float64[]
-    hydro_samples["permeability"] = Float64[]
-    hydro_samples["fluid_density"] = Float64[]
-    hydro_samples["dynamic_viscosity"] = Float64[]
-    hydro_samples["fluid_compressibility"] = Float64[]
-    hydro_samples["rock_compressibility"] = Float64[]
+    # Preallocate parameter-sample storage (indexed by iteration) to avoid push! in threaded loop
+    n_iter = Int(params.n_iterations)
+    hydro_samples = Dict{String, Vector{Float64}}(
+        "aquifer_thickness"     => Vector{Float64}(undef, n_iter),
+        "porosity"              => Vector{Float64}(undef, n_iter),
+        "permeability"          => Vector{Float64}(undef, n_iter),
+        "fluid_density"         => Vector{Float64}(undef, n_iter),
+        "dynamic_viscosity"     => Vector{Float64}(undef, n_iter),
+        "fluid_compressibility" => Vector{Float64}(undef, n_iter),
+        "rock_compressibility"  => Vector{Float64}(undef, n_iter),
+    )
+
+    # Seed base for reproducible per-thread RNG (same pattern as probabilistic_geomechanics_process.jl)
+    base_seed = UInt64(time_ns())
     
 
     # Get injection well data
@@ -314,63 +320,43 @@ function run_monte_carlo_hydrology(helper::TexNetWebToolLaunchHelperJulia,
     
 
    
-    # run the Monte Carlo simulations
-    for i in 1:params.n_iterations
-        # sample the parameters from the distributions
-        sampled_params = Dict(
-            "aquifer_thickness" => rand(distributions["aquifer_thickness"]),
-            "porosity" => rand(distributions["porosity"]),
-            "permeability" => rand(distributions["permeability"]),
-            "fluid_density" => rand(distributions["fluid_density"]),
-            "dynamic_viscosity" => rand(distributions["dynamic_viscosity"]),
-            "fluid_compressibility" => rand(distributions["fluid_compressibility"]),
-            "rock_compressibility" => rand(distributions["rock_compressibility"])
-        )
-        
-        # Store the sampled parameters for histogram visualization
-        push!(hydro_samples["aquifer_thickness"], sampled_params["aquifer_thickness"])
-        push!(hydro_samples["porosity"], sampled_params["porosity"])
-        push!(hydro_samples["permeability"], sampled_params["permeability"])
-        push!(hydro_samples["fluid_density"], sampled_params["fluid_density"])
-        push!(hydro_samples["dynamic_viscosity"], sampled_params["dynamic_viscosity"])
-        push!(hydro_samples["fluid_compressibility"], sampled_params["fluid_compressibility"])
-        push!(hydro_samples["rock_compressibility"], sampled_params["rock_compressibility"])
+    # Run Monte Carlo simulations in parallel — each thread writes to its own row of ppOnFaultMC
+    # and its own index in hydro_samples, so no locking is required.
+    Threads.@threads for i in 1:n_iter
+        # Per-thread RNG for reproducibility (matches probabilistic_geomechanics_process.jl pattern)
+        local_rng = Random.MersenneTwister(base_seed + UInt64(i))
 
-        # calculate storativity and transmissivity
-        S, T, rho = calcST(
-            sampled_params["aquifer_thickness"], 
-            sampled_params["porosity"], 
-            sampled_params["permeability"], 
-            sampled_params["fluid_density"], 
-            sampled_params["dynamic_viscosity"], 
-            9.81, 
-            sampled_params["fluid_compressibility"], 
-            sampled_params["rock_compressibility"]
-        )
+        # Sample aquifer parameters
+        aq_thick  = rand(local_rng, distributions["aquifer_thickness"])
+        por       = rand(local_rng, distributions["porosity"])
+        perm      = rand(local_rng, distributions["permeability"])
+        fl_den    = rand(local_rng, distributions["fluid_density"])
+        dyn_visc  = rand(local_rng, distributions["dynamic_viscosity"])
+        fl_comp   = rand(local_rng, distributions["fluid_compressibility"])
+        rock_comp = rand(local_rng, distributions["rock_compressibility"])
 
-        STRho = (S, T, rho) 
+        # Store samples by index (pre-allocated, no push! needed)
+        hydro_samples["aquifer_thickness"][i]     = aq_thick
+        hydro_samples["porosity"][i]              = por
+        hydro_samples["permeability"][i]          = perm
+        hydro_samples["fluid_density"][i]         = fl_den
+        hydro_samples["dynamic_viscosity"][i]     = dyn_visc
+        hydro_samples["fluid_compressibility"][i] = fl_comp
+        hydro_samples["rock_compressibility"][i]  = rock_comp
 
-        
+        # Compute storativity / transmissivity for this sample
+        S, T, rho = calcST(aq_thick, por, perm, fl_den, dyn_visc, 9.81, fl_comp, rock_comp)
+        STRho = (S, T, rho)
+
         for f in 1:num_faults
-            # Get fault coordinates
             x_fault_km = fault_df[f, "Longitude(WGS84)"]
             y_fault_km = fault_df[f, "Latitude(WGS84)"]
-            
-            # Get fault ID for logging
-            fault_id = fault_ids[f]
-            
-            # initialize pp
-            
+
             ppOnFault = 0.0
-            
-            
-            
-            # Loop over wells using PRE-PROCESSED DATA
+
             for (well_id, data) in prepared_well_data
-                # Use pre-processed injection data
-                # Calculate days from injection start to analysis date
                 evaluation_days_from_start = Float64((year_of_interest_date - data["inj_start_date"]).value + 1)
-                
+
                 pressure_contribution = pfieldcalc_all_rates(
                     x_fault_km,
                     y_fault_km,
@@ -382,34 +368,28 @@ function run_monte_carlo_hydrology(helper::TexNetWebToolLaunchHelperJulia,
                     evaluation_days_from_start
                 )
 
-                
-                
-                # Add to total pressure for this fault
                 ppOnFault += pressure_contribution
             end
 
-            # Ensure pressure is not negative
-            ppOnFault = max(0.0, ppOnFault)
-            
-            
-            # Store the result for this fault and iteration
-            ppOnFaultMC[i, f] = ppOnFault
+            ppOnFaultMC[i, f] = max(0.0, ppOnFault)
         end
     end
 
-    # Convert results to a DataFrame
-    result_rows = []
-    for i in 1:params.n_iterations
+    # Convert results matrix to a DataFrame (pre-sized to avoid Any-typed accumulation)
+    n_rows = n_iter * num_faults
+    iter_col     = Vector{Int}(undef, n_rows)
+    id_col       = Vector{String}(undef, n_rows)
+    pressure_col = Vector{Float64}(undef, n_rows)
+    idx = 1
+    for i in 1:n_iter
         for f in 1:num_faults
-            push!(result_rows, (
-                IterationID = i,
-                ID = fault_ids[f],  # Use actual fault ID instead of numeric index
-                Pressure = ppOnFaultMC[i, f]
-            ))
+            iter_col[idx]     = i
+            id_col[idx]       = fault_ids[f]
+            pressure_col[idx] = ppOnFaultMC[i, f]
+            idx += 1
         end
     end
-    
-    results_df = DataFrame(result_rows)
+    results_df = DataFrame(IterationID = iter_col, ID = id_col, Pressure = pressure_col)
     
     
     return results_df, hydro_samples

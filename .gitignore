@@ -20,3 +20,5 @@ output/
 
 # exclude GIST regression
 regression_tests/GISTRegressionTests.ipynb
+
+CLAUDE.md
