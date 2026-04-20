@@ -973,7 +973,7 @@ function injection_rate_data_to_d3(well_df::DataFrame, injection_data_type::Stri
             for (i, row) in enumerate(eachrow(well_df))
                 try
                     well_id = string(row["WellID"])
-                    injection_rate = row["InjectionRate(bbl/month)"]
+                    injection_rate = coalesce(row["InjectionRate(bbl/month)"], 0.0)
                     month = row["Month"]
                     year = row["Year"]
                     start_date = Date(year, month, 1)
@@ -1066,7 +1066,7 @@ function injection_rate_data_to_d3(well_df::DataFrame, injection_data_type::Stri
                     
                     # Group by year and month, calculate sum (total monthly volume)
                     monthly_totals = combine(groupby(temp_df, [:Year, :Month]), 
-                        :InjectionRate => sum => :MonthlyInjectionRate)
+                        :InjectionRate => (x -> sum(coalesce.(x, 0.0))) => :MonthlyInjectionRate)
                     
                     
                     
@@ -1197,7 +1197,7 @@ function injection_rate_data_to_d3_bbl_day(well_df::DataFrame, injection_data_ty
                             # Add start-of-month data point
                             push!(wells_reformatted, (
                                 String(well_id),
-                                injection_rate_daily,
+                                coalesce(injection_rate_daily, 0.0),
                                 year,
                                 month,
                                 date_string,
@@ -1206,7 +1206,7 @@ function injection_rate_data_to_d3_bbl_day(well_df::DataFrame, injection_data_ty
                             # Add end-of-month data point with the same rate
                             push!(wells_reformatted, (
                                 String(well_id),
-                                injection_rate_daily,
+                                coalesce(injection_rate_daily, 0.0),
                                 year,
                                 month,
                                 date_string,
@@ -1280,7 +1280,7 @@ function injection_rate_data_to_d3_bbl_day(well_df::DataFrame, injection_data_ty
                     days_in_month = Dates.daysinmonth(month_start_date)
                     
                     # Convert monthly rate to daily rate
-                    monthly_injection_rate = row["InjectionRate(bbl/month)"]
+                    monthly_injection_rate = coalesce(row["InjectionRate(bbl/month)"], 0.0)
                     daily_injection_rate = monthly_injection_rate / days_in_month
                     
                     push!(month_year_pairs, (month=month, year=year, date=month_start_date))
@@ -1507,10 +1507,10 @@ function injection_rate_data_to_d3_bbl_day(well_df::DataFrame, injection_data_ty
                             # Option 1: Divide by actual days with data (assumes other days had zero injection)
                             # daily_rate = total_volume / num_days_with_data
                             
-                            # Option 2: Divide by days in month (assumes zero injection for missing days)
-                            # This means the total volume for the month is spread across all days,
-                            # which effectively treats missing days as zero injection
-                            daily_rate = total_volume / days_in_month
+                    # Option 2: Divide by days in month (assumes zero injection for missing days)
+                    # This means the total volume for the month is spread across all days,
+                    # which effectively treats missing days as zero injection
+                    daily_rate = coalesce(total_volume, 0.0) / days_in_month
                             
                             # Add to temp DataFrame
                             push!(temp_df, (
@@ -1543,12 +1543,12 @@ function injection_rate_data_to_d3_bbl_day(well_df::DataFrame, injection_data_ty
                         end_timestamp = date_to_js_timestamp(end_date)
                         
                         # Skip if rate is zero (no injection)
-                        if daily_rate == 0
+                        if coalesce(daily_rate, 0.0) == 0
                             continue
                         end
                         
                         # First month or transition from zero
-                        if i == 1 || (i > 1 && temp_df[i-1, :DailyRate] == 0)
+                        if i == 1 || (i > 1 && coalesce(temp_df[i-1, :DailyRate], 0.0) == 0)
                             # Add zero point at same timestamp to create vertical step
                             push!(wells_reformatted, (
                                 String(well_id),
@@ -1561,7 +1561,7 @@ function injection_rate_data_to_d3_bbl_day(well_df::DataFrame, injection_data_ty
                         end
                         
                         # Check for rate change between months
-                        if i > 1 && temp_df[i-1, :DailyRate] != daily_rate && temp_df[i-1, :DailyRate] > 0
+                        if i > 1 && coalesce(temp_df[i-1, :DailyRate], 0.0) != daily_rate && coalesce(temp_df[i-1, :DailyRate], 0.0) > 0
                             # Add previous rate at current timestamp
                             push!(wells_reformatted, (
                                 String(well_id),
@@ -1593,19 +1593,19 @@ function injection_rate_data_to_d3_bbl_day(well_df::DataFrame, injection_data_ty
                             end_timestamp
                         ))
                         
-                        # Check if next month is 0 or end of data
-                        if i == nrow(temp_df) || (i < nrow(temp_df) && temp_df[i+1, :DailyRate] == 0)
-                            # Add zero point at same timestamp for step down
-                            end_date_formatted = Dates.format(end_date, "m/d/Y")
-                            push!(wells_reformatted, (
-                                String(well_id),
-                                0.0,
-                                Dates.month(end_date),
-                                Dates.year(end_date),
-                                end_date_formatted,
-                                end_timestamp
-                            ))
-                        end
+                    # Check if next month is 0 or end of data
+                    if i == nrow(temp_df) || (i < nrow(temp_df) && coalesce(temp_df[i+1, :DailyRate], 0.0) == 0)
+                        # Add zero point at same timestamp for step down
+                        end_date_formatted = Dates.format(end_date, "m/d/Y")
+                        push!(wells_reformatted, (
+                            String(well_id),
+                            0.0,
+                            Dates.month(end_date),
+                            Dates.year(end_date),
+                            end_date_formatted,
+                            end_timestamp
+                        ))
+                    end
                     end
                     
                     #println("Processed well $well_id with $(length(processed_months)) monthly data points")

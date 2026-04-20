@@ -297,7 +297,7 @@ function main()
             end
 
             
-            #injection_rate_data = injection_rate_data_to_d3(injection_wells_df, injection_data_type)
+            #injection_rate_data = injection_rate_data_to_d3_bbl_day(injection_wells_df, injection_data_type)
             injection_rate_data = injection_rate_data_to_d3_bbl_day(injection_wells_df, injection_data_type)
             save_dataframe_as_parameter!(helper, 1, "injection_rate_d3_data", injection_rate_data)
             #println("DEBUG: Saved monthly injection rate data for visualization")

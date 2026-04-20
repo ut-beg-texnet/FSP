@@ -190,13 +190,13 @@ function shapefile_to_fsp_csv(filename::String)
         "Longitude(WGS84)" => Float64[],
         "Latitude(WGS84)" => Float64[],
         "Strike" => Float64[],
-        "Dip" => Int64[],
+        "Dip" => Float64[],
         "LengthKm" => Float64[]
     )
 
     for row in eachrow(shapefile_csv)
         fid = row.FID 
-        dip = ismissing(row.dip) ? 0 : row.dip # default to 0 if dip is missing (even though it should not happen)
+        dip = ismissing(row.dip) ? 0.0 : row.dip # default to 0.0 if dip is missing (even though it should not happen)
         shape = row.SHAPE 
         lines = parse_multilinestring(shape)
         segment_count = 1
